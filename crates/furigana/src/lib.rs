@@ -13,10 +13,12 @@
 #![allow(clippy::tabs_in_doc_comments)]
 
 pub mod analyzer;
+pub mod dict;
 pub mod error;
 pub mod kana;
 pub mod loader;
 pub mod numbers;
+pub mod reading;
 pub mod rules;
 
 pub use error::{FuriganaError, Result};
