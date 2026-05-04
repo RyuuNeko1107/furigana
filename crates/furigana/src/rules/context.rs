@@ -38,6 +38,17 @@ pub struct ContextData {
     pub rules: Vec<ContextRule>,
 }
 
+impl ContextData {
+    /// 別の `ContextData` をマージする (rules を末尾に追記)
+    ///
+    /// context/ サブディレクトリ配下の複数 TOML を 1 つの構造体に
+    /// 統合する用途で [`crate::loader::load_rules_dir`] 内部から呼ばれる。
+    /// rules は順序依存のため、ファイル名ソート順で末尾追記される。
+    pub fn merge(&mut self, other: Self) {
+        self.rules.extend(other.rules);
+    }
+}
+
 /// 1 surface に対する文脈ルール
 #[derive(Debug, Clone, Deserialize)]
 pub struct ContextRule {

@@ -67,8 +67,9 @@ impl Dict {
 
     /// ディレクトリ配下の `*.toml` 全てから辞書をマージ構築
     ///
-    /// - サブディレクトリは再帰しない (1 階層のみ)
-    /// - ファイル名のソート順で読み込み (decision: 後に来るファイルが上書き)
+    /// - **サブディレクトリは 1 階層まで再帰** (`core/jukugo/general.toml` 等)
+    /// - 直下 + サブディレクトリ直下の `*.toml` を全集合してファイル名ソート順で
+    ///   読み込み、後に来るファイルが上書きする
     /// - ディレクトリが存在しない場合は空辞書を返す
     ///
     /// # Errors
@@ -85,11 +86,21 @@ impl Dict {
             )));
         }
 
-        let mut files: Vec<std::path::PathBuf> = std::fs::read_dir(dir)?
-            .filter_map(std::result::Result::ok)
-            .map(|e| e.path())
-            .filter(|p| p.is_file() && p.extension().is_some_and(|e| e == "toml"))
-            .collect();
+        // 直下 + 1 階層のサブディレクトリ直下の *.toml を集める
+        let mut files: Vec<std::path::PathBuf> = Vec::new();
+        for entry in std::fs::read_dir(dir)?.filter_map(std::result::Result::ok) {
+            let path = entry.path();
+            if path.is_file() && path.extension().is_some_and(|e| e == "toml") {
+                files.push(path);
+            } else if path.is_dir() {
+                for sub in std::fs::read_dir(&path)?.filter_map(std::result::Result::ok) {
+                    let sub_path = sub.path();
+                    if sub_path.is_file() && sub_path.extension().is_some_and(|e| e == "toml") {
+                        files.push(sub_path);
+                    }
+                }
+            }
+        }
         files.sort();
 
         let mut merged = Self::default();
@@ -250,5 +261,37 @@ mod tests {
     fn from_toml_dir_missing_returns_empty() {
         let d = Dict::from_toml_dir("/nonexistent/dir/path/xyz_furigana_test").unwrap();
         assert!(d.is_empty());
+    }
+
+    #[test]
+    fn from_toml_dir_recurses_one_level_into_subdirs() {
+        // jukugo/general.toml + jukugo/places.toml のような構造を扱えること
+        let dir = fresh_temp_dir("dir_subdir");
+        let sub = dir.join("jukugo");
+        std::fs::create_dir_all(&sub).unwrap();
+        std::fs::write(
+            sub.join("general.toml"),
+            "[entries]\n\"灰桜\" = \"ハイザクラ\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            sub.join("places.toml"),
+            "[entries]\n\"湯島\" = \"ユシマ\"\n",
+        )
+        .unwrap();
+        // 直下のファイルもまだ拾えること
+        std::fs::write(
+            dir.join("top.toml"),
+            "[entries]\n\"黎明\" = \"レイメイ\"\n",
+        )
+        .unwrap();
+
+        let d = Dict::from_toml_dir(&dir).unwrap();
+        assert_eq!(d.lookup("灰桜"), Some("ハイザクラ"));
+        assert_eq!(d.lookup("湯島"), Some("ユシマ"));
+        assert_eq!(d.lookup("黎明"), Some("レイメイ"));
+        assert_eq!(d.len(), 3);
+
+        std::fs::remove_dir_all(&dir).ok();
     }
 }
