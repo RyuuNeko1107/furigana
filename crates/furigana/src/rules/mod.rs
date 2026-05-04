@@ -17,7 +17,7 @@ pub mod units;
 
 pub use compat::{CompatData, CompatEntry};
 pub use context::{ContextData, ContextMatch, ContextRule};
-pub use counters::{CounterMode, CounterRule, CountersData, EuphonicRule};
+pub use counters::{CounterMode, CounterRule, CountersData, EuphonicRule, KanaReplacement};
 pub use days::DaysData;
 pub use latin::{LatinData, LatinEntry};
 pub use numeric_phrases::{NumericPhrase, NumericPhrasesData};

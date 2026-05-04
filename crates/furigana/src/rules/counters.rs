@@ -45,7 +45,7 @@ pub struct CountersData {
 }
 
 /// 助数詞 1 件の振る舞い
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 pub struct CounterRule {
     /// デフォルト suffix (例: 本→「ホン」)。
     /// `mode = "recursive"` の場合は不要 (None 可)。
@@ -56,9 +56,17 @@ pub struct CounterRule {
     #[serde(default)]
     pub rules: Vec<EuphonicRule>,
 
-    /// 数値そのもの (string キー) に対する特殊読み (例: 月で 4→シガツ)
+    /// 数値そのもの (string キー) に対する特殊読み (例: 月で 4→シガツ)。
+    /// マッチした場合は `default` の suffix 連結すらせず、
+    /// この値をそのまま読みとして採用する (フル上書き)。
     #[serde(default)]
     pub specials: HashMap<String, String>,
+
+    /// 数値カナの末尾置換 (時の 4→ヨン→ヨ, 7→ナナ→シチ, 9→キュウ→ク 等)。
+    /// `last_digit` が一致した時、数値カナが `from` で終わっていれば
+    /// `to` に置換し、その後 default suffix を付ける。
+    #[serde(default)]
+    pub replacements: Vec<KanaReplacement>,
 
     /// 「目」のように既存助数詞末尾に再帰的に付く形式の場合のモード
     #[serde(default)]
@@ -67,6 +75,19 @@ pub struct CounterRule {
     /// `mode = "recursive"` の際に末尾連結する suffix (例: 目→「メ」)
     #[serde(default)]
     pub suffix: Option<String>,
+}
+
+/// 数値カナの末尾置換ルール
+///
+/// 例: 時の 4 (ヨン→ヨ) — 4時 = ヨジ、14時 = ジュウヨジ
+#[derive(Debug, Clone, Deserialize)]
+pub struct KanaReplacement {
+    /// このルールが適用される末尾数字 (0〜9)
+    pub last_digit: Vec<u32>,
+    /// 置換対象の末尾文字列 (例: "ヨン")
+    pub from: String,
+    /// 置換後の文字列 (例: "ヨ")
+    pub to: String,
 }
 
 /// 特殊な助数詞処理モード
@@ -175,5 +196,36 @@ mod tests {
         let data: CountersData = toml::from_str("").unwrap();
         assert!(data.simple.is_empty());
         assert!(data.counter.is_empty());
+    }
+
+    #[test]
+    fn parses_kana_replacements() {
+        let toml_str = r#"
+            [counter."時"]
+            default = "ジ"
+            specials = { "0" = "レイジ" }
+
+            [[counter."時".replacements]]
+            last_digit = [4]
+            from = "ヨン"
+            to = "ヨ"
+
+            [[counter."時".replacements]]
+            last_digit = [7]
+            from = "ナナ"
+            to = "シチ"
+
+            [[counter."時".replacements]]
+            last_digit = [9]
+            from = "キュウ"
+            to = "ク"
+        "#;
+        let data: CountersData = toml::from_str(toml_str).unwrap();
+        let h = data.counter.get("時").unwrap();
+        assert_eq!(h.default.as_deref(), Some("ジ"));
+        assert_eq!(h.replacements.len(), 3);
+        assert_eq!(h.replacements[0].from, "ヨン");
+        assert_eq!(h.replacements[0].to, "ヨ");
+        assert_eq!(h.specials.get("0").map(String::as_str), Some("レイジ"));
     }
 }

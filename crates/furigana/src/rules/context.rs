@@ -84,6 +84,9 @@ pub struct ContextMatch {
     /// 次トークンの surface が先頭でいずれかに一致
     #[serde(default)]
     pub next_starts_with_any: Vec<String>,
+    /// 次トークンの surface が数字 (半角/全角) で始まる
+    #[serde(default)]
+    pub next_starts_with_digit: bool,
 
     // ─── 次の次トークン条件 ───
     /// 「大人気の無い」のように 1 つ飛ばし参照する用途
