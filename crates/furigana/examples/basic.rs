@@ -12,13 +12,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     f.add_reading("灰桜", "ハイザクラ");
     f.add_reading("黎明", "レイメイ");
 
+    // 異体字 (例: 髙崎) は furigana-dict 側で管理されるため、
+    // minimal モードでは正規化されない。動作を見るには
+    // `furigana dict pull` 後に `core_dict_dir(...)` を builder で渡す。
     let samples = [
         "灰桜の散る道",
         "黎明の光",
         "1月1日に集合",
         "二十歳の誕生日",
         "3本のバナナ",
-        "髙崎駅",
     ];
 
     for text in samples {

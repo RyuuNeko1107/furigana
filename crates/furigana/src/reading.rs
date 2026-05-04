@@ -664,7 +664,10 @@ mod tests {
 
     #[test]
     fn tokenize_text_normalizes_compat_chars() {
-        let r = rules();
+        // 異体字データは本体に embed されないため、テスト用に手動で注入
+        let mut r = rules();
+        r.compat.map.insert("髙".to_string(), "高".to_string());
+
         let a = analyzer();
         let mut d = Dict::new();
         d.insert("高崎", "タカサキ");

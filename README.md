@@ -166,7 +166,7 @@ INFO Bearer 認証: 無効 (ローカル想定)
 | [`data/rules/latin.toml`](data/rules/latin.toml) | ラテン文字読み (A→エー…) |
 | [`data/rules/numeric_phrases.toml`](data/rules/numeric_phrases.toml) | 例外語句 (二十歳→ハタチ 等) |
 | [`data/rules/context.toml`](data/rules/context.toml) | 前後トークンを見る文脈ルール (一日→ツイタチ/イチニチ) |
-| [`data/rules/compat_map.toml`](data/rules/compat_map.toml) | 異体字 → 標準字 の正規化 (髙→高 等) |
+| (異体字マップは [`furigana-dict/core/compat.toml`](https://github.com/RyuuNeko1107/furigana-dict/blob/master/core/compat.toml)) | 役割分離のため別リポジトリで管理 |
 
 これらは **ビルド時に lib に embed** されるため、`Furigana::minimal()` のみで全機能が動きます。
 別ファイルから読み込む場合は `FuriganaBuilder::rules_dir(path)` で上書き可能。
