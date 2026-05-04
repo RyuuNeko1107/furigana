@@ -1,0 +1,55 @@
+name: バグ報告 (engine)
+description: フリガナ engine の挙動がおかしい / panic する 等
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **データ問題** (誤読など) は [furigana-dict](https://github.com/RyuuNeko1107/furigana-dict)
+        の Issue へお願いします。本リポジトリは engine (Rust) のバグのみ受け付けます。
+  - type: textarea
+    id: input
+    attributes:
+      label: 入力テキスト
+      placeholder: |
+        例: "灰桜の散る道"
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期待する出力
+      placeholder: |
+        例: "{灰桜|はいざくら}の{散る|ちる}{道|みち}"
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: 実際の出力
+      placeholder: |
+        例: "{灰|はい}{桜|さくら}の{散る|ちる}{道|みち}"
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: furigana のバージョン
+      placeholder: "v0.1.0 / git commit hash / cargo install date 等"
+  - type: dropdown
+    id: how
+    attributes:
+      label: 利用形態
+      options:
+        - "lib (cargo add furigana)"
+        - "CLI (furigana lookup)"
+        - "HTTP server (furigana serve)"
+        - "Docker"
+    validations:
+      required: true
+  - type: textarea
+    id: config
+    attributes:
+      label: 設定 (任意)
+      placeholder: |
+        config.toml の内容、`furigana dict pull` 済かどうか、独自 rules_dir / dict_dir を渡しているか 等

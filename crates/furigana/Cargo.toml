@@ -12,6 +12,9 @@ keywords.workspace = true
 categories.workspace = true
 readme = "README.md"
 
+[lints]
+workspace = true
+
 [dependencies]
 serde = { workspace = true }
 toml = { workspace = true }

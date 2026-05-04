@@ -1,0 +1,12 @@
+# テキストファイルは LF に統一 (Windows でも commit 時に変換、
+# git 側の "LF will be replaced by CRLF" 警告を抑制)
+* text=auto eol=lf
+
+# バイナリ扱い (改行変換禁止)
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.tar.gz binary
+*.zip binary

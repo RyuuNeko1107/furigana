@@ -1,0 +1,27 @@
+name: 機能要望 (engine)
+description: engine 側の新機能・改修提案
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **データ追加** (新しい読み等) は [furigana-dict](https://github.com/RyuuNeko1107/furigana-dict)
+        へお願いします。本リポジトリは engine (Rust) の改修のみ。
+  - type: textarea
+    id: motivation
+    attributes:
+      label: 何のために必要?
+      placeholder: |
+        例: VOICEVOX 連携で「3〜5本」のレンジ表現が欲しい
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 提案する API / 挙動
+      placeholder: |
+        例: NumberChunker に range 検出を追加。"3〜5本" → "サンカラゴホン"
+  - type: textarea
+    id: alt
+    attributes:
+      label: 代替案 / 既存ワークアラウンド (任意)

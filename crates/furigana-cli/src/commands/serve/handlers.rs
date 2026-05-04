@@ -24,7 +24,7 @@ pub(super) async fn furigana_get(
     State(state): State<AppState>,
     Query(params): Query<FuriganaParams>,
 ) -> Result<Json<FuriganaResponse>, ApiError> {
-    process(&state.furigana, params)
+    process(&state.furigana, &params)
 }
 
 /// `POST /furigana` (JSON body)
@@ -32,12 +32,12 @@ pub(super) async fn furigana_post(
     State(state): State<AppState>,
     Json(params): Json<FuriganaParams>,
 ) -> Result<Json<FuriganaResponse>, ApiError> {
-    process(&state.furigana, params)
+    process(&state.furigana, &params)
 }
 
 /// パラメータをデコード → モード別変換 → JSON レスポンス組み立て
-fn process(f: &Furigana, params: FuriganaParams) -> Result<Json<FuriganaResponse>, ApiError> {
-    let text = decode_text(&params)?;
+fn process(f: &Furigana, params: &FuriganaParams) -> Result<Json<FuriganaResponse>, ApiError> {
+    let text = decode_text(params)?;
     validate_length(&text)?;
     let mode = normalize_mode(&params.mode);
 
