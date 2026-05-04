@@ -42,11 +42,10 @@
 
 ## OSS 化の動機
 
-語彙辞書の管理 (読みの追加・修正) を **コミュニティで分担できるようにする** こと。
-本番では運営が一括で受け付けていた修正提案を、GitHub の PR ベースで公開レビューに乗せたい。
-
-そのために、助数詞ルール・スケール・SI 単位・文脈依存読み・例外語句を含む **すべてのルールと辞書を TOML データファイル** として外出ししている。
-読みを追加したい? TOML を編集して PR で OK。Rust を書く必要はない (再コンパイルも不要)。
+辞書管理をコミュニティに分担してもらうため。
+ルール・辞書はすべて TOML テキストファイルなので、Rust 知識なしで PR を投げられる (再コンパイル不要)。
+語彙辞書本体は別リポジトリ [`furigana-dict`](https://github.com/RyuuNeko1107/furigana-dict) で受け付け、
+`furigana dict pull` で取得する。
 
 ## クイックスタート
 
@@ -246,17 +245,20 @@ crates/
 
 ## ステータスとロードマップ
 
-**Phase 1 (進行中)**: pre-alpha
+**Phase 1 (pre-alpha) — 完了**:
 - ✅ workspace + lib + CLI + データ駆動ルール (全 TOML)
 - ✅ HTTP server (Axum、本番 API 互換)
 - ✅ 辞書管理コマンド
 - ✅ GitHub Release ワークフロー (5 platform binary + Docker image)
-- 🟡 数値テキスト全体オーケストレーション (`split_num_chunks`)
+- ✅ 数値テキスト全体オーケストレーション (NumberChunker)
+- ✅ [`furigana-dict`](https://github.com/RyuuNeko1107/furigana-dict) リポジトリ開設
 
 **Phase 2 (予定)**:
-- 配布用語彙辞書リポジトリ (`furigana-dict`) — `furigana dict pull` で取得
+- 本番 ryuuneko.com から `furigana-dict` への辞書 seed 投入
+- `furigana dict pull` の実装 (現状 stub)
 - 単漢字フォールバック (Unihan データの取り込み)
 - 辞書のホットリロード (`SIGHUP` / `POST /admin/reload`)
+- crates.io 公開 (`furigana` lib + `furigana-cli` bin)
 
 **Phase 3 (検討)**:
 - ローマ字出力モード
