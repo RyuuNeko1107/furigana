@@ -1,0 +1,22 @@
+# Build artifacts
+/target
+
+# IDE / editor
+.idea/
+.vscode/
+*.iml
+*.swp
+*.swo
+.DS_Store
+
+# Local-only data (downloaded dictionaries, user dicts during dev)
+/data/local/
+/data/dict/core/
+/data/dict/user/
+
+# OS
+Thumbs.db
+
+# Local config
+.env
+.env.local
