@@ -13,6 +13,7 @@
 #![allow(clippy::tabs_in_doc_comments)]
 
 pub mod error;
+pub mod kana;
 pub mod loader;
 pub mod rules;
 
