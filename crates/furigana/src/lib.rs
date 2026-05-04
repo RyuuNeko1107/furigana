@@ -16,6 +16,7 @@ pub mod analyzer;
 pub mod error;
 pub mod kana;
 pub mod loader;
+pub mod numbers;
 pub mod rules;
 
 pub use error::{FuriganaError, Result};
