@@ -150,7 +150,7 @@ INFO Bearer 認証: 無効 (ローカル想定)
 1. `overrides.toml` (FuriganaBuilder の `overrides_file()`)
 2. `user/*.toml` (FuriganaBuilder の `user_dict_dir()`)
 3. `core/*.toml` (FuriganaBuilder の `core_dict_dir()`)
-4. 文脈ルール (`furigana-dict/rules/context.toml`)
+4. 文脈ルール (`furigana-dict/rules/context/*.toml`)
 5. Lindera (形態素解析) の読み
 6. 何もなければ読みなし (`None`) — 出力では surface のまま
 
@@ -158,14 +158,14 @@ INFO Bearer 認証: 無効 (ローカル想定)
 
 | ファイル | 内容 |
 |---|---|
-| [`furigana-dict/rules/counters.toml`](https://github.com/RyuuNeko1107/furigana-dict/blob/master/rules/counters.toml) | 助数詞 (本/匹/個/年/月/日…) の連濁・促音化・kana 末尾置換 |
+| [`furigana-dict/rules/counters/`](https://github.com/RyuuNeko1107/furigana-dict/tree/master/rules/counters) | 助数詞 (本/匹/個/年/月/日…) の連濁・促音化・kana 末尾置換 — simple / time / objects 等 7 ファイルに細分化 |
 | [`furigana-dict/rules/days.toml`](https://github.com/RyuuNeko1107/furigana-dict/blob/master/rules/days.toml) | 1〜31 日の特殊読み (1→ツイタチ 等) |
 | [`furigana-dict/rules/scales.toml`](https://github.com/RyuuNeko1107/furigana-dict/blob/master/rules/scales.toml) | 万 / 億 / 兆 / 京 / 垓… 大数スケール |
 | [`furigana-dict/rules/units.toml`](https://github.com/RyuuNeko1107/furigana-dict/blob/master/rules/units.toml) | SI 単位 (km / kg / mL …) |
 | [`furigana-dict/rules/symbols.toml`](https://github.com/RyuuNeko1107/furigana-dict/blob/master/rules/symbols.toml) | 記号読み (+ / − / % / ‰ …) |
 | [`furigana-dict/rules/latin.toml`](https://github.com/RyuuNeko1107/furigana-dict/blob/master/rules/latin.toml) | ラテン文字読み (A→エー…) |
 | [`furigana-dict/rules/numeric_phrases.toml`](https://github.com/RyuuNeko1107/furigana-dict/blob/master/rules/numeric_phrases.toml) | 例外語句 (二十歳→ハタチ 等) |
-| [`furigana-dict/rules/context.toml`](https://github.com/RyuuNeko1107/furigana-dict/blob/master/rules/context.toml) | 前後トークンを見る文脈ルール (一日→ツイタチ/イチニチ) |
+| [`furigana-dict/rules/context/`](https://github.com/RyuuNeko1107/furigana-dict/tree/master/rules/context) | 前後トークンを見る文脈ルール (一日→ツイタチ/イチニチ) — numbers / homonyms / special の 3 ファイルに細分化 |
 | (異体字マップは [`furigana-dict/core/compat.toml`](https://github.com/RyuuNeko1107/furigana-dict/blob/master/core/compat.toml)) | 役割分離のため別リポジトリで管理 |
 
 これらは [`furigana-dict`](https://github.com/RyuuNeko1107/furigana-dict) リポジトリで管理され、

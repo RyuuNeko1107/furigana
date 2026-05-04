@@ -8,13 +8,14 @@
 
 | 変更したいもの | PR 先 |
 |---|---|
-| 一般語・固有名詞・人名・地名の読み | **`furigana-dict`** [`core/jukugo.toml`](https://github.com/RyuuNeko1107/furigana-dict/blob/master/core/jukugo.toml) |
+| 一般語の読み | **`furigana-dict`** [`core/jukugo/general.toml`](https://github.com/RyuuNeko1107/furigana-dict/tree/master/core/jukugo) |
+| 固有名詞・地名・人名の読み | 同上 `core/jukugo/{proper_nouns,place_names,personal_names}.toml` |
 | 単漢字フォールバック | 同上 `core/unihan.toml` |
 | 異体字 → 標準字 | 同上 `core/compat.toml` |
 | 慣用読み (例: 浮世絵→ウキヨエ) | 同上 `rules/numeric_phrases.toml` |
-| 助数詞 / 連濁ルール | 同上 `rules/counters.toml` |
+| 助数詞 / 連濁ルール | 同上 [`rules/counters/`](https://github.com/RyuuNeko1107/furigana-dict/tree/master/rules/counters) (simple / time / objects 等) |
 | 大数スケール / 単位 / 記号 / 文字 | 同上 `rules/{scales,units,symbols,latin}.toml` |
-| 文脈依存読み (一日→ツイタチ/イチニチ) | 同上 `rules/context.toml` |
+| 文脈依存読み (一日→ツイタチ/イチニチ) | 同上 [`rules/context/`](https://github.com/RyuuNeko1107/furigana-dict/tree/master/rules/context) (numbers / homonyms / special) |
 | **エンジン本体の改修 (Rust)** | **このリポジトリ** |
 | **新しいルール schema (TOML 構造)** | **このリポジトリ** (`rules/` モジュール) + furigana-dict 側のデータも合わせて |
 | HTTP API の挙動変更 | このリポジトリ (`crates/furigana-cli/src/commands/serve/`) |
