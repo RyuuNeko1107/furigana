@@ -377,18 +377,13 @@ impl NumericPhraseMatcher {
     /// `phrases` から正規表現を構築
     #[must_use]
     pub fn new(phrases: &NumericPhrasesData) -> Self {
-        let table: HashMap<String, String> = phrases
-            .entries
-            .iter()
-            .map(|p| (p.surface.clone(), p.kana.clone()))
-            .collect();
+        let table: HashMap<String, String> = phrases.entries.clone();
 
         let regex = if phrases.entries.is_empty() {
             None
         } else {
             // 長い表層を優先するため文字数降順ソート
-            let mut surfaces: Vec<&str> =
-                phrases.entries.iter().map(|p| p.surface.as_str()).collect();
+            let mut surfaces: Vec<&str> = phrases.surfaces().collect();
             surfaces.sort_by_key(|s| std::cmp::Reverse(s.chars().count()));
             let alts: Vec<String> = surfaces.iter().map(|s| regex::escape(s)).collect();
             let pattern = format!("(?:{})", alts.join("|"));
@@ -465,7 +460,7 @@ pub fn symbol_char_reading(ch: char, symbols: &SymbolsData) -> Option<String> {
     symbols.lookup_char(normalized).map(ToString::to_string)
 }
 
-/// SI 単位の読みを `units.tsv` から引く
+/// SI 単位の読みを `units.toml` から引く
 #[must_use]
 pub fn si_unit_reading(num_str: &str, unit: &str, units: &crate::rules::UnitsData) -> String {
     let nk = number_to_katakana(num_str);
@@ -522,8 +517,8 @@ pub(crate) static EMAIL_RE: Lazy<Regex> =
 mod tests {
     use super::*;
     use crate::loader::{
-        parse_counters_toml, parse_days_toml, parse_numeric_phrases_tsv, parse_scales_tsv,
-        parse_symbols_tsv, parse_units_tsv,
+        parse_counters_toml, parse_days_toml, parse_numeric_phrases_toml, parse_scales_toml,
+        parse_symbols_toml, parse_units_toml,
     };
 
     // ─── helpers ──────────────────────────────────────────────────────────
@@ -749,8 +744,8 @@ mod tests {
     // ─── NumericPhraseMatcher ─────────────────────────────────────────────
 
     fn load_phrases() -> NumericPhrasesData {
-        let raw = include_str!("../../../data/rules/numeric_phrases.tsv");
-        parse_numeric_phrases_tsv(raw, "numeric_phrases.tsv").unwrap()
+        let raw = include_str!("../../../data/rules/numeric_phrases.toml");
+        parse_numeric_phrases_toml(raw, "numeric_phrases.toml").unwrap()
     }
 
     #[test]
@@ -807,8 +802,8 @@ mod tests {
 
     #[test]
     fn scale_reading_basic() {
-        let raw = include_str!("../../../data/rules/scales.tsv");
-        let scales = parse_scales_tsv(raw, "scales.tsv").unwrap();
+        let raw = include_str!("../../../data/rules/scales.toml");
+        let scales = parse_scales_toml(raw, "scales.toml").unwrap();
         assert_eq!(scale_reading("3", "万", &scales), "サンマン");
         assert_eq!(scale_reading("1", "兆", &scales), "イッチョウ");
         assert_eq!(scale_reading("8", "兆", &scales), "ハッチョウ");
@@ -817,16 +812,16 @@ mod tests {
 
     #[test]
     fn si_unit_reading_basic() {
-        let raw = include_str!("../../../data/rules/units.tsv");
-        let units = parse_units_tsv(raw, "units.tsv").unwrap();
+        let raw = include_str!("../../../data/rules/units.toml");
+        let units = parse_units_toml(raw, "units.toml").unwrap();
         assert_eq!(si_unit_reading("100", "km", &units), "ヒャクキロメートル");
         assert_eq!(si_unit_reading("3", "L", &units), "サンリットル");
     }
 
     #[test]
     fn symbol_char_reading_basic() {
-        let raw = include_str!("../../../data/rules/symbols.tsv");
-        let symbols = parse_symbols_tsv(raw, "symbols.tsv").unwrap();
+        let raw = include_str!("../../../data/rules/symbols.toml");
+        let symbols = parse_symbols_toml(raw, "symbols.toml").unwrap();
         assert_eq!(
             symbol_char_reading('+', &symbols).as_deref(),
             Some("プラス")

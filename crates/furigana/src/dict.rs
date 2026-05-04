@@ -1,14 +1,29 @@
 //! 単純な surface → reading 辞書
 //!
-//! 起動時に user/core dict ディレクトリから TSV を全 scan し、
-//! `HashMap<String, String>` に展開する。
+//! TOML ファイルから読み込む。フォーマット:
+//!
+//! ```toml
+//! [entries]
+//! "灰桜" = "ハイザクラ"
+//! "黎明" = "レイメイ"
+//! ```
+//!
+//! 起動時に user/core dict ディレクトリ配下の `*.toml` を全 scan し、
+//! `HashMap<String, String>` にマージする。
 //!
 //! 優先度の制御は呼び出し側 (Furigana 構造体) で行う想定。
 //! Dict 自体は単一階層 — 後に挿入したエントリが先のエントリを上書きする。
 
 use crate::error::{FuriganaError, Result};
+use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::Path;
+
+#[derive(Debug, Default, Deserialize)]
+struct DictFile {
+    #[serde(default)]
+    entries: HashMap<String, String>,
+}
 
 /// 単純 HashMap ベースの surface→reading 辞書
 #[derive(Debug, Default, Clone)]
@@ -23,57 +38,42 @@ impl Dict {
         Self::default()
     }
 
-    /// TSV 文字列から辞書を構築
+    /// TOML 文字列から辞書を構築
     ///
-    /// - 各行: `surface\treading`
-    /// - 行コメント (`#`) と空行はスキップ
-    /// - reading は前後の空白を trim
-    /// - 後勝ち (同じ surface があれば最後のものが採用)
+    /// `[entries]` セクション直下の key→value を全て取り込む。
+    /// 後勝ち (同じ surface があれば最後のものが採用)。
     ///
     /// # Errors
-    /// 行のフォーマット不正時 [`FuriganaError::Tsv`]。
-    pub fn from_tsv_str(content: &str, file: &str) -> Result<Self> {
-        let mut entries = HashMap::new();
-        for (idx, raw) in content.lines().enumerate() {
-            let line = raw.trim_end_matches('\r');
-            let trimmed = line.trim();
-            if trimmed.is_empty() || trimmed.starts_with('#') {
-                continue;
-            }
-            let mut cols = line.splitn(2, '\t');
-            let surface = cols.next().unwrap_or("").trim();
-            let reading = cols.next().unwrap_or("").trim();
-            if surface.is_empty() || reading.is_empty() {
-                return Err(FuriganaError::Tsv {
-                    file: file.to_string(),
-                    line: idx + 1,
-                    message: "expected 2 tab-separated columns (surface, reading)".to_string(),
-                });
-            }
-            entries.insert(surface.to_string(), reading.to_string());
-        }
-        Ok(Self { entries })
+    /// TOML パース失敗時 [`FuriganaError::Toml`]。
+    pub fn from_toml_str(content: &str, file: &str) -> Result<Self> {
+        let parsed: DictFile = toml::from_str(content).map_err(|e| FuriganaError::Toml {
+            file: file.to_string(),
+            source: e,
+        })?;
+        Ok(Self {
+            entries: parsed.entries,
+        })
     }
 
-    /// 単一 TSV ファイルから辞書を構築
+    /// 単一 TOML ファイルから辞書を構築
     ///
     /// # Errors
-    /// I/O 失敗 / TSV パース失敗。
-    pub fn from_tsv_file<P: AsRef<Path>>(path: P) -> Result<Self> {
+    /// I/O 失敗 / TOML パース失敗。
+    pub fn from_toml_file<P: AsRef<Path>>(path: P) -> Result<Self> {
         let path = path.as_ref();
         let content = std::fs::read_to_string(path)?;
-        Self::from_tsv_str(&content, &path.display().to_string())
+        Self::from_toml_str(&content, &path.display().to_string())
     }
 
-    /// ディレクトリ配下の `*.tsv` 全てから辞書をマージ構築
+    /// ディレクトリ配下の `*.toml` 全てから辞書をマージ構築
     ///
     /// - サブディレクトリは再帰しない (1 階層のみ)
     /// - ファイル名のソート順で読み込み (decision: 後に来るファイルが上書き)
-    /// - ディレクトリが存在しない場合は空辞書を返す (エラーにしない)
+    /// - ディレクトリが存在しない場合は空辞書を返す
     ///
     /// # Errors
-    /// I/O 失敗 / TSV パース失敗。
-    pub fn from_tsv_dir<P: AsRef<Path>>(dir: P) -> Result<Self> {
+    /// I/O 失敗 / TOML パース失敗。
+    pub fn from_toml_dir<P: AsRef<Path>>(dir: P) -> Result<Self> {
         let dir = dir.as_ref();
         if !dir.exists() {
             return Ok(Self::default());
@@ -85,17 +85,16 @@ impl Dict {
             )));
         }
 
-        // サブディレクトリは無視、*.tsv のみ収集してソート
         let mut files: Vec<std::path::PathBuf> = std::fs::read_dir(dir)?
             .filter_map(std::result::Result::ok)
             .map(|e| e.path())
-            .filter(|p| p.is_file() && p.extension().is_some_and(|e| e == "tsv"))
+            .filter(|p| p.is_file() && p.extension().is_some_and(|e| e == "toml"))
             .collect();
         files.sort();
 
         let mut merged = Self::default();
         for f in files {
-            let part = Self::from_tsv_file(&f)?;
+            let part = Self::from_toml_file(&f)?;
             merged.merge(part);
         }
         Ok(merged)
@@ -135,48 +134,50 @@ mod tests {
     use super::*;
 
     #[test]
-    fn from_tsv_str_basic() {
-        let tsv = "灰桜\tハイザクラ\n\
-                   黎明\tレイメイ\n";
-        let d = Dict::from_tsv_str(tsv, "test.tsv").unwrap();
+    fn from_toml_str_basic() {
+        let toml_str = r#"
+            [entries]
+            "灰桜" = "ハイザクラ"
+            "黎明" = "レイメイ"
+        "#;
+        let d = Dict::from_toml_str(toml_str, "test.toml").unwrap();
         assert_eq!(d.lookup("灰桜"), Some("ハイザクラ"));
         assert_eq!(d.lookup("黎明"), Some("レイメイ"));
         assert_eq!(d.len(), 2);
     }
 
     #[test]
-    fn from_tsv_str_skips_comments_and_blanks() {
-        let tsv = "# comment\n\n灰桜\tハイザクラ\n# another\n\n";
-        let d = Dict::from_tsv_str(tsv, "test.tsv").unwrap();
-        assert_eq!(d.len(), 1);
+    fn from_toml_str_empty() {
+        let d = Dict::from_toml_str("", "test.toml").unwrap();
+        assert!(d.is_empty());
+    }
+
+    #[test]
+    fn from_toml_str_with_comments() {
+        let toml_str = r#"
+            # コメント
+            [entries]
+            "灰桜" = "ハイザクラ"  # inline comment
+        "#;
+        let d = Dict::from_toml_str(toml_str, "test.toml").unwrap();
         assert_eq!(d.lookup("灰桜"), Some("ハイザクラ"));
     }
 
     #[test]
-    fn from_tsv_str_handles_crlf() {
-        let tsv = "灰桜\tハイザクラ\r\n黎明\tレイメイ\r\n";
-        let d = Dict::from_tsv_str(tsv, "test.tsv").unwrap();
-        assert_eq!(d.len(), 2);
-    }
-
-    #[test]
-    fn from_tsv_str_errors_on_missing_column() {
-        let tsv = "灰桜のみ\n";
-        let err = Dict::from_tsv_str(tsv, "test.tsv").unwrap_err();
-        assert!(matches!(err, FuriganaError::Tsv { line: 1, .. }));
-    }
-
-    #[test]
-    fn from_tsv_str_last_wins() {
-        let tsv = "灰桜\tハイザクラ\n灰桜\tカイオウ\n";
-        let d = Dict::from_tsv_str(tsv, "test.tsv").unwrap();
-        assert_eq!(d.lookup("灰桜"), Some("カイオウ"));
+    fn from_toml_str_invalid_errors() {
+        let err = Dict::from_toml_str("[invalid", "test.toml").unwrap_err();
+        assert!(matches!(err, FuriganaError::Toml { .. }));
     }
 
     #[test]
     fn merge_overwrites() {
-        let mut a = Dict::from_tsv_str("灰桜\tハイザクラ\n", "a.tsv").unwrap();
-        let b = Dict::from_tsv_str("灰桜\tカイオウ\n黎明\tレイメイ\n", "b.tsv").unwrap();
+        let mut a =
+            Dict::from_toml_str("[entries]\n\"灰桜\" = \"ハイザクラ\"\n", "a.toml").unwrap();
+        let b = Dict::from_toml_str(
+            "[entries]\n\"灰桜\" = \"カイオウ\"\n\"黎明\" = \"レイメイ\"\n",
+            "b.toml",
+        )
+        .unwrap();
         a.merge(b);
         assert_eq!(a.lookup("灰桜"), Some("カイオウ")); // b が後勝ち
         assert_eq!(a.lookup("黎明"), Some("レイメイ"));
@@ -204,12 +205,20 @@ mod tests {
     }
 
     #[test]
-    fn from_tsv_dir_loads_multiple_files() {
+    fn from_toml_dir_loads_multiple_files() {
         let dir = fresh_temp_dir("dir_load");
-        std::fs::write(dir.join("01_a.tsv"), "灰桜\tハイザクラ\n").unwrap();
-        std::fs::write(dir.join("02_b.tsv"), "黎明\tレイメイ\n").unwrap();
+        std::fs::write(
+            dir.join("01_a.toml"),
+            "[entries]\n\"灰桜\" = \"ハイザクラ\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("02_b.toml"),
+            "[entries]\n\"黎明\" = \"レイメイ\"\n",
+        )
+        .unwrap();
 
-        let d = Dict::from_tsv_dir(&dir).unwrap();
+        let d = Dict::from_toml_dir(&dir).unwrap();
         assert_eq!(d.len(), 2);
         assert_eq!(d.lookup("灰桜"), Some("ハイザクラ"));
         assert_eq!(d.lookup("黎明"), Some("レイメイ"));
@@ -218,21 +227,28 @@ mod tests {
     }
 
     #[test]
-    fn from_tsv_dir_filename_order_decides_priority() {
+    fn from_toml_dir_filename_order_decides_priority() {
         let dir = fresh_temp_dir("dir_priority");
-        // 02_higher.tsv が後 → 上書き
-        std::fs::write(dir.join("01_lower.tsv"), "灰桜\tハイザクラ\n").unwrap();
-        std::fs::write(dir.join("02_higher.tsv"), "灰桜\tカイオウ\n").unwrap();
+        std::fs::write(
+            dir.join("01_lower.toml"),
+            "[entries]\n\"灰桜\" = \"ハイザクラ\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("02_higher.toml"),
+            "[entries]\n\"灰桜\" = \"カイオウ\"\n",
+        )
+        .unwrap();
 
-        let d = Dict::from_tsv_dir(&dir).unwrap();
+        let d = Dict::from_toml_dir(&dir).unwrap();
         assert_eq!(d.lookup("灰桜"), Some("カイオウ"));
 
         std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]
-    fn from_tsv_dir_missing_returns_empty() {
-        let d = Dict::from_tsv_dir("/nonexistent/dir/path/xyz_furigana_test").unwrap();
+    fn from_toml_dir_missing_returns_empty() {
+        let d = Dict::from_toml_dir("/nonexistent/dir/path/xyz_furigana_test").unwrap();
         assert!(d.is_empty());
     }
 }

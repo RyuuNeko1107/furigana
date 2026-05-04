@@ -230,13 +230,13 @@ impl FuriganaBuilder {
 
         let mut dict = Dict::new();
         for d in &self.core_dict_dirs {
-            dict.merge(Dict::from_tsv_dir(d)?);
+            dict.merge(Dict::from_toml_dir(d)?);
         }
         for d in &self.user_dict_dirs {
-            dict.merge(Dict::from_tsv_dir(d)?);
+            dict.merge(Dict::from_toml_dir(d)?);
         }
         for f in &self.overrides_files {
-            dict.merge(Dict::from_tsv_file(f)?);
+            dict.merge(Dict::from_toml_file(f)?);
         }
         for (s, r) in self.extra_entries {
             dict.insert(s, r);

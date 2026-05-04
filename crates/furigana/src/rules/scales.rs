@@ -1,35 +1,41 @@
-//! 大数スケール読み (scales.tsv)
+//! 大数スケール読み (scales.toml)
 //!
 //! 万 / 億 / 兆 / 京 / 垓 / 秭 / 穣 / 溝 / 澗 / 正 / 載 / 極 / 恒河沙 …
 //!
-//! ## 例 (TSV: 漢字\t読み)
-//! ```text
-//! 万	マン
-//! 億	オク
-//! 兆	チョウ
-//! 京	ケイ
+//! ## 例
+//! ```toml
+//! [[entry]]
+//! kanji = "無量大数"
+//! kana = "ムリョウタイスウ"
+//!
+//! [[entry]]
+//! kanji = "万"
+//! kana = "マン"
 //! ```
 //!
-//! 1 行 = 1 エントリ。空行・`#` 始まりはコメント。
+//! 順序は大→小推奨 (エンジン側でこの順で評価する)。
 
-/// scales.tsv 1 行
-#[derive(Debug, Clone, PartialEq, Eq)]
+use serde::Deserialize;
+
+/// scales.toml 1 件
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct ScaleEntry {
-    /// 漢字 1〜数文字 (例: "万", "恒河沙")
+    /// 漢字 1〜数文字 (例: `"万"`, `"恒河沙"`)
     pub kanji: String,
-    /// カタカナ読み (例: "マン", "ゴウガシャ")
+    /// カタカナ読み (例: `"マン"`, `"ゴウガシャ"`)
     pub kana: String,
 }
 
-/// scales.tsv 全体 (順序保持: ファイル記載順 = 大→小推奨)
-#[derive(Debug, Default, Clone)]
+/// scales.toml 全体 (順序保持)
+#[derive(Debug, Default, Clone, Deserialize)]
 pub struct ScalesData {
-    /// エントリ列。ロード時に大→小ソートを期待する側で並べる。
+    /// エントリ列 (記載順)
+    #[serde(default, rename = "entry")]
     pub entries: Vec<ScaleEntry>,
 }
 
 impl ScalesData {
-    /// 漢字に対応する読みを線形検索する (エントリ数が少ないため許容)
+    /// 漢字に対応する読みを線形検索 (件数が少ないため許容)
     #[must_use]
     pub fn lookup(&self, kanji: &str) -> Option<&str> {
         self.entries
@@ -56,33 +62,26 @@ mod tests {
     use super::*;
 
     #[test]
-    fn lookup_works() {
-        let data = ScalesData {
-            entries: vec![
-                ScaleEntry {
-                    kanji: "万".into(),
-                    kana: "マン".into(),
-                },
-                ScaleEntry {
-                    kanji: "億".into(),
-                    kana: "オク".into(),
-                },
-                ScaleEntry {
-                    kanji: "兆".into(),
-                    kana: "チョウ".into(),
-                },
-            ],
-        };
+    fn parses_basic() {
+        let toml_str = r#"
+            [[entry]]
+            kanji = "万"
+            kana = "マン"
+
+            [[entry]]
+            kanji = "億"
+            kana = "オク"
+        "#;
+        let data: ScalesData = toml::from_str(toml_str).unwrap();
+        assert_eq!(data.len(), 2);
         assert_eq!(data.lookup("万"), Some("マン"));
         assert_eq!(data.lookup("億"), Some("オク"));
-        assert_eq!(data.lookup("兆"), Some("チョウ"));
         assert_eq!(data.lookup("光年"), None);
-        assert_eq!(data.len(), 3);
     }
 
     #[test]
-    fn default_is_empty() {
-        let data = ScalesData::default();
+    fn empty_input_yields_default() {
+        let data: ScalesData = toml::from_str("").unwrap();
         assert!(data.is_empty());
     }
 }
