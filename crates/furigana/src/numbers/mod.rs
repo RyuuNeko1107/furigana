@@ -23,7 +23,7 @@ mod extras;
 pub(crate) mod helpers;
 mod phrase;
 
-pub use extras::{scale_reading, si_unit_reading, symbol_char_reading};
 pub use counter::euphonic_counter_read;
 pub use digit::number_to_katakana;
+pub use extras::{scale_reading, si_unit_reading, symbol_char_reading};
 pub use phrase::{apply_numeric_overrides, NumericPhraseMatcher};
