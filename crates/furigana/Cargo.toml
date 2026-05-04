@@ -1,0 +1,26 @@
+[package]
+name = "furigana"
+description = "Japanese furigana (ruby) lookup library — analyzer + dictionary + data-driven rules"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+readme = "README.md"
+
+[dependencies]
+serde = { workspace = true }
+toml = { workspace = true }
+once_cell = { workspace = true }
+regex = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+unicode-normalization = { workspace = true }
+lindera = { version = "3", features = ["embed-ipadic"] }
+
+[dev-dependencies]
+serde_json = { workspace = true }
