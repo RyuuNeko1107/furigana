@@ -1,0 +1,18 @@
+# Build artifacts
+target/
+
+# Git
+.git/
+.github/
+
+# Editor / OS
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Local config / dev
+.env
+.env.local
