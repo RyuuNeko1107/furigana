@@ -87,15 +87,31 @@ $ cargo run -p furigana --example basic
 
 ### CLI として使う
 
-```sh
-$ cargo install furigana-cli           # crates.io 公開時
-# または GitHub Releases からバイナリ DL (準備中)
+インストール:
 
-# 1 ショット変換
-$ furigana lookup '灰桜の散る道'
+```sh
+# crates.io 経由 (公開後)
+$ cargo install furigana-cli
+
+# GitHub Releases からプリビルド binary
+#   https://github.com/RyuuNeko1107/furigana/releases から
+#   {furigana-vX.Y.Z-<target>}.{tar.gz | zip} を取得して PATH に置く
+
+# Docker
+$ docker run --rm -p 8000:8000 ghcr.io/ryuuneko1107/furigana:latest
+```
+
+実行例:
+
+```sh
+# 1 ショット変換 (default は tts モード)
+$ furigana lookup '明日は9時30分に集合'
+あしたは9じ30ふんにしゅうごう
+
+$ furigana lookup '灰桜の散る道' --mode ruby
 {灰|はい}{桜|さくら}の{散る|ちる}{道|みち}
 
-$ furigana lookup '灰桜の散る道' --format hiragana
+$ furigana lookup '灰桜の散る道' --mode hiragana
 はいさくらのちるみち
 
 # 辞書追加
@@ -226,11 +242,11 @@ crates/
 ## ステータスとロードマップ
 
 **Phase 1 (進行中)**: pre-alpha
-- ✅ workspace + lib + CLI + データ駆動ルール
-- ✅ HTTP server (Axum)
+- ✅ workspace + lib + CLI + データ駆動ルール (全 TOML)
+- ✅ HTTP server (Axum、本番 API 互換)
 - ✅ 辞書管理コマンド
+- ✅ GitHub Release ワークフロー (5 platform binary + Docker image)
 - 🟡 数値テキスト全体オーケストレーション (`split_num_chunks`)
-- 🟡 GitHub Release ワークフロー (binary + Docker image)
 
 **Phase 2 (予定)**:
 - 配布用語彙辞書リポジトリ (`furigana-dict`) — `furigana dict pull` で取得
