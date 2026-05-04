@@ -1,0 +1,260 @@
+# 文脈依存読みルール
+#
+# 形態素解析の結果に対して、前後トークンを見て読みを補正する。
+# 上から順に評価し、最初に match した [[rule.match]] の reading を採用する。
+# どの match にもヒットしなければ rule.default を、それも無ければ
+# 形態素解析側の読みに委譲する。
+#
+# 利用可能な match 条件:
+#   prev_eq                       : 前トークン surface 完全一致
+#   prev_ends_with_any            : 前トークン surface 末尾一致 (いずれか)
+#   prev_ends_with_month          : 前トークンが月名で終わる
+#   next_eq                       : 次トークン surface 完全一致
+#   next_starts_with              : 次トークン surface 先頭一致
+#   next_starts_with_any          : 次トークン surface 先頭一致 (いずれか)
+#   next_starts_with_digit        : 次トークン surface が数字始まり
+#   next_next_starts_with_any     : 次の次トークン surface 先頭一致
+#   pos_eq                        : 当該トークンの品詞一致
+#
+# 全条件は AND 結合 (空 = 無条件マッチ)。
+
+# ─── 一日: 月名の後ならツイタチ、期間文脈ならイチニチ ──────────────────
+[[rule]]
+surface = "一日"
+
+[[rule.match]]
+prev_ends_with_month = true
+reading = "ツイタチ"
+
+[[rule.match]]
+next_starts_with_any = ["中", "間", "分", "以上", "以下", "程", "ほど", "かけて"]
+reading = "イチニチ"
+
+[[rule.match]]
+prev_ends_with_any = ["毎", "約", "丸", "まる"]
+reading = "イチニチ"
+
+# ─── 一人 / 二人 ───────────────────────────────────────────────────────
+[[rule]]
+surface = "一人"
+default = "ヒトリ"
+
+[[rule]]
+surface = "二人"
+default = "フタリ"
+
+# ─── 大人 ──────────────────────────────────────────────────────────────
+[[rule]]
+surface = "大人"
+default = "オトナ"
+
+# ─── 上手 / 下手: 名詞・形容詞のとき ジョウズ / ヘタ ──────────────────
+[[rule]]
+surface = "上手"
+
+[[rule.match]]
+pos_eq = "名詞"
+reading = "ジョウズ"
+
+[[rule.match]]
+pos_eq = "形容詞"
+reading = "ジョウズ"
+
+[[rule]]
+surface = "下手"
+
+[[rule.match]]
+pos_eq = "名詞"
+reading = "ヘタ"
+
+[[rule.match]]
+pos_eq = "形容詞"
+reading = "ヘタ"
+
+# ─── 一月 / 二月: 暦 vs 期間 ─────────────────────────────────────────
+[[rule]]
+surface = "一月"
+
+[[rule.match]]
+next_starts_with_any = ["日", "から", "まで", "に", "の", "は", "も", "、", "。"]
+reading = "イチガツ"
+
+[[rule.match]]
+next_starts_with_digit = true
+reading = "イチガツ"
+
+[[rule.match]]
+next_starts_with_any = ["中", "間", "分", "以上", "以下", "程", "ほど", "かけて"]
+reading = "ヒトツキ"
+
+[[rule]]
+surface = "二月"
+
+[[rule.match]]
+next_starts_with_any = ["日", "から", "まで", "に", "の", "は", "も", "、", "。"]
+reading = "ニガツ"
+
+[[rule.match]]
+next_starts_with_digit = true
+reading = "ニガツ"
+
+[[rule.match]]
+next_starts_with_any = ["中", "間", "分", "以上", "以下", "程", "ほど", "かけて"]
+reading = "フタツキ"
+
+# ─── 何日 / 何人 / 何回 / 何度 ────────────────────────────────────────
+[[rule]]
+surface = "何日"
+default = "ナンニチ"
+
+[[rule]]
+surface = "何人"
+default = "ナンニン"
+
+[[rule]]
+surface = "何回"
+default = "ナンカイ"
+
+[[rule]]
+surface = "何度"
+default = "ナンド"
+
+# ─── 一時 ──────────────────────────────────────────────────────────────
+[[rule]]
+surface = "一時"
+default = "イチジ"
+
+# ─── 仲人 / 素人 / 玄人 ──────────────────────────────────────────────
+[[rule]]
+surface = "仲人"
+default = "ナコウド"
+
+[[rule]]
+surface = "素人"
+default = "シロウト"
+
+[[rule]]
+surface = "玄人"
+default = "クロウト"
+
+# ─── 日本 ──────────────────────────────────────────────────────────────
+[[rule]]
+surface = "日本"
+default = "ニホン"
+
+# ─── 今日 / 明日 / 昨日 / 今年 / 去年 / 来年 / 今月 ───────────────────
+[[rule]]
+surface = "今日"
+default = "キョウ"
+
+[[rule]]
+surface = "明日"
+default = "アシタ"
+
+[[rule]]
+surface = "昨日"
+default = "キノウ"
+
+[[rule]]
+surface = "今年"
+default = "コトシ"
+
+[[rule]]
+surface = "去年"
+default = "キョネン"
+
+[[rule]]
+surface = "来年"
+default = "ライネン"
+
+[[rule]]
+surface = "今月"
+default = "コンゲツ"
+
+# ─── 人気: 「人気が無い」「人気の無い」→ ヒトケ、それ以外は ニンキ ──
+[[rule]]
+surface = "人気"
+default = "ニンキ"
+
+[[rule.match]]
+next_eq = "が"
+next_next_starts_with_any = ["な", "無"]
+reading = "ヒトケ"
+
+[[rule.match]]
+next_eq = "の"
+next_next_starts_with_any = ["な", "無"]
+reading = "ヒトケ"
+
+# ─── 十分: 形容動詞用法は ジュウブン、時間は ジュップン ───────────────
+[[rule]]
+surface = "十分"
+default = "ジュウブン"
+
+[[rule.match]]
+next_eq = "な"
+reading = "ジュウブン"
+
+[[rule.match]]
+next_eq = "に"
+reading = "ジュウブン"
+
+[[rule.match]]
+next_eq = "だ"
+reading = "ジュウブン"
+
+[[rule.match]]
+next_eq = "で"
+reading = "ジュウブン"
+
+[[rule.match]]
+next_eq = "です"
+reading = "ジュウブン"
+
+[[rule.match]]
+next_starts_with_any = ["前", "後", "間", "以内", "おき", "ごろ", "頃"]
+reading = "ジュップン"
+
+[[rule.match]]
+pos_eq = "名詞"
+reading = "ジュップン"
+
+# ─── 一番 / 一体 / 一杯 / 一生 / 一緒 ────────────────────────────────
+[[rule]]
+surface = "一番"
+default = "イチバン"
+
+[[rule]]
+surface = "一体"
+default = "イッタイ"
+
+[[rule]]
+surface = "一杯"
+default = "イッパイ"
+
+[[rule]]
+surface = "一生"
+default = "イッショウ"
+
+[[rule]]
+surface = "一緒"
+default = "イッショ"
+
+# ─── 大人気: 「大人気ない」→ オトナゲ、それ以外は ダイニンキ ─────────
+[[rule]]
+surface = "大人気"
+default = "ダイニンキ"
+
+[[rule.match]]
+next_starts_with = "な"
+reading = "オトナゲ"
+
+[[rule.match]]
+next_eq = "の"
+next_next_starts_with_any = ["な", "無"]
+reading = "オトナゲ"
+
+# ─── 一人前 ────────────────────────────────────────────────────────────
+[[rule]]
+surface = "一人前"
+default = "イチニンマエ"
