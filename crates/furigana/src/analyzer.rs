@@ -1,0 +1,181 @@
+//! 形態素解析器 (Lindera + IPADIC ラッパ)
+//!
+//! [`Analyzer::new`] で IPADIC を埋め込みロードし、`tokenize` で
+//! テキストを [`MorphToken`] 列に分解する。
+//!
+//! Lindera 自体の `Tokenizer` はスレッドセーフではないため、
+//! 内部で `Mutex` 保護している。複数スレッドから同時呼び出し可能だが
+//! 直列実行になることに注意。
+
+use crate::error::{FuriganaError, Result};
+use lindera::dictionary::load_dictionary;
+use lindera::mode::Mode;
+use lindera::segmenter::Segmenter;
+use lindera::tokenizer::Tokenizer;
+use std::sync::Mutex;
+
+/// 形態素解析の 1 トークン
+///
+/// IPADIC の details 配列から `*` または空文字を `None` に正規化済み。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MorphToken {
+    /// 表層形
+    pub surface: String,
+    /// カタカナ読み (IPADIC details[7])
+    pub reading: Option<String>,
+    /// 品詞 (IPADIC details[0]) — 名詞 / 動詞 / 形容詞 等
+    pub pos: Option<String>,
+    /// 品詞細分類 1 (IPADIC details[1]) — 普通名詞 / 固有名詞 / 数 等
+    pub pos_detail: Option<String>,
+    /// 活用型 (IPADIC details[4]) — 五段・カ行イ音便 / 一段 等
+    pub conjugation_type: Option<String>,
+    /// 活用形 (IPADIC details[5]) — 基本形 / 連用形 等
+    pub conjugation_form: Option<String>,
+    /// 原形 (IPADIC details[6]) — 「食べた」→「食べる」
+    pub base_form: Option<String>,
+}
+
+impl MorphToken {
+    /// surface だけセットしたトークンを返す (フォールバック用)
+    fn surface_only(text: &str) -> Self {
+        Self {
+            surface: text.to_string(),
+            reading: None,
+            pos: None,
+            pos_detail: None,
+            conjugation_type: None,
+            conjugation_form: None,
+            base_form: None,
+        }
+    }
+}
+
+/// 形態素解析器
+pub struct Analyzer {
+    tokenizer: Mutex<Tokenizer>,
+}
+
+impl Analyzer {
+    /// 埋め込み IPADIC で初期化
+    ///
+    /// # Errors
+    /// 辞書ロードに失敗した場合 [`FuriganaError::AnalyzerInit`]。
+    pub fn new() -> Result<Self> {
+        let dictionary = load_dictionary("embedded://ipadic")
+            .map_err(|e| FuriganaError::AnalyzerInit(format!("dictionary load: {e}")))?;
+        let segmenter = Segmenter::new(Mode::Normal, dictionary, None);
+        let tokenizer = Tokenizer::new(segmenter);
+        Ok(Self {
+            tokenizer: Mutex::new(tokenizer),
+        })
+    }
+
+    /// テキストを分解してトークン列を返す
+    ///
+    /// 形態素解析が失敗 / Mutex が poison された場合は、入力全体を 1 トークン
+    /// (surface のみ) として返す — 呼び出し側が常に何らかの結果を扱える保証。
+    #[must_use]
+    pub fn tokenize(&self, text: &str) -> Vec<MorphToken> {
+        if text.is_empty() {
+            return Vec::new();
+        }
+
+        let tokenizer = match self.tokenizer.lock() {
+            Ok(t) => t,
+            Err(poisoned) => {
+                tracing::error!("Tokenizer mutex poisoned: {poisoned}");
+                return vec![MorphToken::surface_only(text)];
+            }
+        };
+
+        match tokenizer.tokenize(text) {
+            Ok(mut tokens) => tokens
+                .iter_mut()
+                .map(|t| {
+                    let surface = t.surface.to_string();
+                    let details = t.details();
+                    let get_detail = |i: usize| -> Option<String> {
+                        details
+                            .get(i)
+                            .filter(|v| **v != "*" && !v.is_empty())
+                            .map(ToString::to_string)
+                    };
+                    MorphToken {
+                        surface,
+                        reading: get_detail(7),
+                        pos: details.first().map(ToString::to_string),
+                        pos_detail: get_detail(1),
+                        conjugation_type: get_detail(4),
+                        conjugation_form: get_detail(5),
+                        base_form: get_detail(6),
+                    }
+                })
+                .collect(),
+            Err(e) => {
+                tracing::warn!("tokenize error: {e}");
+                vec![MorphToken::surface_only(text)]
+            }
+        }
+    }
+}
+
+impl std::fmt::Debug for Analyzer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Analyzer").finish_non_exhaustive()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn analyzer() -> Analyzer {
+        Analyzer::new().expect("Analyzer init failed")
+    }
+
+    #[test]
+    fn tokenizes_basic_japanese() {
+        let a = analyzer();
+        let tokens = a.tokenize("私は学生です");
+        assert!(!tokens.is_empty());
+        // 「私」が含まれる
+        assert!(tokens.iter().any(|t| t.surface == "私"));
+        // どこかしらに名詞がある
+        assert!(tokens.iter().any(|t| t.pos.as_deref() == Some("名詞")));
+    }
+
+    #[test]
+    fn returns_reading_for_known_kanji() {
+        let a = analyzer();
+        let tokens = a.tokenize("読書");
+        // 「読書」または分割された個別漢字に reading が付く
+        let has_reading = tokens.iter().any(|t| t.reading.is_some());
+        assert!(has_reading, "no reading found in tokens: {tokens:?}");
+    }
+
+    #[test]
+    fn empty_input_yields_empty() {
+        let a = analyzer();
+        assert!(a.tokenize("").is_empty());
+    }
+
+    #[test]
+    fn handles_mixed_script() {
+        let a = analyzer();
+        let tokens = a.tokenize("Hello世界123");
+        // 「世界」が含まれる
+        assert!(tokens.iter().any(|t| t.surface.contains("世")));
+    }
+
+    #[test]
+    fn details_filter_asterisks_to_none() {
+        // 助詞 (e.g., は) は activation_form 等が "*" になることが多い
+        let a = analyzer();
+        let tokens = a.tokenize("私は");
+        let ha = tokens.iter().find(|t| t.surface == "は");
+        if let Some(token) = ha {
+            // 助詞「は」は活用しないので conjugation_type は None のはず
+            assert!(token.conjugation_type.is_none());
+        }
+    }
+}
