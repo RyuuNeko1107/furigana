@@ -1,10 +1,7 @@
 //! 設定ファイル (TOML) の読み込み
 //!
 //! 設定ファイルは optional。存在しない場合は default 値を使う。
-//!
-//! 各フィールドは Task #11 (CLI subcommands 実装) でサーバー側から読まれる。
-
-#![allow(dead_code)]
+//! 各フィールドは `serve` サブコマンドから読まれる。
 
 use crate::paths::Paths;
 use anyhow::{Context, Result};
@@ -20,10 +17,6 @@ pub struct Config {
     /// bearer 認証設定
     #[serde(default)]
     pub auth: AuthConfig,
-
-    /// レート制限設定
-    #[serde(default)]
-    pub rate_limit: RateLimitConfig,
 }
 
 /// `[server]` セクション
@@ -57,22 +50,6 @@ pub struct AuthConfig {
     /// 受理する bearer トークン (空 = 認証無効)
     #[serde(default)]
     pub tokens: Vec<String>,
-}
-
-/// `[rate_limit]` セクション
-#[derive(Debug, Default, Clone, Deserialize)]
-pub struct RateLimitConfig {
-    /// 有効化フラグ (default: false)
-    #[serde(default)]
-    pub enabled: bool,
-
-    /// 1 分あたりリクエスト数 (default: 600)
-    #[serde(default = "default_rpm")]
-    pub requests_per_min: u32,
-}
-
-fn default_rpm() -> u32 {
-    600
 }
 
 impl Config {

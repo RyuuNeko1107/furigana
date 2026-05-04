@@ -14,11 +14,8 @@ use std::path::{Path, PathBuf};
 /// 解決済みの各種パス
 #[derive(Debug, Clone)]
 pub struct Paths {
-    /// 実行時データのルート (辞書 等)
+    /// 実行時データのルート (辞書 / rules 等)
     pub data_dir: PathBuf,
-    /// 設定ファイルのルート (Task #11 で `dict pull` 等が利用予定)
-    #[allow(dead_code)]
-    pub config_dir: PathBuf,
     /// 設定ファイル本体
     pub config_file: PathBuf,
 }
@@ -32,14 +29,12 @@ impl Paths {
         let data_dir = override_data
             .map(PathBuf::from)
             .unwrap_or_else(|| project.data_dir().to_path_buf());
-        let config_dir = project.config_dir().to_path_buf();
         let config_file = override_config
             .map(PathBuf::from)
-            .unwrap_or_else(|| config_dir.join("config.toml"));
+            .unwrap_or_else(|| project.config_dir().join("config.toml"));
 
         Ok(Self {
             data_dir,
-            config_dir,
             config_file,
         })
     }

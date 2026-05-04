@@ -215,10 +215,6 @@ cors_origins = []  # 空 = Any 許可 (ローカル用途)
 
 [auth]
 tokens = []  # 空 = 認証無効
-
-[rate_limit]
-enabled = false
-requests_per_min = 600
 ```
 
 ## アーキテクチャ概要
