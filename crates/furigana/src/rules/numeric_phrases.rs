@@ -1,49 +1,36 @@
-//! 数詞慣用語句 (numeric_phrases.tsv)
+//! 数詞慣用語句 (numeric_phrases.toml)
 //!
 //! 数字を含む慣用語句 (二十歳→ハタチ、明後日→アサッテ等) を、形態素解析や
 //! 助数詞ルールより先に確定させるための表。
 //!
-//! ## 例 (TSV: 表層\t読み)
-//! ```text
-//! 二十歳	ハタチ
-//! 二十日	ハツカ
-//! 一昨日	オトトイ
-//! 明後日	アサッテ
-//! 五重塔	ゴジュウノトウ
-//! 三日月	ミカヅキ
-//! 一人	ヒトリ
-//! 二人	フタリ
+//! ## 例
+//! ```toml
+//! [entries]
+//! "二十歳" = "ハタチ"
+//! "二十日" = "ハツカ"
+//! "明後日" = "アサッテ"
 //! ```
 
-/// numeric_phrases.tsv 1 行
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct NumericPhrase {
-    /// 表層 (例: "二十歳")
-    pub surface: String,
-    /// カタカナ読み
-    pub kana: String,
-}
+use serde::Deserialize;
+use std::collections::HashMap;
 
-/// numeric_phrases.tsv 全体
-#[derive(Debug, Default, Clone)]
+/// numeric_phrases.toml 全体 (表層 → カタカナ)
+#[derive(Debug, Default, Clone, Deserialize)]
 pub struct NumericPhrasesData {
-    /// エントリ列
-    pub entries: Vec<NumericPhrase>,
+    #[serde(default)]
+    pub entries: HashMap<String, String>,
 }
 
 impl NumericPhrasesData {
     /// 表層に対応する読みを返す
     #[must_use]
     pub fn lookup(&self, surface: &str) -> Option<&str> {
-        self.entries
-            .iter()
-            .find(|e| e.surface == surface)
-            .map(|e| e.kana.as_str())
+        self.entries.get(surface).map(String::as_str)
     }
 
-    /// 全表層を一覧 (regex builder 用)
+    /// 全表層を一覧 (regex builder 用、HashMap なので順不同)
     pub fn surfaces(&self) -> impl Iterator<Item = &str> {
-        self.entries.iter().map(|e| e.surface.as_str())
+        self.entries.keys().map(String::as_str)
     }
 
     /// 件数
@@ -64,22 +51,13 @@ mod tests {
     use super::*;
 
     fn sample() -> NumericPhrasesData {
-        NumericPhrasesData {
-            entries: vec![
-                NumericPhrase {
-                    surface: "二十歳".into(),
-                    kana: "ハタチ".into(),
-                },
-                NumericPhrase {
-                    surface: "明後日".into(),
-                    kana: "アサッテ".into(),
-                },
-                NumericPhrase {
-                    surface: "三日月".into(),
-                    kana: "ミカヅキ".into(),
-                },
-            ],
-        }
+        let toml_str = r#"
+            [entries]
+            "二十歳" = "ハタチ"
+            "明後日" = "アサッテ"
+            "三日月" = "ミカヅキ"
+        "#;
+        toml::from_str(toml_str).unwrap()
     }
 
     #[test]
@@ -91,9 +69,10 @@ mod tests {
     }
 
     #[test]
-    fn surfaces_iter() {
+    fn surfaces_iter_returns_all_keys() {
         let d = sample();
-        let surfaces: Vec<&str> = d.surfaces().collect();
-        assert_eq!(surfaces, vec!["二十歳", "明後日", "三日月"]);
+        let mut surfaces: Vec<&str> = d.surfaces().collect();
+        surfaces.sort_unstable();
+        assert_eq!(surfaces, vec!["三日月", "二十歳", "明後日"]);
     }
 }

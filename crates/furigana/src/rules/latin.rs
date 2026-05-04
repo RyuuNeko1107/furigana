@@ -1,30 +1,24 @@
-//! ラテン文字読み (latin.tsv)
+//! ラテン文字読み (latin.toml)
 //!
 //! 英字 1 文字 → カタカナ (A→エー, B→ビー, ...)
 //!
-//! ## 例 (TSV: 文字\t読み)
-//! ```text
-//! A	エー
-//! B	ビー
-//! C	シー
+//! ## 例
+//! ```toml
+//! [entries]
+//! "A" = "エー"
+//! "B" = "ビー"
 //! ```
 //!
 //! lookup は **大文字小文字を区別せず** 行う (大文字キーで保存推奨)。
 
-/// latin.tsv 1 行
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LatinEntry {
-    /// 文字 (大文字推奨、1 文字)
-    pub letter: String,
-    /// カタカナ読み
-    pub kana: String,
-}
+use serde::Deserialize;
+use std::collections::HashMap;
 
-/// latin.tsv 全体
-#[derive(Debug, Default, Clone)]
+/// latin.toml 全体 (文字 → カタカナ)
+#[derive(Debug, Default, Clone, Deserialize)]
 pub struct LatinData {
-    /// エントリ列
-    pub entries: Vec<LatinEntry>,
+    #[serde(default)]
+    pub entries: HashMap<String, String>,
 }
 
 impl LatinData {
@@ -34,8 +28,8 @@ impl LatinData {
         let upper = ch.to_ascii_uppercase().to_string();
         self.entries
             .iter()
-            .find(|e| e.letter.to_ascii_uppercase() == upper)
-            .map(|e| e.kana.as_str())
+            .find(|(k, _)| k.to_ascii_uppercase() == upper)
+            .map(|(_, v)| v.as_str())
     }
 
     /// 件数
@@ -56,22 +50,13 @@ mod tests {
     use super::*;
 
     fn sample() -> LatinData {
-        LatinData {
-            entries: vec![
-                LatinEntry {
-                    letter: "A".into(),
-                    kana: "エー".into(),
-                },
-                LatinEntry {
-                    letter: "B".into(),
-                    kana: "ビー".into(),
-                },
-                LatinEntry {
-                    letter: "Z".into(),
-                    kana: "ズィー".into(),
-                },
-            ],
-        }
+        let toml_str = r#"
+            [entries]
+            "A" = "エー"
+            "B" = "ビー"
+            "Z" = "ズィー"
+        "#;
+        toml::from_str(toml_str).unwrap()
     }
 
     #[test]

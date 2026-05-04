@@ -165,7 +165,6 @@ pub fn normalize_text(s: &str, compat: &CompatData) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::rules::CompatEntry;
     use std::collections::HashMap;
 
     // ─── kata_to_hira / hira_to_kata ──────────────────────────────
@@ -297,19 +296,11 @@ mod tests {
     // ─── normalize_text ──────────────────────────────────────────
 
     fn make_compat(pairs: &[(&str, &str)]) -> CompatData {
-        let entries: Vec<_> = pairs
+        let map: HashMap<String, String> = pairs
             .iter()
-            .map(|(v, c)| CompatEntry {
-                variant: (*v).to_string(),
-                canonical: (*c).to_string(),
-            })
+            .map(|(v, c)| ((*v).to_string(), (*c).to_string()))
             .collect();
-        let mut data = CompatData {
-            entries,
-            map: HashMap::new(),
-        };
-        data.rebuild_map();
-        data
+        CompatData { map }
     }
 
     #[test]

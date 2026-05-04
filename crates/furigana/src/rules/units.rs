@@ -1,49 +1,51 @@
-//! SI 単位読み (units.tsv)
+//! SI 単位読み (units.toml)
 //!
 //! km / cm / mm / m / kg / mg / g / t / mL / L / TB / GB / MB / KB …
 //!
-//! ## 例 (TSV: シンボル\t読み[\tフラグ])
-//! ```text
-//! km	キロメートル
-//! mL	ミリリットル	ci
-//! L	リットル	ci
+//! ## 例
+//! ```toml
+//! [entries]
+//! "km" = { kana = "キロメートル" }
+//! "L"  = { kana = "リットル", ci = true }
+//! "mL" = { kana = "ミリリットル", ci = true }
 //! ```
 //!
-//! 第 3 列 (フラグ) はオプション。`ci` = case-insensitive (大文字小文字を区別しない)。
+//! `ci = true` で case-insensitive lookup (大文字小文字を区別しない)。
 
-/// units.tsv 1 行
-#[derive(Debug, Clone, PartialEq, Eq)]
+use serde::Deserialize;
+use std::collections::HashMap;
+
+/// units.toml 1 件 (HashMap の value 側)
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct UnitEntry {
-    /// 単位記号 (例: "km", "mL")
-    pub symbol: String,
-    /// カタカナ読み (例: "キロメートル", "ミリリットル")
+    /// カタカナ読み (例: `"キロメートル"`)
     pub kana: String,
-    /// 大文字小文字を区別しないか (例: "L"/"l" 両方を「リットル」)
-    pub case_insensitive: bool,
+    /// 大文字小文字を区別しないか (default false)
+    #[serde(default)]
+    pub ci: bool,
 }
 
-/// units.tsv 全体
-#[derive(Debug, Default, Clone)]
+/// units.toml 全体
+#[derive(Debug, Default, Clone, Deserialize)]
 pub struct UnitsData {
-    /// エントリ列 (記載順)
-    pub entries: Vec<UnitEntry>,
+    /// シンボル → エントリ
+    #[serde(default)]
+    pub entries: HashMap<String, UnitEntry>,
 }
 
 impl UnitsData {
     /// シンボルに対応する読みを返す。
-    /// `case_insensitive` フラグ付きエントリは大文字小文字を比較しない。
+    /// `ci = true` のエントリは大文字小文字を比較しない。
     #[must_use]
     pub fn lookup(&self, symbol: &str) -> Option<&str> {
-        // strict 一致を先に
-        if let Some(e) = self.entries.iter().find(|e| e.symbol == symbol) {
+        if let Some(e) = self.entries.get(symbol) {
             return Some(e.kana.as_str());
         }
-        // CI 一致
         let symbol_lower = symbol.to_lowercase();
         self.entries
             .iter()
-            .find(|e| e.case_insensitive && e.symbol.to_lowercase() == symbol_lower)
-            .map(|e| e.kana.as_str())
+            .find(|(k, e)| e.ci && k.to_lowercase() == symbol_lower)
+            .map(|(_, e)| e.kana.as_str())
     }
 
     /// 件数
@@ -64,25 +66,13 @@ mod tests {
     use super::*;
 
     fn sample() -> UnitsData {
-        UnitsData {
-            entries: vec![
-                UnitEntry {
-                    symbol: "km".into(),
-                    kana: "キロメートル".into(),
-                    case_insensitive: false,
-                },
-                UnitEntry {
-                    symbol: "L".into(),
-                    kana: "リットル".into(),
-                    case_insensitive: true,
-                },
-                UnitEntry {
-                    symbol: "mL".into(),
-                    kana: "ミリリットル".into(),
-                    case_insensitive: true,
-                },
-            ],
-        }
+        let toml_str = r#"
+            [entries]
+            "km" = { kana = "キロメートル" }
+            "L"  = { kana = "リットル", ci = true }
+            "mL" = { kana = "ミリリットル", ci = true }
+        "#;
+        toml::from_str(toml_str).unwrap()
     }
 
     #[test]

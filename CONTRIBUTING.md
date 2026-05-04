@@ -1,7 +1,7 @@
 # Contributing to furigana
 
 `furigana` は **データ駆動** が基本方針なので、多くの contribution は
-**Rust コードを書かずに** TSV / TOML を編集するだけで完結します。
+**Rust コードを書かずに** TOML を編集するだけで完結します。
 気軽に PR を投げてください。
 
 ## 1. 読みを追加したい (一番多いケース)
@@ -11,32 +11,53 @@
 
 | 追加したいもの | 編集するファイル |
 |---|---|
-| 慣用読み (例: 浮世絵→ウキヨエ) | [`data/rules/numeric_phrases.tsv`](data/rules/numeric_phrases.tsv) など |
+| 慣用読み (例: 浮世絵→ウキヨエ) | [`data/rules/numeric_phrases.toml`](data/rules/numeric_phrases.toml) |
 | 助数詞 (例: 篇→ヘン) | [`data/rules/counters.toml`](data/rules/counters.toml) `[simple]` |
 | 連濁・促音化が複雑な助数詞 | [`data/rules/counters.toml`](data/rules/counters.toml) `[counter."X"]` |
-| 大数スケール | [`data/rules/scales.tsv`](data/rules/scales.tsv) |
-| 単位 | [`data/rules/units.tsv`](data/rules/units.tsv) |
-| 異体字 → 標準字 | [`data/rules/compat_map.tsv`](data/rules/compat_map.tsv) |
+| 大数スケール | [`data/rules/scales.toml`](data/rules/scales.toml) |
+| 単位 | [`data/rules/units.toml`](data/rules/units.toml) |
+| 記号 | [`data/rules/symbols.toml`](data/rules/symbols.toml) |
+| ラテン文字 | [`data/rules/latin.toml`](data/rules/latin.toml) |
+| 異体字 → 標準字 | [`data/rules/compat_map.toml`](data/rules/compat_map.toml) |
 | 文脈で読みが変わる語 | [`data/rules/context.toml`](data/rules/context.toml) |
-
-### TSV ファイル形式
-
-- フィールド区切り: **タブ** (`\t`)
-- 行コメント: 行頭 `#`
-- 空行は無視
-- 読みは **全角カタカナ** で書く
-
-例 (`numeric_phrases.tsv`):
-```tsv
-# 数字を含む慣用語句
-二十歳	ハタチ
-明後日	アサッテ
-```
 
 ### TOML ファイル形式
 
-[counters.toml](data/rules/counters.toml) に書き方の例が豊富にあります。
-基本的なパターン:
+全データファイルは TOML 形式で統一されています。
+
+**単純な key→value table** (numeric_phrases / symbols / latin / compat_map):
+
+```toml
+# 例: data/rules/numeric_phrases.toml
+[entries]
+"二十歳" = "ハタチ"
+"明後日" = "アサッテ"
+```
+
+**追加メタ情報があるもの** (units の `ci` フラグ等):
+
+```toml
+# 例: data/rules/units.toml
+[entries]
+"km" = { kana = "キロメートル" }
+"L"  = { kana = "リットル", ci = true }
+```
+
+**順序が大事なもの** (scales の大→小):
+
+```toml
+# 例: data/rules/scales.toml
+[[entry]]
+kanji = "万"
+kana = "マン"
+
+[[entry]]
+kanji = "億"
+kana = "オク"
+```
+
+**構造化ルール** (counters / context) は [counters.toml](data/rules/counters.toml) に
+書き方の例が豊富にあります。基本パターン:
 
 ```toml
 # 単純サフィックス
@@ -54,6 +75,8 @@ sokuonize = true
 last_digit = [3]
 suffix = "ボン"
 ```
+
+読みは **全角カタカナ** で書いてください。
 
 ## 2. テスト方法
 

@@ -1,9 +1,9 @@
 //! `furigana dict ...` サブコマンド一式
 //!
-//! - `add <surface> <reading>` : user dict (`cli-added.tsv`) に 1 件追加
+//! - `add <surface> <reading>` : user dict (`cli-added.toml`) に 1 件追加
 //! - `list [--limit N]`         : 辞書状態のサマリ
-//! - `remove <surface>`         : `cli-added.tsv` から削除
-//! - `import <path>`            : TSV ファイルを user dict にコピー
+//! - `remove <surface>`         : `cli-added.toml` から削除
+//! - `import <path>`            : TOML ファイルを user dict にコピー
 //! - `pull [--version v...]`    : core 辞書を GitHub Release から取得 (未実装)
 
 use crate::config::Config;
@@ -11,12 +11,13 @@ use crate::paths::Paths;
 use anyhow::{anyhow, bail, Context, Result};
 use clap::{Args as ClapArgs, Subcommand};
 use furigana::Dict;
+use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 /// CLI 経由で追加されたエントリの保存先 (user dict 配下)
-const CLI_DICT_FILENAME: &str = "cli-added.tsv";
+const CLI_DICT_FILENAME: &str = "cli-added.toml";
 
 #[derive(ClapArgs, Debug)]
 pub struct Args {
@@ -41,15 +42,15 @@ pub enum Action {
         limit: usize,
     },
 
-    /// user 辞書から削除 (`cli-added.tsv` のみ対象)
+    /// user 辞書から削除 (`cli-added.toml` のみ対象)
     Remove {
         /// 削除する表層形
         surface: String,
     },
 
-    /// TSV ファイルを user 辞書にコピー
+    /// TOML ファイルを user 辞書にコピー
     Import {
-        /// インポート元 TSV
+        /// インポート元 TOML
         path: PathBuf,
     },
 
@@ -107,7 +108,7 @@ fn list(paths: &Paths, limit: usize) -> Result<()> {
     if cli_file.exists() {
         let entries = read_cli_dict(&cli_file)?;
         if !entries.is_empty() {
-            println!("\n[cli-added.tsv の最初 {} 件]", limit.min(entries.len()));
+            println!("\n[cli-added.toml の最初 {} 件]", limit.min(entries.len()));
             for (s, r) in entries.iter().take(limit) {
                 println!("  {s}\t{r}");
             }
@@ -132,13 +133,13 @@ fn print_files_in_dir(label: &str, dir: &Path) -> Result<()> {
     let mut files: Vec<_> = fs::read_dir(dir)?
         .filter_map(std::result::Result::ok)
         .map(|e| e.path())
-        .filter(|p| p.is_file() && p.extension().is_some_and(|e| e == "tsv"))
+        .filter(|p| p.is_file() && p.extension().is_some_and(|e| e == "toml"))
         .collect();
     files.sort();
     if files.is_empty() {
         return Ok(());
     }
-    println!("\n[{label}/ 配下 *.tsv]");
+    println!("\n[{label}/ 配下 *.toml]");
     for f in files {
         let size = fs::metadata(&f).map(|m| m.len()).unwrap_or(0);
         println!("  {} ({size} bytes)", f.display());
@@ -158,7 +159,7 @@ fn remove(paths: &Paths, surface: &str) -> Result<()> {
     }
     let mut entries = read_cli_dict(&cli_file)?;
     if entries.remove(surface).is_none() {
-        bail!("'{surface}' は cli-added.tsv に見つかりません");
+        bail!("'{surface}' は cli-added.toml に見つかりません");
     }
     write_cli_dict(&cli_file, &entries)?;
     println!("削除: {surface}");
@@ -176,9 +177,9 @@ fn import(paths: &Paths, src: &Path) -> Result<()> {
     }
 
     // 先にバリデーション (パース失敗ならコピーしない)
-    let validated = Dict::from_tsv_file(src).with_context(|| {
+    let validated = Dict::from_toml_file(src).with_context(|| {
         format!(
-            "TSV パース失敗: {} (期待: surface\\treading 各行)",
+            "TOML パース失敗: {} ([entries] セクション + key=value 形式が必要)",
             src.display()
         )
     })?;
@@ -207,52 +208,61 @@ fn pull(version: Option<&str>) -> Result<()> {
          \n\
          現状で辞書を追加するには:\n\
          - 単発:        furigana dict add <surface> <reading>\n\
-         - TSV インポート: furigana dict import <path.tsv>"
+         - TOML インポート: furigana dict import <path.toml>"
     );
 }
 
-// ─── 内部ヘルパー: cli-added.tsv の read/write ────────────────────────────────
+// ─── 内部ヘルパー: cli-added.toml の read/write ───────────────────────────────
 
-/// `cli-added.tsv` を BTreeMap として読む (キー昇順保持)
-fn read_cli_dict(path: &Path) -> Result<BTreeMap<String, String>> {
-    let mut entries = BTreeMap::new();
-    if !path.exists() {
-        return Ok(entries);
-    }
-    let content = fs::read_to_string(path)?;
-    for (idx, raw) in content.lines().enumerate() {
-        let line = raw.trim_end_matches('\r');
-        let trimmed = line.trim();
-        if trimmed.is_empty() || trimmed.starts_with('#') {
-            continue;
-        }
-        let mut cols = line.splitn(2, '\t');
-        let surface = cols.next().unwrap_or("").trim();
-        let reading = cols.next().unwrap_or("").trim();
-        if surface.is_empty() || reading.is_empty() {
-            return Err(anyhow!(
-                "{} の {} 行目が不正 (surface\\treading 形式が必要)",
-                path.display(),
-                idx + 1
-            ));
-        }
-        entries.insert(surface.to_string(), reading.to_string());
-    }
-    Ok(entries)
+#[derive(Debug, Default, Deserialize)]
+struct CliDictFile {
+    #[serde(default)]
+    entries: BTreeMap<String, String>,
 }
 
-/// 整形済みの `cli-added.tsv` を書き出す
+/// `cli-added.toml` を BTreeMap として読む (キー昇順で扱う)
+fn read_cli_dict(path: &Path) -> Result<BTreeMap<String, String>> {
+    if !path.exists() {
+        return Ok(BTreeMap::new());
+    }
+    let content = fs::read_to_string(path)?;
+    let parsed: CliDictFile =
+        toml::from_str(&content).with_context(|| format!("{} のパース失敗", path.display()))?;
+    Ok(parsed.entries)
+}
+
+/// 整形済みの `cli-added.toml` を書き出す
 fn write_cli_dict(path: &Path, entries: &BTreeMap<String, String>) -> Result<()> {
     let mut out = String::from(
         "# `furigana dict add/remove` で更新される CLI 管理エントリ\n\
-         # surface\\treading\n",
+         # surface = reading の TOML inline map\n\
+         \n\
+         [entries]\n",
     );
     for (s, r) in entries {
-        out.push_str(s);
-        out.push('\t');
-        out.push_str(r);
-        out.push('\n');
+        // TOML 文字列リテラル化 (基本的に basic string で OK、escape も対応)
+        out.push('"');
+        out.push_str(&toml_escape(s));
+        out.push_str("\" = \"");
+        out.push_str(&toml_escape(r));
+        out.push_str("\"\n");
     }
     fs::write(path, out)?;
     Ok(())
+}
+
+/// TOML basic string 用のエスケープ (`"` `\` `\n` `\r` `\t`)
+fn toml_escape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            other => out.push(other),
+        }
+    }
+    out
 }

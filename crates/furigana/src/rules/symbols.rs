@@ -1,41 +1,31 @@
-//! 記号読み (symbols.tsv)
+//! 記号読み (symbols.toml)
 //!
 //! +, −, ±, %, ‰, /, etc.
 //!
-//! ## 例 (TSV: 記号\t読み)
-//! ```text
-//! +	プラス
-//! -	マイナス
-//! ±	プラスマイナス
-//! %	パーセント
-//! ‰	パーミル
-//! /	スラッシュ
+//! ## 例
+//! ```toml
+//! [entries]
+//! "+" = "プラス"
+//! "-" = "マイナス"
+//! "±" = "プラスマイナス"
+//! "%" = "パーセント"
 //! ```
 
-/// symbols.tsv 1 行
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SymbolEntry {
-    /// 記号 (1〜数文字)
-    pub symbol: String,
-    /// カタカナ読み
-    pub kana: String,
-}
+use serde::Deserialize;
+use std::collections::HashMap;
 
-/// symbols.tsv 全体
-#[derive(Debug, Default, Clone)]
+/// symbols.toml 全体 (記号 → カタカナ)
+#[derive(Debug, Default, Clone, Deserialize)]
 pub struct SymbolsData {
-    /// エントリ列
-    pub entries: Vec<SymbolEntry>,
+    #[serde(default)]
+    pub entries: HashMap<String, String>,
 }
 
 impl SymbolsData {
     /// 記号で読みを引く
     #[must_use]
     pub fn lookup(&self, symbol: &str) -> Option<&str> {
-        self.entries
-            .iter()
-            .find(|e| e.symbol == symbol)
-            .map(|e| e.kana.as_str())
+        self.entries.get(symbol).map(String::as_str)
     }
 
     /// 1 文字での lookup ヘルパ
@@ -64,26 +54,14 @@ mod tests {
     use super::*;
 
     fn sample() -> SymbolsData {
-        SymbolsData {
-            entries: vec![
-                SymbolEntry {
-                    symbol: "+".into(),
-                    kana: "プラス".into(),
-                },
-                SymbolEntry {
-                    symbol: "-".into(),
-                    kana: "マイナス".into(),
-                },
-                SymbolEntry {
-                    symbol: "%".into(),
-                    kana: "パーセント".into(),
-                },
-                SymbolEntry {
-                    symbol: "‰".into(),
-                    kana: "パーミル".into(),
-                },
-            ],
-        }
+        let toml_str = r#"
+            [entries]
+            "+" = "プラス"
+            "-" = "マイナス"
+            "%" = "パーセント"
+            "‰" = "パーミル"
+        "#;
+        toml::from_str(toml_str).unwrap()
     }
 
     #[test]
