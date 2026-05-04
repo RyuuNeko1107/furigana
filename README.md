@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/RyuuNeko1107/furigana/actions/workflows/ci.yml/badge.svg)](https://github.com/RyuuNeko1107/furigana/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![MSRV](https://img.shields.io/badge/rust-1.86+-orange.svg)](https://www.rust-lang.org)
+[![MSRV](https://img.shields.io/badge/rust-stable-orange.svg)](https://www.rust-lang.org)
 
 > Japanese furigana (ruby) lookup library and HTTP server in Rust — fully data-driven rules, no DB required.
 
