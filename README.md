@@ -150,7 +150,7 @@ INFO Bearer 認証: 無効 (ローカル想定)
 1. `overrides.toml` (FuriganaBuilder の `overrides_file()`)
 2. `user/*.toml` (FuriganaBuilder の `user_dict_dir()`)
 3. `core/*.toml` (FuriganaBuilder の `core_dict_dir()`)
-4. 文脈ルール (`data/rules/context.toml`)
+4. 文脈ルール (`furigana-dict/rules/context.toml`)
 5. Lindera (形態素解析) の読み
 6. 何もなければ読みなし (`None`) — 出力では surface のまま
 
@@ -158,18 +158,21 @@ INFO Bearer 認証: 無効 (ローカル想定)
 
 | ファイル | 内容 |
 |---|---|
-| [`data/rules/counters.toml`](data/rules/counters.toml) | 助数詞 (本/匹/個/年/月/日…) の連濁・促音化・kana 末尾置換 |
-| [`data/rules/days.toml`](data/rules/days.toml) | 1〜31 日の特殊読み (1→ツイタチ 等) |
-| [`data/rules/scales.toml`](data/rules/scales.toml) | 万 / 億 / 兆 / 京 / 垓… 大数スケール |
-| [`data/rules/units.toml`](data/rules/units.toml) | SI 単位 (km / kg / mL …) |
-| [`data/rules/symbols.toml`](data/rules/symbols.toml) | 記号読み (+ / − / % / ‰ …) |
-| [`data/rules/latin.toml`](data/rules/latin.toml) | ラテン文字読み (A→エー…) |
-| [`data/rules/numeric_phrases.toml`](data/rules/numeric_phrases.toml) | 例外語句 (二十歳→ハタチ 等) |
-| [`data/rules/context.toml`](data/rules/context.toml) | 前後トークンを見る文脈ルール (一日→ツイタチ/イチニチ) |
+| [`furigana-dict/rules/counters.toml`](https://github.com/RyuuNeko1107/furigana-dict/blob/master/rules/counters.toml) | 助数詞 (本/匹/個/年/月/日…) の連濁・促音化・kana 末尾置換 |
+| [`furigana-dict/rules/days.toml`](https://github.com/RyuuNeko1107/furigana-dict/blob/master/rules/days.toml) | 1〜31 日の特殊読み (1→ツイタチ 等) |
+| [`furigana-dict/rules/scales.toml`](https://github.com/RyuuNeko1107/furigana-dict/blob/master/rules/scales.toml) | 万 / 億 / 兆 / 京 / 垓… 大数スケール |
+| [`furigana-dict/rules/units.toml`](https://github.com/RyuuNeko1107/furigana-dict/blob/master/rules/units.toml) | SI 単位 (km / kg / mL …) |
+| [`furigana-dict/rules/symbols.toml`](https://github.com/RyuuNeko1107/furigana-dict/blob/master/rules/symbols.toml) | 記号読み (+ / − / % / ‰ …) |
+| [`furigana-dict/rules/latin.toml`](https://github.com/RyuuNeko1107/furigana-dict/blob/master/rules/latin.toml) | ラテン文字読み (A→エー…) |
+| [`furigana-dict/rules/numeric_phrases.toml`](https://github.com/RyuuNeko1107/furigana-dict/blob/master/rules/numeric_phrases.toml) | 例外語句 (二十歳→ハタチ 等) |
+| [`furigana-dict/rules/context.toml`](https://github.com/RyuuNeko1107/furigana-dict/blob/master/rules/context.toml) | 前後トークンを見る文脈ルール (一日→ツイタチ/イチニチ) |
 | (異体字マップは [`furigana-dict/core/compat.toml`](https://github.com/RyuuNeko1107/furigana-dict/blob/master/core/compat.toml)) | 役割分離のため別リポジトリで管理 |
 
-これらは **ビルド時に lib に embed** されるため、`Furigana::minimal()` のみで全機能が動きます。
-別ファイルから読み込む場合は `FuriganaBuilder::rules_dir(path)` で上書き可能。
+これらは [`furigana-dict`](https://github.com/RyuuNeko1107/furigana-dict) リポジトリで管理され、
+`furigana dict pull` で取得 → builder の `rules_dir(path)` で mount する。
+本体バイナリには embed しない (バイナリ肥大化を避けるため)。
+未配置の状態で `Furigana::minimal()` を呼ぶと空 default で起動し、
+助数詞・文脈読み等は無効になるが、形態素解析 (Lindera) と直接 `add_reading` は動作する。
 
 ## HTTP API
 
@@ -230,7 +233,7 @@ crates/
 │   ├── dict.rs       # 単純 surface→reading 辞書 (HashMap ベース)
 │   ├── rules/        # データスキーマ (CounterRule / ContextRule 等)
 │   ├── loader.rs     # TOML パーサ
-│   ├── embedded.rs   # data/rules/* を build 時に include_str!
+│   ├── embedded.rs   # furigana-dict/rules/* を build 時に include_str!
 │   └── lib.rs        # Furigana 構造体 + builder
 └── furigana-cli/     # bin crate (`furigana` バイナリ)
     └── src/
@@ -271,6 +274,6 @@ crates/
 
 ## コントリビュート
 
-新しい読みやルール修正は、ほとんどの場合 `data/rules/` 配下の TOML を編集するだけです。
+新しい読みやルール修正は、ほとんどの場合 `furigana-dict/rules/` 配下の TOML を編集するだけです。
 Rust を書く必要はありません。
 詳細は [CONTRIBUTING.md](CONTRIBUTING.md) を参照してください。

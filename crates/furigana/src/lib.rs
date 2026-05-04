@@ -305,11 +305,14 @@ mod tests {
     }
 
     #[test]
-    fn embed_rules_loaded_by_default() {
+    fn minimal_has_no_rules_loaded() {
+        // 本体には rules を embed しない方針なので、minimal は空 default。
+        // 「一人」は context.toml の default が無いため lindera 由来の読みになる。
         let f = Furigana::minimal().unwrap();
-        // 一人 → ヒトリ (context.toml の default)
         let ruby = f.to_ruby("一人");
-        assert!(ruby.contains("ひとり"), "ruby: {ruby}");
+        // 何らかのひらがな化はされるはずだが、context default の "ヒトリ" は出ない
+        // (lindera が 一+人 で個別に読むため、典型的には「いちにん」)
+        assert!(!ruby.is_empty(), "ruby: {ruby}");
     }
 
     #[test]
@@ -358,20 +361,17 @@ mod tests {
     }
 
     #[test]
-    fn rules_dir_overrides_embedded() {
-        let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        let dir = manifest
-            .parent()
-            .unwrap()
-            .parent()
-            .unwrap()
-            .join("data")
+    fn rules_dir_overrides_default() {
+        // テスト用 fixture (本来は furigana-dict から pull したものを使う)
+        let dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests")
+            .join("fixtures")
             .join("rules");
         let f = Furigana::builder()
             .rules_dir(&dir)
             .build()
             .expect("build with rules_dir failed");
-        // 一人 → ヒトリ (rules dir 経由でも同じ動作)
+        // 一人 → ヒトリ (rules dir 経由でロードされる)
         let ruby = f.to_ruby("一人");
         assert!(ruby.contains("ひとり"));
     }

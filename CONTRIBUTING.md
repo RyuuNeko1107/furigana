@@ -6,30 +6,31 @@
 
 | 追加したいもの | PR 先 |
 |---|---|
-| 一般語・固有名詞・人名・地名の読み | [`furigana-dict`](https://github.com/RyuuNeko1107/furigana-dict) (別リポジトリ) |
-| 単漢字フォールバック | 同上 |
-| 拡充版の異体字 → 標準字 | 同上 (`core/compat.toml`) |
-| 慣用読み (例: 浮世絵→ウキヨエ) | [`data/rules/numeric_phrases.toml`](data/rules/numeric_phrases.toml) |
-| 助数詞 (例: 篇→ヘン) | [`data/rules/counters.toml`](data/rules/counters.toml) `[simple]` |
-| 連濁・促音化が複雑な助数詞 | [`data/rules/counters.toml`](data/rules/counters.toml) `[counter."X"]` |
-| 大数スケール | [`data/rules/scales.toml`](data/rules/scales.toml) |
-| 単位 | [`data/rules/units.toml`](data/rules/units.toml) |
-| 記号 | [`data/rules/symbols.toml`](data/rules/symbols.toml) |
-| ラテン文字 | [`data/rules/latin.toml`](data/rules/latin.toml) |
-| 異体字 → 標準字 | [`furigana-dict/core/compat.toml`](https://github.com/RyuuNeko1107/furigana-dict/blob/master/core/compat.toml) (本体には embed 無し) |
-| 文脈で読みが変わる語 | [`data/rules/context.toml`](data/rules/context.toml) |
+| 一般語・固有名詞・人名・地名の読み | [`furigana-dict`](https://github.com/RyuuNeko1107/furigana-dict) `core/jukugo.toml` |
+| 単漢字フォールバック | 同上 `core/unihan.toml` |
+| 異体字 → 標準字 | 同上 `core/compat.toml` |
+| 慣用読み (例: 浮世絵→ウキヨエ) | 同上 `rules/numeric_phrases.toml` |
+| 助数詞 (例: 篇→ヘン) | 同上 `rules/counters.toml` `[simple]` |
+| 連濁・促音化が複雑な助数詞 | 同上 `rules/counters.toml` `[counter."X"]` |
+| 大数スケール | 同上 `rules/scales.toml` |
+| 単位 | 同上 `rules/units.toml` |
+| 記号 | 同上 `rules/symbols.toml` |
+| ラテン文字 | 同上 `rules/latin.toml` |
+| 文脈で読みが変わる語 | 同上 `rules/context.toml` |
+| ↑ 上記すべて | 本体 `furigana` リポジトリには **データを含めない**。すべて `furigana-dict` 側で管理 |
+| エンジン本体の改修 (Rust) | このリポジトリ |
 
-語彙データ (人名・固有名詞・一般語) は `furigana-dict` 側、
-ルール (engine の挙動を定義する小さい表) は本リポジトリ側、と覚えてください。
+データ系の PR は全部 `furigana-dict` に。本リポジトリへの PR は engine 側 (Rust) の修正のみ。
 
 ### TOML ファイル形式
 
-全データファイルは TOML 形式で統一されています。
+全データファイルは TOML 形式で統一されています。データの実体・PR 先は
+[`furigana-dict`](https://github.com/RyuuNeko1107/furigana-dict) リポジトリを参照。
 
 **単純な key→value table** (numeric_phrases / symbols / latin):
 
 ```toml
-# 例: data/rules/numeric_phrases.toml
+# 例: rules/numeric_phrases.toml
 [entries]
 "二十歳" = "ハタチ"
 "明後日" = "アサッテ"
@@ -38,7 +39,7 @@
 **追加メタ情報があるもの** (units の `ci` フラグ等):
 
 ```toml
-# 例: data/rules/units.toml
+# 例: rules/units.toml
 [entries]
 "km" = { kana = "キロメートル" }
 "L"  = { kana = "リットル", ci = true }
@@ -47,7 +48,7 @@
 **順序が大事なもの** (scales の大→小):
 
 ```toml
-# 例: data/rules/scales.toml
+# 例: rules/scales.toml
 [[entry]]
 kanji = "万"
 kana = "マン"
@@ -57,8 +58,9 @@ kanji = "億"
 kana = "オク"
 ```
 
-**構造化ルール** (counters / context) は [counters.toml](data/rules/counters.toml) に
-書き方の例が豊富にあります。基本パターン:
+**構造化ルール** (counters / context) は
+[counters.toml](https://github.com/RyuuNeko1107/furigana-dict/blob/master/rules/counters.toml)
+に書き方の例が豊富にあります。基本パターン:
 
 ```toml
 # 単純サフィックス
@@ -103,10 +105,11 @@ cargo clippy --all-targets -- -D warnings
 cargo run -p furigana --example basic
 ```
 
-### 編集したルールが load できるか確認
+### テスト用 fixture
 
-`crates/furigana/tests/load_real_data.rs` の integration test が
-`data/rules/` 全ファイルをロードして主要エントリを確認します。
+本リポジトリの `crates/furigana/tests/fixtures/rules/` にテスト専用のスナップショット
+コピーがあります (実データは `furigana-dict` 側で管理)。ルール側の修正をテストする場合
+このコピーも同期してください。
 
 ```sh
 cargo test --test load_real_data
