@@ -221,25 +221,45 @@ tokens = []  # 空 = 認証無効
 
 ```
 crates/
-├── furigana/         # lib crate (cargo add furigana)
-│   ├── analyzer.rs   # Lindera + IPADIC (形態素解析)
-│   ├── kana.rs       # ひら⇄カタ + 正規化
-│   ├── numbers.rs    # 数値 → カタカナ + 助数詞ルール (data-driven)
-│   ├── reading.rs    # 読み解決パイプライン (top-level)
-│   ├── dict.rs       # 単純 surface→reading 辞書 (HashMap ベース)
-│   ├── rules/        # データスキーマ (CounterRule / ContextRule 等)
-│   ├── loader.rs     # TOML パーサ
-│   ├── embedded.rs   # furigana-dict/rules/* を build 時に include_str!
-│   └── lib.rs        # Furigana 構造体 + builder
-└── furigana-cli/     # bin crate (`furigana` バイナリ)
+├── furigana/                 # lib crate (cargo add furigana)
+│   ├── lib.rs                # module 宣言 + 公開 API re-export (ファサード)
+│   ├── api.rs                # Furigana 構造体 + FuriganaBuilder
+│   ├── analyzer.rs           # Lindera + IPADIC (形態素解析)
+│   ├── kana.rs               # ひら⇄カタ + Unicode 正規化
+│   ├── dict.rs               # 単純 surface→reading 辞書 (HashMap)
+│   ├── tts.rs                # TTS 整形 + segment
+│   ├── error.rs              # FuriganaError / Result
+│   ├── loader.rs             # TOML 汎用 parser (parse_toml<T> + load_or_default<T>)
+│   ├── embedded.rs           # 空 default RulesData (rules は furigana-dict 側)
+│   ├── rules/                # データスキーマ (counters / context / scales / units / ...)
+│   ├── numbers/              # 数値処理 (data-driven)
+│   │   ├── helpers.rs        #   zen2han / norm_num / sokuonize_last 等
+│   │   ├── digit.rs          #   number_to_katakana
+│   │   ├── counter.rs        #   euphonic_counter_read
+│   │   ├── phrase.rs         #   NumericPhraseMatcher
+│   │   └── extras.rs         #   scale/si_unit/symbol 単発読み
+│   ├── chunks/               # テキスト全体の数値チャンク分割
+│   │   ├── mod.rs            #   NumberChunker + split()
+│   │   └── regex.rs          #   静的 / 動的 regex + builder
+│   └── reading/              # 読み解決パイプライン
+│       ├── mod.rs            #   ReadingToken + tokenize_text (top-level)
+│       ├── pipeline.rs       #   tokenize_chunk + resolve_reading
+│       ├── merge.rs          #   merge_with_dict (最長一致結合)
+│       ├── context.rs        #   apply_context_rules (data-driven)
+│       └── output.rs         #   tokens_to_hiragana / tokens_to_ruby
+└── furigana-cli/             # bin crate (`furigana` バイナリ)
     └── src/
-        ├── main.rs            # clap dispatch
-        ├── paths.rs           # XDG / %LOCALAPPDATA% 解決
-        ├── config.rs          # config.toml ロード
+        ├── main.rs           # clap dispatch
+        ├── paths.rs          # XDG / %LOCALAPPDATA% 解決
+        ├── config.rs         # config.toml ロード
         └── commands/
-            ├── lookup.rs      # furigana lookup
-            ├── serve.rs       # furigana serve (Axum)
-            └── dict.rs        # furigana dict {add,list,remove,import,pull}
+            ├── lookup.rs     # furigana lookup
+            ├── dict.rs       # furigana dict {add,list,remove,import,pull}
+            └── serve/        # furigana serve (Axum HTTP)
+                ├── mod.rs    #   run() + Args + shutdown_signal
+                ├── handlers.rs #  /furigana / /healthz ハンドラ + 変換
+                ├── auth.rs   #   X-API-Key / Bearer middleware + CORS
+                └── types.rs  #   FuriganaParams / FuriganaResponse / AppState
 ```
 
 ## ステータスとロードマップ
