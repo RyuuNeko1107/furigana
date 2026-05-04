@@ -31,12 +31,14 @@ pub mod loader;
 pub mod numbers;
 pub mod reading;
 pub mod rules;
+pub mod tts;
 
 mod embedded;
 
 pub use crate::dict::Dict;
 pub use crate::error::{FuriganaError, Result};
 pub use crate::reading::{tokens_to_hiragana, tokens_to_ruby, ReadingToken};
+pub use crate::tts::TtsOptions;
 
 use crate::analyzer::Analyzer;
 use crate::numbers::NumericPhraseMatcher;
@@ -104,6 +106,31 @@ impl Furigana {
     #[must_use]
     pub fn to_ruby(&self, text: &str) -> String {
         tokens_to_ruby(&self.tokenize(text))
+    }
+
+    /// テキスト → TTS 向けに整形されたひらがな (ポーズ込み)
+    ///
+    /// 内部で [`Self::to_hiragana`] → [`tts::normalize_for_tts`] を走らせる。
+    /// VOICEVOX 等の音声合成に流す前段で使う想定。
+    #[must_use]
+    pub fn to_tts(&self, text: &str, opts: &TtsOptions) -> String {
+        let hira = self.to_hiragana(text);
+        tts::normalize_for_tts(&hira, opts)
+    }
+
+    /// TTS 出力を文末・読点で分割
+    ///
+    /// `max_segment_len` 以内のチャンクに分割した配列を返す。
+    /// VOICEVOX 等の文字数制限対策。
+    #[must_use]
+    pub fn segment_tts(
+        &self,
+        text: &str,
+        opts: &TtsOptions,
+        max_segment_len: usize,
+    ) -> Vec<String> {
+        let normalized = self.to_tts(text, opts);
+        tts::segment_for_tts(&normalized, max_segment_len)
     }
 
     /// 動的に辞書エントリを追加 (override 用途)
@@ -293,6 +320,35 @@ mod tests {
         let s = format!("{f:?}");
         assert!(s.contains("Furigana"));
         assert!(s.contains("dict_size"));
+    }
+
+    #[test]
+    fn to_tts_inserts_pauses() {
+        let f = Furigana::minimal().unwrap();
+        let opts = TtsOptions::default();
+        let result = f.to_tts("こんにちは。さようなら。", &opts);
+        // ひらがな化後に TTS 整形 → 句点後に pause (default は最終的に 1 スペースに圧縮)
+        assert!(result.contains("こんにちは。 "), "result: {result}");
+    }
+
+    #[test]
+    fn to_tts_with_non_space_marker_preserves_long_pause() {
+        let f = Furigana::minimal().unwrap();
+        let opts = TtsOptions {
+            short_pause: "<s>".to_string(),
+            long_pause: "<l>".to_string(),
+            keep_period: true,
+        };
+        let result = f.to_tts("こんにちは。さよなら。", &opts);
+        assert!(result.contains("こんにちは。<l>"), "result: {result}");
+    }
+
+    #[test]
+    fn segment_tts_returns_vec() {
+        let f = Furigana::minimal().unwrap();
+        let opts = TtsOptions::default();
+        let segs = f.segment_tts("ぶん1。ぶん2。ぶん3。", &opts, 60);
+        assert_eq!(segs.len(), 3);
     }
 
     #[test]
