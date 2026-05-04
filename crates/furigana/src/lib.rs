@@ -12,6 +12,7 @@
 // TSV 例を doc comment に書く際タブを使うため、clippy の lint を抑制
 #![allow(clippy::tabs_in_doc_comments)]
 
+pub mod analyzer;
 pub mod error;
 pub mod kana;
 pub mod loader;
