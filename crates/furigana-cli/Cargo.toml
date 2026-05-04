@@ -16,6 +16,9 @@ readme = "README.md"
 name = "furigana"
 path = "src/main.rs"
 
+[lints]
+workspace = true
+
 [dependencies]
 furigana = { path = "../furigana", version = "0.1" }
 clap = { version = "4", features = ["derive", "env"] }

@@ -31,3 +31,27 @@ opt-level = 3
 lto = true
 codegen-units = 1
 strip = true
+
+# ─── Lints (workspace 全体に適用) ────────────────────────────────────────
+# 各 crate の Cargo.toml で `[lints] workspace = true` を有効化することで継承
+[workspace.lints.rust]
+# 安全側に倒した一般的な warning
+unsafe_code = "deny"
+unused_must_use = "deny"
+
+[workspace.lints.clippy]
+# pedantic 全部 = うるさすぎるので、実害大きめのカテゴリだけ
+all = { level = "deny", priority = -1 }
+
+# わざと許可するもの (data-driven でドキュメント中にタブが入る等)
+tabs_in_doc_comments = "allow"
+
+# pedantic の中から特に役立つもの個別有効化
+needless_pass_by_value = "warn"
+must_use_candidate = "warn"
+explicit_iter_loop = "warn"
+single_match_else = "warn"
+
+# 他人の TODO 残しを防ぐ
+todo = "deny"
+unimplemented = "deny"

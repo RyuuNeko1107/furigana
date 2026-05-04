@@ -122,12 +122,9 @@ pub fn number_to_katakana(num_str: &str) -> String {
     let int_read = if int_part.is_empty() || int_part == "0" {
         "ゼロ".to_string()
     } else {
-        let n: u128 = match int_part.parse() {
-            Ok(v) => v,
-            Err(_) => {
-                let fallback = crate::kana::hira_to_kata(&zen2han(num_str));
-                return format!("{sign_read}{fallback}");
-            }
+        let Ok(n) = int_part.parse::<u128>() else {
+            let fallback = crate::kana::hira_to_kata(&zen2han(num_str));
+            return format!("{sign_read}{fallback}");
         };
         if n == 0 {
             "ゼロ".to_string()
