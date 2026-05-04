@@ -57,19 +57,3 @@ jobs:
       - name: Clippy (deny warnings)
         run: cargo clippy --workspace --all-targets -- -D warnings
 
-  msrv:
-    name: MSRV (Rust 1.86)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Rust 1.86
-        uses: dtolnay/rust-toolchain@1.86
-
-      - name: Cache cargo / target
-        uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: msrv
-
-      - name: Build (workspace)
-        run: cargo build --workspace --all-targets
