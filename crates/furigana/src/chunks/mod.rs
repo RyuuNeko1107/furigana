@@ -19,43 +19,17 @@
 //! Phase 2 で追加予定: AM/PM 英語、第n四半期、温度、レンジ、分数、ヶ月、
 //! ヶ所、n年(間|生|目|半|代)、人前/人分 等。
 
+mod regex;
+
+use self::regex::{
+    at_start, build_counter_regex, build_scale_regex, build_si_unit_regex, merge_non_numeric,
+    DATE_KANJI_FULL_RE, DATE_KANJI_MD_RE, DIGIT_RE, EMAIL_RE, TIME_COLON_RE, TIME_JP_FULL_RE,
+    URL_RE,
+};
 use crate::numbers::{
     euphonic_counter_read, number_to_katakana, scale_reading, si_unit_reading, symbol_char_reading,
 };
 use crate::rules::{CountersData, DaysData, RulesData, ScalesData, SymbolsData, UnitsData};
-use once_cell::sync::Lazy;
-use regex::Regex;
-
-// ─── 共通 regex ────────────────────────────────────────────────────────────
-
-/// 数値パターン (符号付き、カンマ・小数対応)
-const NUM_PAT: &str =
-    r"[+\-\u{2212}\u{FF0D}\u{FF0B}]?[0-9０-９]+(?:,[0-9０-９]{3})*(?:\.[0-9０-９]+)?";
-
-static URL_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r#"(?xi)(?:(?:https?://|ftp://|file://|www\.)[^\s<>"'\(\)\{\}\[\]]+|(?:[A-Za-z0-9\-]+\.)+[A-Za-z]{2,}(?::\d+)?(?:/[^\s<>"'\(\)\{\}\[\]]*)?|\d{1,3}(?:\.\d{1,3}){3}(?::\d+)?(?:/[^\s<>"'\(\)\{\}\[\]]*)?)"#).unwrap()
-});
-
-static EMAIL_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}").unwrap());
-
-static TIME_COLON_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"([0-9０-９]{1,2})[:：]([0-9０-９]{2})(?:[:：]([0-9０-９]{2}))?").unwrap()
-});
-
-static TIME_JP_FULL_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"([0-9０-９]{1,2})時(?:([0-9０-９]{1,2})分)?(?:([0-9０-９]{1,2})秒)?").unwrap()
-});
-
-static DATE_KANJI_FULL_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"([0-9０-９]{1,4})年([0-9０-９]{1,2})月([0-9０-９]{1,2})日").unwrap());
-
-static DATE_KANJI_MD_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"([0-9０-９]{1,2})月([0-9０-９]{1,2})日").unwrap());
-
-static DIGIT_RE: Lazy<Regex> = Lazy::new(|| Regex::new(NUM_PAT).unwrap());
-
-// ─── NumberChunker 本体 ────────────────────────────────────────────────────
 
 /// 数値テキストのオーケストレーション (regex pre-compiled)
 #[derive(Debug, Clone)]
@@ -66,12 +40,12 @@ pub struct NumberChunker {
     symbols: SymbolsData,
     days: DaysData,
 
-    /// 助数詞末尾 1 文字を含むパターン (`(NUM)(月|日|時|分|...|本|匹|...)`)
-    counter_re: Regex,
+    /// 助数詞末尾を含むパターン (`(NUM)(月|日|時|分|...|本|匹|...)`)
+    counter_re: ::regex::Regex,
     /// 大数スケール (`(NUM)(万|億|兆|...)`)
-    scale_re: Regex,
+    scale_re: ::regex::Regex,
     /// SI 単位 (`(NUM)(km|kg|...)`)
-    si_unit_re: Regex,
+    si_unit_re: ::regex::Regex,
 }
 
 impl NumberChunker {
@@ -259,84 +233,6 @@ impl NumberChunker {
     }
 }
 
-// ─── 内部ヘルパー ────────────────────────────────────────────────────────
-
-/// 開始位置 (start == 0) でマッチする場合のみ Captures を返す
-fn at_start<'h>(re: &Regex, hay: &'h str) -> Option<regex::Captures<'h>> {
-    re.captures(hay)
-        .filter(|c| c.get(0).is_some_and(|m| m.start() == 0))
-}
-
-/// 隣接する読みなし (None) チャンクを連結
-fn merge_non_numeric(parts: Vec<(String, Option<String>)>) -> Vec<(String, Option<String>)> {
-    let mut merged: Vec<(String, Option<String>)> = Vec::new();
-    let mut buf = String::new();
-
-    for (s, y) in parts {
-        if y.is_none() {
-            buf.push_str(&s);
-        } else {
-            if !buf.is_empty() {
-                merged.push((std::mem::take(&mut buf), None));
-            }
-            merged.push((s, y));
-        }
-    }
-    if !buf.is_empty() {
-        merged.push((buf, None));
-    }
-    merged
-}
-
-// ─── regex builders ────────────────────────────────────────────────────────
-
-/// 助数詞リストから regex を構築 (長い順でソート、prefix 衝突回避)
-fn build_counter_regex(counters: &CountersData) -> Regex {
-    let mut keys: Vec<String> = counters
-        .simple
-        .keys()
-        .chain(counters.counter.keys())
-        .cloned()
-        .collect();
-    keys.sort_by_key(|s| std::cmp::Reverse(s.chars().count()));
-    let alts: Vec<String> = keys.iter().map(|s| regex::escape(s)).collect();
-    let pat = if alts.is_empty() {
-        // 空なら「絶対マッチしない」regex (空 alternation は invalid なので)
-        r"(?P<n>\A\B)(?P<c>\A\B)".to_string()
-    } else {
-        format!(r"({NUM_PAT})({})", alts.join("|"))
-    };
-    Regex::new(&pat).expect("counter regex")
-}
-
-/// 大数スケール regex
-fn build_scale_regex(scales: &ScalesData) -> Regex {
-    let mut kanjis: Vec<String> = scales.entries.iter().map(|e| e.kanji.clone()).collect();
-    kanjis.sort_by_key(|s| std::cmp::Reverse(s.chars().count()));
-    let alts: Vec<String> = kanjis.iter().map(|s| regex::escape(s)).collect();
-    let pat = if alts.is_empty() {
-        r"(?P<n>\A\B)(?P<s>\A\B)".to_string()
-    } else {
-        format!(r"({NUM_PAT})({})", alts.join("|"))
-    };
-    Regex::new(&pat).expect("scale regex")
-}
-
-/// SI 単位 regex
-fn build_si_unit_regex(units: &UnitsData) -> Regex {
-    let mut symbols: Vec<String> = units.entries.keys().cloned().collect();
-    symbols.sort_by_key(|s| std::cmp::Reverse(s.chars().count()));
-    let alts: Vec<String> = symbols.iter().map(|s| regex::escape(s)).collect();
-    let pat = if alts.is_empty() {
-        r"(?P<n>\A\B)(?P<u>\A\B)".to_string()
-    } else {
-        format!(r"({NUM_PAT})({})", alts.join("|"))
-    };
-    Regex::new(&pat).expect("si_unit regex")
-}
-
-// ─── apply_numeric_overrides 互換ヘルパ (再エクスポート) ─────────────────
-
 /// `numbers::apply_numeric_overrides` を再エクスポート (chunker と同階層から呼びやすく)
 pub use crate::numbers::apply_numeric_overrides;
 
@@ -348,7 +244,6 @@ mod tests {
 
     fn rules() -> RulesData {
         // 本体に rules を embed しないため、テスト用 fixture を使う。
-        // 実データは furigana-dict 側、`furigana dict pull` で配布される。
         let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("tests")
             .join("fixtures")
@@ -367,8 +262,6 @@ mod tests {
         parts.iter().find(|(s, _)| s == surface)
     }
 
-    // ─── 単一助数詞 ────────────────────────────────────────────────────
-
     #[test]
     fn split_single_counter() {
         let c = chunker();
@@ -380,7 +273,6 @@ mod tests {
     #[test]
     fn split_month_day_separately() {
         let c = chunker();
-        // 1月1日 を date_kanji_md として一括捕捉
         let r = c.split("1月1日に集合");
         let m = find(&r, "1月1日").expect("missing 1月1日");
         let reading = m.1.as_deref().expect("no reading");
@@ -396,8 +288,6 @@ mod tests {
         let reading = m.1.as_deref().expect("no reading");
         assert!(reading.contains("ジュウガツ"), "reading: {reading}");
     }
-
-    // ─── 時刻 ──────────────────────────────────────────────────────────
 
     #[test]
     fn split_time_colon() {
@@ -418,20 +308,15 @@ mod tests {
         assert!(reading.contains("クジ"), "reading: {reading}");
     }
 
-    // ─── スケール ──────────────────────────────────────────────────────
-
     #[test]
     fn split_scale() {
         let c = chunker();
         let r = c.split("3万円のもの");
-        // 3万 → サンマン がスケールとして捕捉される (円は別途)
         let has_scale = r
             .iter()
             .any(|(s, read)| (s == "3万" || s == "3万円") && read.is_some());
         assert!(has_scale, "no scale match: {r:?}");
     }
-
-    // ─── SI 単位 ───────────────────────────────────────────────────────
 
     #[test]
     fn split_si_unit() {
@@ -443,8 +328,6 @@ mod tests {
         assert!(reading.contains("キロメートル"), "reading: {reading}");
     }
 
-    // ─── URL / メール ─────────────────────────────────────────────────
-
     #[test]
     fn split_skips_url() {
         let c = chunker();
@@ -452,8 +335,6 @@ mod tests {
         let url_chunk = r.iter().find(|(s, _)| s.contains("example.com"));
         assert!(url_chunk.is_some());
     }
-
-    // ─── 記号 ──────────────────────────────────────────────────────────
 
     #[test]
     fn split_symbol() {
@@ -463,8 +344,6 @@ mod tests {
         assert_eq!(plus.1.as_deref(), Some("プラス"));
     }
 
-    // ─── 素の数字 ──────────────────────────────────────────────────────
-
     #[test]
     fn split_bare_digit() {
         let c = chunker();
@@ -472,8 +351,6 @@ mod tests {
         let m = find(&r, "12345").expect("missing 12345");
         assert!(m.1.is_some());
     }
-
-    // ─── 助数詞混在 ────────────────────────────────────────────────────
 
     #[test]
     fn split_mixed() {
