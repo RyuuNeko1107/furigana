@@ -1,18 +1,18 @@
-//! 実データ (workspace/data/rules/) のロード検証
+//! テスト用 fixture (tests/fixtures/rules/) のロード検証
 //!
-//! ルールファイルがリポジトリに正しくコミットされ、loader でパースできることを確認。
+//! 本体バイナリには rules を embed しないため、テスト用に保持している
+//! fixture ファイルが loader でパースできることを確認する。
+//! 実データは [`furigana-dict`](https://github.com/RyuuNeko1107/furigana-dict)
+//! 側でメンテナンスされる。
 
 use furigana::loader::load_rules_dir;
 use std::path::PathBuf;
 
 fn data_rules_dir() -> PathBuf {
-    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    // crates/furigana → workspace root
-    manifest
-        .parent()
-        .and_then(|p| p.parent())
-        .map(|p| p.join("data").join("rules"))
-        .expect("workspace root not found")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join("fixtures")
+        .join("rules")
 }
 
 #[test]

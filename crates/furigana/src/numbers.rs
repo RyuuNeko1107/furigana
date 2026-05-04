@@ -611,12 +611,12 @@ mod tests {
     // ─── euphonic_counter_read ────────────────────────────────────────────
 
     fn load_counters() -> CountersData {
-        let raw = include_str!("../../../data/rules/counters.toml");
+        let raw = include_str!("../tests/fixtures/rules/counters.toml");
         parse_counters_toml(raw, "counters.toml").unwrap()
     }
 
     fn load_days() -> DaysData {
-        let raw = include_str!("../../../data/rules/days.toml");
+        let raw = include_str!("../tests/fixtures/rules/days.toml");
         parse_days_toml(raw, "days.toml").unwrap()
     }
 
@@ -744,7 +744,7 @@ mod tests {
     // ─── NumericPhraseMatcher ─────────────────────────────────────────────
 
     fn load_phrases() -> NumericPhrasesData {
-        let raw = include_str!("../../../data/rules/numeric_phrases.toml");
+        let raw = include_str!("../tests/fixtures/rules/numeric_phrases.toml");
         parse_numeric_phrases_toml(raw, "numeric_phrases.toml").unwrap()
     }
 
@@ -802,7 +802,7 @@ mod tests {
 
     #[test]
     fn scale_reading_basic() {
-        let raw = include_str!("../../../data/rules/scales.toml");
+        let raw = include_str!("../tests/fixtures/rules/scales.toml");
         let scales = parse_scales_toml(raw, "scales.toml").unwrap();
         assert_eq!(scale_reading("3", "万", &scales), "サンマン");
         assert_eq!(scale_reading("1", "兆", &scales), "イッチョウ");
@@ -812,7 +812,7 @@ mod tests {
 
     #[test]
     fn si_unit_reading_basic() {
-        let raw = include_str!("../../../data/rules/units.toml");
+        let raw = include_str!("../tests/fixtures/rules/units.toml");
         let units = parse_units_toml(raw, "units.toml").unwrap();
         assert_eq!(si_unit_reading("100", "km", &units), "ヒャクキロメートル");
         assert_eq!(si_unit_reading("3", "L", &units), "サンリットル");
@@ -820,7 +820,7 @@ mod tests {
 
     #[test]
     fn symbol_char_reading_basic() {
-        let raw = include_str!("../../../data/rules/symbols.toml");
+        let raw = include_str!("../tests/fixtures/rules/symbols.toml");
         let symbols = parse_symbols_toml(raw, "symbols.toml").unwrap();
         assert_eq!(
             symbol_char_reading('+', &symbols).as_deref(),

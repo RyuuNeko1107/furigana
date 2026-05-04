@@ -347,12 +347,11 @@ mod tests {
     use std::path::PathBuf;
 
     fn rules() -> RulesData {
+        // 本体に rules を embed しないため、テスト用 fixture を使う。
+        // 実データは furigana-dict 側、`furigana dict pull` で配布される。
         let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .unwrap()
-            .parent()
-            .unwrap()
-            .join("data")
+            .join("tests")
+            .join("fixtures")
             .join("rules");
         load_rules_dir(&dir).expect("load rules failed")
     }
