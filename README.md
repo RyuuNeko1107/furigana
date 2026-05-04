@@ -78,10 +78,7 @@ $ curl 'http://127.0.0.1:8000/furigana?text=灰桜'
 
 ## ライセンス
 
-MIT License もしくは Apache License 2.0 のいずれか好きな方を選べます (デュアルライセンス):
-
-- [LICENSE-APACHE](LICENSE-APACHE)
-- [LICENSE-MIT](LICENSE-MIT)
+MIT License。詳細は [LICENSE](LICENSE) を参照。
 
 ## コントリビュート
 

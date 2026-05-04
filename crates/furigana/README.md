@@ -16,4 +16,4 @@ See the [project README](https://github.com/RyuuNeko1107/furigana) for full docs
 
 ## License
 
-Dual-licensed under MIT or Apache-2.0 at your option.
+MIT License.
