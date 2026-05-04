@@ -1,20 +1,30 @@
 //! `furigana serve` サブコマンド
 //!
-//! ローカル HTTP サーバーを起動。default bind は `127.0.0.1:8000`。
+//! ローカル HTTP サーバー。default bind は `127.0.0.1:8000`。
+//! API は ryuuneko.com の公開 Furigana API と互換 (drop-in 差し替え可能)。
 //!
 //! ## エンドポイント
-//! - `GET  /furigana?text=...&format=ruby|hiragana` — クエリ経由で 1 件変換
-//! - `POST /furigana`                                — JSON body `{ "text": "...", "format": "..." }`
-//! - `GET  /healthz`                                 — `"ok"` テキスト
+//! - `GET  /furigana?text=...&mode=tts|hiragana|ruby|kanji`
+//! - `POST /furigana`  body: `{ "text": "...", "mode": "...", ... }`
+//! - `GET  /healthz`   ヘルスチェック
+//!
+//! ## パラメータ (公開 API 互換)
+//! | name | default | 用途 |
+//! |---|---|---|
+//! | `text` | (必須) | 変換対象 (最大 10,000 文字) |
+//! | `text_b64` | - | text の Base64 URL-safe 版 |
+//! | `mode` | `tts` | `tts` / `hiragana` / `ruby` / `kanji` |
+//! | `short_pause` | `" "` | TTS: `、` 後挿入 |
+//! | `long_pause` | `"   "` | TTS: `。!?` 後挿入 |
+//! | `keep_period` | `true` | TTS: `。` を残す |
+//! | `segmented` | `false` | `segments` 配列を返す |
+//! | `max_segment_len` | `60` | segment の最大文字数 |
+//! | `debug` | `false` | `timings_ms` を返す |
 //!
 //! ## 認証
-//! `config.toml` の `[auth].tokens` または `--token` で渡された値が
-//! 1 つ以上設定されていれば、`/furigana` に `Authorization: Bearer <token>`
-//! が必須。空なら認証無し (デフォルト)。
-//!
-//! ## CORS
-//! `config.server.cors_origins` が空なら全 origin 許可 (localhost 用途)。
-//! 値ありなら厳密なオリジンチェック。
+//! `X-API-Key: <token>` (公開 API 互換) または `Authorization: Bearer <token>`。
+//! `config.toml` の `[auth].tokens` または起動時 `--token` (env `FURIGANA_TOKEN`)
+//! が空でない場合のみ必須化。`/healthz` は常に認証不要。
 
 use crate::config::Config;
 use crate::paths::Paths;
@@ -27,21 +37,27 @@ use axum::{
     routing::get,
     Json, Router,
 };
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use clap::Args as ClapArgs;
-use furigana::Furigana;
+use furigana::{Furigana, TtsOptions};
 use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
 use std::sync::Arc;
+use std::time::Instant;
 use tokio::net::TcpListener;
 use tower_http::cors::{Any, CorsLayer};
 
+/// 1 リクエストあたりの最大入力文字数 (公開 API 仕様)
+const MAX_TEXT_LEN: usize = 10_000;
+
 #[derive(ClapArgs, Debug)]
 pub struct Args {
-    /// bind address (config.toml `[server].bind` を上書き)
+    /// bind address (`config.toml [server].bind` を上書き)
     #[arg(long)]
     pub bind: Option<String>,
 
     /// 認証トークン (env `FURIGANA_TOKEN`)。
-    /// 指定すると `/furigana` で Bearer 必須化。
+    /// 指定すると `/furigana` で `X-API-Key` または Bearer 必須化。
     #[arg(long, env = "FURIGANA_TOKEN")]
     pub token: Option<String>,
 }
@@ -52,33 +68,68 @@ struct AppState {
     tokens: Arc<Vec<String>>,
 }
 
-#[derive(Deserialize)]
-struct FuriganaQuery {
-    text: String,
-    #[serde(default = "default_format")]
-    format: String,
+// ─── リクエスト型 ────────────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+struct FuriganaParams {
+    #[serde(default)]
+    text: Option<String>,
+    #[serde(default)]
+    text_b64: Option<String>,
+    #[serde(default = "default_mode")]
+    mode: String,
+    #[serde(default = "default_short_pause")]
+    short_pause: String,
+    #[serde(default = "default_long_pause")]
+    long_pause: String,
+    #[serde(default = "default_true")]
+    keep_period: bool,
+    #[serde(default)]
+    segmented: bool,
+    #[serde(default = "default_max_seg")]
+    max_segment_len: usize,
+    #[serde(default)]
+    debug: bool,
 }
 
-#[derive(Deserialize)]
-struct FuriganaBody {
-    text: String,
-    #[serde(default = "default_format")]
-    format: String,
+fn default_mode() -> String {
+    "tts".to_string()
+}
+fn default_short_pause() -> String {
+    " ".to_string()
+}
+fn default_long_pause() -> String {
+    "   ".to_string()
+}
+fn default_true() -> bool {
+    true
+}
+fn default_max_seg() -> usize {
+    60
 }
 
-#[derive(Serialize)]
+// ─── レスポンス型 ────────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize)]
 struct FuriganaResponse {
-    text: String,
-    reading: String,
-    format: String,
+    result: String,
+    mode: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    segments: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    timings_ms: Option<Value>,
 }
 
-fn default_format() -> String {
-    "ruby".to_string()
+type ApiError = (StatusCode, Json<Value>);
+
+fn error(code: StatusCode, msg: impl Into<String>) -> ApiError {
+    (code, Json(json!({ "error": msg.into() })))
 }
 
-async fn healthz(State(state): State<AppState>) -> Json<serde_json::Value> {
-    Json(serde_json::json!({
+// ─── ハンドラ ────────────────────────────────────────────────────────────────
+
+async fn healthz(State(state): State<AppState>) -> Json<Value> {
+    Json(json!({
         "status": "ok",
         "dict_size": state.furigana.dict_size(),
     }))
@@ -86,41 +137,116 @@ async fn healthz(State(state): State<AppState>) -> Json<serde_json::Value> {
 
 async fn furigana_get(
     State(state): State<AppState>,
-    Query(q): Query<FuriganaQuery>,
-) -> Result<Json<FuriganaResponse>, (StatusCode, String)> {
-    process(&state.furigana, &q.text, &q.format)
+    Query(params): Query<FuriganaParams>,
+) -> Result<Json<FuriganaResponse>, ApiError> {
+    process_furigana(&state.furigana, params)
 }
 
 async fn furigana_post(
     State(state): State<AppState>,
-    Json(body): Json<FuriganaBody>,
-) -> Result<Json<FuriganaResponse>, (StatusCode, String)> {
-    process(&state.furigana, &body.text, &body.format)
+    Json(params): Json<FuriganaParams>,
+) -> Result<Json<FuriganaResponse>, ApiError> {
+    process_furigana(&state.furigana, params)
 }
 
-fn process(
+fn process_furigana(
     f: &Furigana,
-    text: &str,
-    format: &str,
-) -> Result<Json<FuriganaResponse>, (StatusCode, String)> {
-    let reading = match format {
-        "ruby" => f.to_ruby(text),
-        "hiragana" | "hira" => f.to_hiragana(text),
-        other => {
-            return Err((
+    params: FuriganaParams,
+) -> Result<Json<FuriganaResponse>, ApiError> {
+    // ─── text 解決 ────────────────────────────────────────────────────────
+    let text = if let Some(b64) = params.text_b64.as_ref() {
+        let decoded = URL_SAFE_NO_PAD
+            .decode(b64.trim_end_matches('='))
+            .map_err(|_| error(StatusCode::BAD_REQUEST, "invalid base64 in text_b64"))?;
+        String::from_utf8(decoded).map_err(|_| {
+            error(
                 StatusCode::BAD_REQUEST,
-                format!("unknown format '{other}' (use: ruby | hiragana)"),
-            ));
+                "text_b64 decoded bytes are not valid UTF-8",
+            )
+        })?
+    } else if let Some(t) = params.text.as_ref() {
+        t.clone()
+    } else {
+        return Err(error(StatusCode::BAD_REQUEST, "no text provided"));
+    };
+
+    if text.is_empty() {
+        return Err(error(StatusCode::BAD_REQUEST, "no text provided"));
+    }
+    let nchars = text.chars().count();
+    if nchars > MAX_TEXT_LEN {
+        return Err(error(
+            StatusCode::BAD_REQUEST,
+            format!("text too long: {nchars} chars (max {MAX_TEXT_LEN})"),
+        ));
+    }
+
+    // ─── mode 正規化 ──────────────────────────────────────────────────────
+    let mode = match params.mode.as_str() {
+        "tts" | "hiragana" | "ruby" | "kanji" => params.mode.clone(),
+        _ => default_mode(),
+    };
+
+    // ─── 変換 ─────────────────────────────────────────────────────────────
+    let t_start = Instant::now();
+    let tokens_start = Instant::now();
+    let tokens = f.tokenize(&text);
+    let t_tokenize_ms = tokens_start.elapsed().as_secs_f64() * 1000.0;
+
+    let convert_start = Instant::now();
+    let result = match mode.as_str() {
+        "kanji" => text.clone(),
+        "ruby" => furigana::tokens_to_ruby(&tokens),
+        "hiragana" => furigana::tokens_to_hiragana(&tokens),
+        _ => {
+            // tts (default)
+            let opts = TtsOptions {
+                short_pause: params.short_pause.clone(),
+                long_pause: params.long_pause.clone(),
+                keep_period: params.keep_period,
+            };
+            let hira = furigana::tokens_to_hiragana(&tokens);
+            furigana::tts::normalize_for_tts(&hira, &opts)
         }
     };
+    let t_convert_ms = convert_start.elapsed().as_secs_f64() * 1000.0;
+    let t_total_ms = t_start.elapsed().as_secs_f64() * 1000.0;
+
+    // ─── segments / timings ──────────────────────────────────────────────
+    let segments = if params.segmented && (mode == "tts" || mode == "hiragana") {
+        Some(furigana::tts::segment_for_tts(
+            &result,
+            params.max_segment_len,
+        ))
+    } else {
+        None
+    };
+
+    let timings_ms = if params.debug {
+        Some(json!({
+            "total": round1(t_total_ms),
+            "tokenize": round1(t_tokenize_ms),
+            "convert": round1(t_convert_ms),
+        }))
+    } else {
+        None
+    };
+
     Ok(Json(FuriganaResponse {
-        text: text.to_string(),
-        reading,
-        format: format.to_string(),
+        result,
+        mode,
+        segments,
+        timings_ms,
     }))
 }
 
-async fn require_bearer(
+fn round1(ms: f64) -> f64 {
+    (ms * 10.0).round() / 10.0
+}
+
+// ─── 認証ミドルウェア ────────────────────────────────────────────────────────
+
+async fn require_token(
     State(state): State<AppState>,
     req: Request,
     next: Next,
@@ -128,20 +254,31 @@ async fn require_bearer(
     if state.tokens.is_empty() {
         return Ok(next.run(req).await);
     }
-    let auth = req
-        .headers()
-        .get("authorization")
-        .and_then(|v| v.to_str().ok());
-    let presented = match auth {
-        Some(h) if h.starts_with("Bearer ") => &h[7..],
-        _ => return Err(StatusCode::UNAUTHORIZED),
-    };
-    if state.tokens.iter().any(|t| t == presented) {
+    let presented = extract_token(&req).ok_or(StatusCode::UNAUTHORIZED)?;
+    if state.tokens.iter().any(|t| t == &presented) {
         Ok(next.run(req).await)
     } else {
         Err(StatusCode::UNAUTHORIZED)
     }
 }
+
+/// `X-API-Key` 優先、無ければ `Authorization: Bearer <token>` を読む
+fn extract_token(req: &Request) -> Option<String> {
+    if let Some(v) = req.headers().get("x-api-key").and_then(|v| v.to_str().ok()) {
+        let s = v.trim();
+        if !s.is_empty() {
+            return Some(s.to_string());
+        }
+    }
+    let auth = req
+        .headers()
+        .get("authorization")
+        .and_then(|v| v.to_str().ok())?;
+    let stripped = auth.strip_prefix("Bearer ")?;
+    Some(stripped.to_string())
+}
+
+// ─── CORS ────────────────────────────────────────────────────────────────────
 
 fn build_cors(cfg: &Config) -> CorsLayer {
     let methods = [Method::GET, Method::POST, Method::OPTIONS];
@@ -164,7 +301,8 @@ fn build_cors(cfg: &Config) -> CorsLayer {
     }
 }
 
-/// 実行
+// ─── 起動 ────────────────────────────────────────────────────────────────────
+
 pub fn run(args: Args, paths: &Paths, cfg: &Config) -> Result<()> {
     let furigana = Arc::new(super::build_furigana(paths)?);
 
@@ -184,10 +322,7 @@ pub fn run(args: Args, paths: &Paths, cfg: &Config) -> Result<()> {
 
     let furigana_routes = Router::new()
         .route("/furigana", get(furigana_get).post(furigana_post))
-        .layer(middleware::from_fn_with_state(
-            state.clone(),
-            require_bearer,
-        ));
+        .layer(middleware::from_fn_with_state(state.clone(), require_token));
 
     let app = Router::new()
         .merge(furigana_routes)
@@ -210,9 +345,9 @@ pub fn run(args: Args, paths: &Paths, cfg: &Config) -> Result<()> {
 
         tracing::info!("furigana serving on http://{actual}");
         if auth_enabled {
-            tracing::info!("Bearer 認証: 有効");
+            tracing::info!("認証: 有効 (X-API-Key または Bearer)");
         } else {
-            tracing::info!("Bearer 認証: 無効 (ローカル想定)");
+            tracing::info!("認証: 無効 (ローカル想定)");
         }
 
         axum::serve(listener, app)
