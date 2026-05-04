@@ -89,11 +89,11 @@ pub fn apply_numeric_overrides(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::loader::parse_numeric_phrases_toml;
+    use crate::loader::parse_toml;
 
     fn load_phrases() -> NumericPhrasesData {
         let raw = include_str!("../../tests/fixtures/rules/numeric_phrases.toml");
-        parse_numeric_phrases_toml(raw, "numeric_phrases.toml").unwrap()
+        parse_toml(raw, "numeric_phrases.toml").unwrap()
     }
 
     #[test]

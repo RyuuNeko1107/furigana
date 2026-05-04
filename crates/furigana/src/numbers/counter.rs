@@ -111,16 +111,16 @@ pub fn euphonic_counter_read(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::loader::{parse_counters_toml, parse_days_toml};
+    use crate::loader::parse_toml;
 
     fn load_counters() -> CountersData {
         let raw = include_str!("../../tests/fixtures/rules/counters.toml");
-        parse_counters_toml(raw, "counters.toml").unwrap()
+        parse_toml(raw, "counters.toml").unwrap()
     }
 
     fn load_days() -> DaysData {
         let raw = include_str!("../../tests/fixtures/rules/days.toml");
-        parse_days_toml(raw, "days.toml").unwrap()
+        parse_toml(raw, "days.toml").unwrap()
     }
 
     #[test]

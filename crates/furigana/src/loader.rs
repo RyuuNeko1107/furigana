@@ -18,12 +18,19 @@
 //!
 //! 個別ファイルが存在しない場合はその型のデフォルト値が返る。
 //! ただし [`load_rules_dir`] は **ディレクトリ自体が存在しない** 場合はエラーを返す。
+//!
+//! ## API
+//!
+//! 単一ファイル系は generic で 1 つに集約してある:
+//! - [`parse_toml`]      : 文字列 → 任意の `Deserialize` 型
+//! - [`load_or_default`] : ファイル → 任意の `Deserialize + Default` 型
+//!   (ファイルが無ければ `Default::default()` を返す)
+//!
+//! ディレクトリ全体を読み込む高レベル API は [`load_rules_dir`]。
 
 use crate::error::{FuriganaError, Result};
-use crate::rules::{
-    CompatData, ContextData, CountersData, DaysData, LatinData, NumericPhrasesData, RulesData,
-    ScalesData, SymbolsData, UnitsData,
-};
+use crate::rules::RulesData;
+use serde::de::DeserializeOwned;
 use std::path::Path;
 
 // ─── ファイル名定数 ───────────────────────────────────────────────────────────
@@ -47,121 +54,40 @@ pub const NUMERIC_PHRASES_FILE: &str = "numeric_phrases.toml";
 /// 異体字マップ
 pub const COMPAT_FILE: &str = "compat_map.toml";
 
-// ─── Generic helper ─────────────────────────────────────────────────────────
+// ─── 汎用 parse / load ──────────────────────────────────────────────────────
 
-fn parse_toml<T: serde::de::DeserializeOwned>(content: &str, file: &str) -> Result<T> {
+/// TOML 文字列を任意の型にパース
+///
+/// 失敗時は `file` をエラーメッセージに含めた [`FuriganaError::Toml`] を返す。
+///
+/// ```no_run
+/// use furigana::loader::parse_toml;
+/// use furigana::rules::CountersData;
+///
+/// let data: CountersData = parse_toml(r#"[simple]"#, "counters.toml").unwrap();
+/// ```
+pub fn parse_toml<T: DeserializeOwned>(content: &str, file: &str) -> Result<T> {
     toml::from_str(content).map_err(|e| FuriganaError::Toml {
         file: file.to_string(),
         source: e,
     })
 }
 
-// ─── 個別 TOML パーサ ────────────────────────────────────────────────────────
-
-/// counters.toml の文字列を解釈
-pub fn parse_counters_toml(content: &str, file: &str) -> Result<CountersData> {
-    parse_toml(content, file)
-}
-
-/// context.toml の文字列を解釈
-pub fn parse_context_toml(content: &str, file: &str) -> Result<ContextData> {
-    parse_toml(content, file)
-}
-
-/// days.toml の文字列を解釈
-pub fn parse_days_toml(content: &str, file: &str) -> Result<DaysData> {
-    parse_toml(content, file)
-}
-
-/// scales.toml の文字列を解釈
-pub fn parse_scales_toml(content: &str, file: &str) -> Result<ScalesData> {
-    parse_toml(content, file)
-}
-
-/// units.toml の文字列を解釈
-pub fn parse_units_toml(content: &str, file: &str) -> Result<UnitsData> {
-    parse_toml(content, file)
-}
-
-/// symbols.toml の文字列を解釈
-pub fn parse_symbols_toml(content: &str, file: &str) -> Result<SymbolsData> {
-    parse_toml(content, file)
-}
-
-/// latin.toml の文字列を解釈
-pub fn parse_latin_toml(content: &str, file: &str) -> Result<LatinData> {
-    parse_toml(content, file)
-}
-
-/// numeric_phrases.toml の文字列を解釈
-pub fn parse_numeric_phrases_toml(content: &str, file: &str) -> Result<NumericPhrasesData> {
-    parse_toml(content, file)
-}
-
-/// compat_map.toml の文字列を解釈
-pub fn parse_compat_toml(content: &str, file: &str) -> Result<CompatData> {
-    parse_toml(content, file)
-}
-
-// ─── ファイル読み込み (default fallback 付き) ────────────────────────────────
-
-fn read_or_default<T, F>(path: &Path, parser: F) -> Result<T>
-where
-    T: Default,
-    F: FnOnce(&str, &str) -> Result<T>,
-{
+/// ファイルから TOML を読み込む (存在しなければ `Default::default()` を返す)
+///
+/// ```no_run
+/// use furigana::loader::load_or_default;
+/// use furigana::rules::CountersData;
+///
+/// let data: CountersData = load_or_default("path/to/counters.toml").unwrap();
+/// ```
+pub fn load_or_default<T: DeserializeOwned + Default>(path: impl AsRef<Path>) -> Result<T> {
+    let path = path.as_ref();
     if !path.exists() {
         return Ok(T::default());
     }
     let content = std::fs::read_to_string(path)?;
-    parser(&content, &path.display().to_string())
-}
-
-// ─── 個別ファイルローダー ────────────────────────────────────────────────────
-
-/// counters.toml をファイルから読み込む (存在しなければ default)
-pub fn load_counters(path: impl AsRef<Path>) -> Result<CountersData> {
-    read_or_default(path.as_ref(), parse_counters_toml)
-}
-
-/// context.toml をファイルから読み込む (存在しなければ default)
-pub fn load_context(path: impl AsRef<Path>) -> Result<ContextData> {
-    read_or_default(path.as_ref(), parse_context_toml)
-}
-
-/// days.toml をファイルから読み込む (存在しなければ default)
-pub fn load_days(path: impl AsRef<Path>) -> Result<DaysData> {
-    read_or_default(path.as_ref(), parse_days_toml)
-}
-
-/// scales.toml をファイルから読み込む (存在しなければ default)
-pub fn load_scales(path: impl AsRef<Path>) -> Result<ScalesData> {
-    read_or_default(path.as_ref(), parse_scales_toml)
-}
-
-/// units.toml をファイルから読み込む (存在しなければ default)
-pub fn load_units(path: impl AsRef<Path>) -> Result<UnitsData> {
-    read_or_default(path.as_ref(), parse_units_toml)
-}
-
-/// symbols.toml をファイルから読み込む (存在しなければ default)
-pub fn load_symbols(path: impl AsRef<Path>) -> Result<SymbolsData> {
-    read_or_default(path.as_ref(), parse_symbols_toml)
-}
-
-/// latin.toml をファイルから読み込む (存在しなければ default)
-pub fn load_latin(path: impl AsRef<Path>) -> Result<LatinData> {
-    read_or_default(path.as_ref(), parse_latin_toml)
-}
-
-/// numeric_phrases.toml をファイルから読み込む (存在しなければ default)
-pub fn load_numeric_phrases(path: impl AsRef<Path>) -> Result<NumericPhrasesData> {
-    read_or_default(path.as_ref(), parse_numeric_phrases_toml)
-}
-
-/// compat_map.toml をファイルから読み込む (存在しなければ default)
-pub fn load_compat(path: impl AsRef<Path>) -> Result<CompatData> {
-    read_or_default(path.as_ref(), parse_compat_toml)
+    parse_toml(&content, &path.display().to_string())
 }
 
 // ─── ディレクトリ全体 ────────────────────────────────────────────────────────
@@ -187,21 +113,22 @@ pub fn load_rules_dir<P: AsRef<Path>>(dir: P) -> Result<RulesData> {
     }
 
     Ok(RulesData {
-        counters: load_counters(dir.join(COUNTERS_FILE))?,
-        context: load_context(dir.join(CONTEXT_FILE))?,
-        days: load_days(dir.join(DAYS_FILE))?,
-        scales: load_scales(dir.join(SCALES_FILE))?,
-        units: load_units(dir.join(UNITS_FILE))?,
-        symbols: load_symbols(dir.join(SYMBOLS_FILE))?,
-        latin: load_latin(dir.join(LATIN_FILE))?,
-        numeric_phrases: load_numeric_phrases(dir.join(NUMERIC_PHRASES_FILE))?,
-        compat: load_compat(dir.join(COMPAT_FILE))?,
+        counters: load_or_default(dir.join(COUNTERS_FILE))?,
+        context: load_or_default(dir.join(CONTEXT_FILE))?,
+        days: load_or_default(dir.join(DAYS_FILE))?,
+        scales: load_or_default(dir.join(SCALES_FILE))?,
+        units: load_or_default(dir.join(UNITS_FILE))?,
+        symbols: load_or_default(dir.join(SYMBOLS_FILE))?,
+        latin: load_or_default(dir.join(LATIN_FILE))?,
+        numeric_phrases: load_or_default(dir.join(NUMERIC_PHRASES_FILE))?,
+        compat: load_or_default(dir.join(COMPAT_FILE))?,
     })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::rules::CountersData;
 
     #[test]
     fn parses_counters_toml() {
@@ -214,7 +141,7 @@ mod tests {
             suffix = "ポン"
             sokuonize = true
         "#;
-        let data = parse_counters_toml(toml_str, "counters.toml").unwrap();
+        let data: CountersData = parse_toml(toml_str, "counters.toml").unwrap();
         let hon = data.counter.get("本").unwrap();
         assert_eq!(hon.default.as_deref(), Some("ホン"));
         assert_eq!(hon.rules[0].suffix, "ポン");
@@ -222,7 +149,7 @@ mod tests {
 
     #[test]
     fn invalid_toml_error_includes_file_name() {
-        let err = parse_counters_toml("[invalid", "counters.toml").unwrap_err();
+        let err = parse_toml::<CountersData>("[invalid", "counters.toml").unwrap_err();
         match err {
             FuriganaError::Toml { file, .. } => assert_eq!(file, "counters.toml"),
             other => panic!("expected Toml error, got {other:?}"),
@@ -235,7 +162,7 @@ mod tests {
             "1" = "ツイタチ"
             "20" = "ハツカ"
         "#;
-        let data = parse_days_toml(toml_str, "days.toml").unwrap();
+        let data: crate::rules::DaysData = parse_toml(toml_str, "days.toml").unwrap();
         assert_eq!(data.get(1), Some("ツイタチ"));
         assert_eq!(data.get(20), Some("ハツカ"));
         assert_eq!(data.get(15), None);
@@ -251,7 +178,7 @@ mod tests {
             kanji = "億"
             kana = "オク"
         "#;
-        let data = parse_scales_toml(toml_str, "scales.toml").unwrap();
+        let data: crate::rules::ScalesData = parse_toml(toml_str, "scales.toml").unwrap();
         assert_eq!(data.len(), 2);
         assert_eq!(data.lookup("億"), Some("オク"));
     }
@@ -263,7 +190,7 @@ mod tests {
             "km" = { kana = "キロメートル" }
             "L"  = { kana = "リットル", ci = true }
         "#;
-        let data = parse_units_toml(toml_str, "units.toml").unwrap();
+        let data: crate::rules::UnitsData = parse_toml(toml_str, "units.toml").unwrap();
         assert_eq!(data.lookup("km"), Some("キロメートル"));
         assert_eq!(data.lookup("l"), Some("リットル"));
     }
