@@ -1,0 +1,91 @@
+//! 設定ファイル (TOML) の読み込み
+//!
+//! 設定ファイルは optional。存在しない場合は default 値を使う。
+//!
+//! 各フィールドは Task #11 (CLI subcommands 実装) でサーバー側から読まれる。
+
+#![allow(dead_code)]
+
+use crate::paths::Paths;
+use anyhow::{Context, Result};
+use serde::Deserialize;
+
+/// CLI 設定 (config.toml 全体)
+#[derive(Debug, Default, Clone, Deserialize)]
+pub struct Config {
+    /// HTTP サーバー設定
+    #[serde(default)]
+    pub server: ServerConfig,
+
+    /// bearer 認証設定
+    #[serde(default)]
+    pub auth: AuthConfig,
+
+    /// レート制限設定
+    #[serde(default)]
+    pub rate_limit: RateLimitConfig,
+}
+
+/// `[server]` セクション
+#[derive(Debug, Clone, Deserialize)]
+pub struct ServerConfig {
+    /// bind address (default: `127.0.0.1:8000`)
+    #[serde(default = "default_bind")]
+    pub bind: String,
+
+    /// CORS 許可オリジン (空 = same-origin only)
+    #[serde(default)]
+    pub cors_origins: Vec<String>,
+}
+
+impl Default for ServerConfig {
+    fn default() -> Self {
+        Self {
+            bind: default_bind(),
+            cors_origins: Vec::new(),
+        }
+    }
+}
+
+fn default_bind() -> String {
+    "127.0.0.1:8000".to_string()
+}
+
+/// `[auth]` セクション
+#[derive(Debug, Default, Clone, Deserialize)]
+pub struct AuthConfig {
+    /// 受理する bearer トークン (空 = 認証無効)
+    #[serde(default)]
+    pub tokens: Vec<String>,
+}
+
+/// `[rate_limit]` セクション
+#[derive(Debug, Default, Clone, Deserialize)]
+pub struct RateLimitConfig {
+    /// 有効化フラグ (default: false)
+    #[serde(default)]
+    pub enabled: bool,
+
+    /// 1 分あたりリクエスト数 (default: 600)
+    #[serde(default = "default_rpm")]
+    pub requests_per_min: u32,
+}
+
+fn default_rpm() -> u32 {
+    600
+}
+
+impl Config {
+    /// 設定ファイルを読み込む (存在しなければ default)
+    pub fn load(paths: &Paths) -> Result<Self> {
+        if !paths.config_file.exists() {
+            return Ok(Self::default());
+        }
+        let content = std::fs::read_to_string(&paths.config_file).with_context(|| {
+            format!("設定ファイル読み込み失敗: {}", paths.config_file.display())
+        })?;
+        let cfg: Self = toml::from_str(&content)
+            .with_context(|| format!("設定ファイルパース失敗: {}", paths.config_file.display()))?;
+        Ok(cfg)
+    }
+}

@@ -18,7 +18,7 @@ path = "src/main.rs"
 
 [dependencies]
 furigana = { path = "../furigana", version = "0.1" }
-clap = { version = "4", features = ["derive"] }
+clap = { version = "4", features = ["derive", "env"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "net"] }
 axum = "0.8"
 tower-http = { version = "0.6", features = ["cors", "trace"] }
