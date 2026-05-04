@@ -1,10 +1,31 @@
 # furigana
 
+[![CI](https://github.com/RyuuNeko1107/furigana/actions/workflows/ci.yml/badge.svg)](https://github.com/RyuuNeko1107/furigana/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![MSRV](https://img.shields.io/badge/rust-1.85+-orange.svg)](https://www.rust-lang.org)
+
 > Japanese furigana (ruby) lookup library and HTTP server in Rust — fully data-driven rules, no DB required.
 
 日本語テキストに **フリガナ (読み仮名 / ルビ)** を付けるための Rust 製ライブラリ + ローカル HTTP サーバー。
 
 > ⚠️ **Status**: Pre-alpha — 開発中。API・データ形式は変更されます。
+
+---
+
+## 目次
+
+- [なにこれ](#なにこれ)
+- [なぜ作るのか](#なぜ作るのか)
+- [クイックスタート](#クイックスタート)
+- [辞書の置き場所](#辞書の置き場所)
+- [ルール一覧 (全部データ)](#ルール一覧-全部データ)
+- [HTTP API](#http-api)
+- [設定ファイル](#設定ファイル)
+- [アーキテクチャ概要](#アーキテクチャ概要)
+- [ステータスとロードマップ](#ステータスとロードマップ)
+- [ライセンス / コントリビュート](#ライセンス)
+
+---
 
 ## なにこれ
 
@@ -26,60 +47,207 @@
 
 ### ライブラリとして使う
 
+`Cargo.toml`:
+
+```toml
+[dependencies]
+furigana = "0.1"
+```
+
 ```rust
 use furigana::Furigana;
 
-let f = Furigana::minimal();
-let ruby = f.to_ruby("灰桜の散る道");
-// → "{灰桜|はいざくら}の{散|ち}る{道|みち}"
+let mut f = Furigana::minimal()?;
+f.add_reading("灰桜", "ハイザクラ");
+
+println!("{}", f.to_ruby("灰桜の散る道"));
+// → "{灰桜|はいざくら}の{散る|ちる}{道|みち}"
+
+println!("{}", f.to_hiragana("灰桜の散る道"));
+// → "はいざくらのちるみち"
 ```
 
-### ローカルサーバーとして使う
+builder API で辞書ディレクトリを指定:
+
+```rust
+use furigana::Furigana;
+
+let f = Furigana::builder()
+    .core_dict_dir("/path/to/dict/core")
+    .user_dict_dir("/path/to/dict/user")
+    .overrides_file("/path/to/overrides.tsv")
+    .build()?;
+```
+
+サンプル: [`crates/furigana/examples/basic.rs`](crates/furigana/examples/basic.rs)
 
 ```sh
-$ cargo install furigana-cli         # または Releases から binary を取得
-$ furigana dict pull                 # 辞書本体を GitHub Release から DL
-$ furigana serve                     # http://127.0.0.1:8000 で起動
-$ curl 'http://127.0.0.1:8000/furigana?text=灰桜'
+$ cargo run -p furigana --example basic
+```
+
+### CLI として使う
+
+```sh
+$ cargo install furigana-cli           # crates.io 公開時
+# または GitHub Releases からバイナリ DL (準備中)
+
+# 1 ショット変換
+$ furigana lookup '灰桜の散る道'
+{灰|はい}{桜|さくら}の{散る|ちる}{道|みち}
+
+$ furigana lookup '灰桜の散る道' --format hiragana
+はいさくらのちるみち
+
+# 辞書追加
+$ furigana dict add 灰桜 ハイザクラ
+追加: 灰桜 → ハイザクラ
+保存先: ~/.local/share/furigana/dict/user/cli-added.tsv
+
+# 辞書反映後に再変換
+$ furigana lookup '灰桜の散る道'
+{灰桜|はいざくら}の{散る|ちる}{道|みち}
+
+# サーバー起動
+$ furigana serve
+INFO furigana serving on http://127.0.0.1:8000
+INFO Bearer 認証: 無効 (ローカル想定)
 ```
 
 ## 辞書の置き場所
 
 ```
-~/.local/share/furigana/dict/   (Windows: %LOCALAPPDATA%\furigana\dict\)
-├── core/         <- `furigana dict pull` で配布版を取得 (read-only 扱い)
-├── user/         <- 自由に *.tsv を置く (起動時に全 scan)
-└── overrides.tsv <- 強制上書き用 (最優先)
+~/.local/share/furigana/dict/      (Windows: %LOCALAPPDATA%\furigana\dict\)
+├── core/                          # `furigana dict pull` で配布版を取得 (準備中)
+│   ├── ja_auto.tsv
+│   └── unihan_kana.tsv
+├── user/                          # ユーザーが自由に *.tsv を置く
+│   └── cli-added.tsv              # `furigana dict add` の保存先
+└── overrides.tsv                  # 強制上書き用 (最優先)
 ```
 
 優先順位 (高→低):
 
-1. `overrides.tsv`
-2. `user/*.tsv`
-3. `core/*.tsv`
-4. embed されている異体字マップ
-5. Lindera (形態素解析) のフォールバック
+1. `overrides.tsv` (FuriganaBuilder の `overrides_file()`)
+2. `user/*.tsv` (FuriganaBuilder の `user_dict_dir()`)
+3. `core/*.tsv` (FuriganaBuilder の `core_dict_dir()`)
+4. 文脈ルール (`data/rules/context.toml`)
+5. Lindera (形態素解析) の読み
+6. 何もなければ読みなし (`None`) — 出力では surface のまま
 
 ## ルール一覧 (全部データ)
 
 | ファイル | 内容 |
 |---|---|
-| `data/rules/counters.toml` | 助数詞 (本/匹/個/年/月/日…) の連濁・促音化ルール |
-| `data/rules/days.toml` | 1〜31 日の特殊読み (1→ツイタチ 等) |
-| `data/rules/scales.tsv` | 万 / 億 / 兆 / 京 / 垓… 大数スケール |
-| `data/rules/units.tsv` | SI 単位 (km / kg / mL …) |
-| `data/rules/symbols.tsv` | 記号読み (+ / − / % / ‰ …) |
-| `data/rules/latin.tsv` | ラテン文字読み (A→エー…) |
-| `data/rules/numeric_phrases.tsv` | 例外語句 (二十歳→ハタチ 等) |
-| `data/rules/context.toml` | 前後トークンを見る文脈ルール (一日→ツイタチ/イチニチ) |
-| `data/compat_map.tsv` | 異体字 → 標準字 の正規化 |
+| [`data/rules/counters.toml`](data/rules/counters.toml) | 助数詞 (本/匹/個/年/月/日…) の連濁・促音化・kana 末尾置換 |
+| [`data/rules/days.toml`](data/rules/days.toml) | 1〜31 日の特殊読み (1→ツイタチ 等) |
+| [`data/rules/scales.tsv`](data/rules/scales.tsv) | 万 / 億 / 兆 / 京 / 垓… 大数スケール |
+| [`data/rules/units.tsv`](data/rules/units.tsv) | SI 単位 (km / kg / mL …) |
+| [`data/rules/symbols.tsv`](data/rules/symbols.tsv) | 記号読み (+ / − / % / ‰ …) |
+| [`data/rules/latin.tsv`](data/rules/latin.tsv) | ラテン文字読み (A→エー…) |
+| [`data/rules/numeric_phrases.tsv`](data/rules/numeric_phrases.tsv) | 例外語句 (二十歳→ハタチ 等) |
+| [`data/rules/context.toml`](data/rules/context.toml) | 前後トークンを見る文脈ルール (一日→ツイタチ/イチニチ) |
+| [`data/rules/compat_map.tsv`](data/rules/compat_map.tsv) | 異体字 → 標準字 の正規化 (髙→高 等) |
 
-ルール編集 → サーバー再起動 (or `POST /admin/reload`) だけで反映。
+これらは **ビルド時に lib に embed** されるため、`Furigana::minimal()` のみで全機能が動きます。
+別ファイルから読み込む場合は `FuriganaBuilder::rules_dir(path)` で上書き可能。
+
+## HTTP API
+
+### `GET /healthz`
+```json
+{"status": "ok", "dict_size": 0}
+```
+
+### `GET /furigana?text=灰桜の道&format=ruby`
+```json
+{
+  "text": "灰桜の道",
+  "reading": "{灰桜|はいざくら}の{道|みち}",
+  "format": "ruby"
+}
+```
+
+`format` は `ruby` (default) または `hiragana`。
+
+### `POST /furigana`
+```sh
+curl -X POST http://127.0.0.1:8000/furigana \
+  -H 'Content-Type: application/json' \
+  -d '{"text":"灰桜の道","format":"ruby"}'
+```
+
+### Bearer 認証
+`config.toml` の `[auth].tokens` または起動時 `--token` (env `FURIGANA_TOKEN`) で
+1 つ以上のトークンを設定すると `/furigana` で `Authorization: Bearer <token>` 必須。
+`/healthz` は常に認証不要。
+
+## 設定ファイル
+
+`~/.config/furigana/config.toml` (Linux/macOS) — 全項目 optional:
+
+```toml
+[server]
+bind = "127.0.0.1:8000"
+cors_origins = []  # 空 = Any 許可 (ローカル用途)
+
+[auth]
+tokens = []  # 空 = 認証無効
+
+[rate_limit]
+enabled = false
+requests_per_min = 600
+```
+
+## アーキテクチャ概要
+
+```
+crates/
+├── furigana/         # lib crate (cargo add furigana)
+│   ├── analyzer.rs   # Lindera + IPADIC (形態素解析)
+│   ├── kana.rs       # ひら⇄カタ + 正規化
+│   ├── numbers.rs    # 数値 → カタカナ + 助数詞ルール (data-driven)
+│   ├── reading.rs    # 読み解決パイプライン (top-level)
+│   ├── dict.rs       # 単純 surface→reading 辞書 (HashMap ベース)
+│   ├── rules/        # データスキーマ (CounterRule / ContextRule 等)
+│   ├── loader.rs     # TOML / TSV パーサ
+│   ├── embedded.rs   # data/rules/* を build 時に include_str!
+│   └── lib.rs        # Furigana 構造体 + builder
+└── furigana-cli/     # bin crate (`furigana` バイナリ)
+    └── src/
+        ├── main.rs            # clap dispatch
+        ├── paths.rs           # XDG / %LOCALAPPDATA% 解決
+        ├── config.rs          # config.toml ロード
+        └── commands/
+            ├── lookup.rs      # furigana lookup
+            ├── serve.rs       # furigana serve (Axum)
+            └── dict.rs        # furigana dict {add,list,remove,import,pull}
+```
+
+## ステータスとロードマップ
+
+**Phase 1 (進行中)**: pre-alpha
+- ✅ workspace + lib + CLI + データ駆動ルール
+- ✅ HTTP server (Axum)
+- ✅ 辞書管理コマンド
+- 🟡 数値テキスト全体オーケストレーション (`split_num_chunks`)
+- 🟡 GitHub Release ワークフロー (binary + Docker image)
+
+**Phase 2 (予定)**:
+- 配布用語彙辞書リポジトリ (`furigana-dict`) — `furigana dict pull` で取得
+- 単漢字フォールバック (Unihan データの取り込み)
+- 辞書のホットリロード (`SIGHUP` / `POST /admin/reload`)
+
+**Phase 3 (検討)**:
+- ローマ字出力モード
+- 速度最適化 (regex pre-compile pool 等)
+- Web Assembly ビルド
 
 ## ライセンス
 
-MIT License。詳細は [LICENSE](LICENSE) を参照。
+[MIT License](LICENSE)。
 
 ## コントリビュート
 
-新しい読みやルール修正は、ほとんどの場合 `data/rules/` 配下の TSV / TOML を編集するだけです。Rust を書く必要はありません。詳細は [CONTRIBUTING.md](CONTRIBUTING.md) (準備中) を参照してください。
+新しい読みやルール修正は、ほとんどの場合 `data/rules/` 配下の TSV / TOML を編集するだけです。
+Rust を書く必要はありません。
+詳細は [CONTRIBUTING.md](CONTRIBUTING.md) を参照してください。
