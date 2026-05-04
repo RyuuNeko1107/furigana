@@ -44,6 +44,17 @@ pub struct CountersData {
     pub counter: HashMap<String, CounterRule>,
 }
 
+impl CountersData {
+    /// 別の `CountersData` をマージする (other の同名 key は self を上書き)
+    ///
+    /// counters/ サブディレクトリ配下の複数 TOML を 1 つの構造体に
+    /// 統合する用途で [`crate::loader::load_rules_dir`] 内部から呼ばれる。
+    pub fn merge(&mut self, other: Self) {
+        self.simple.extend(other.simple);
+        self.counter.extend(other.counter);
+    }
+}
+
 /// 助数詞 1 件の振る舞い
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct CounterRule {

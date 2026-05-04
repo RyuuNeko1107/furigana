@@ -19,6 +19,18 @@
 //! 個別ファイルが存在しない場合はその型のデフォルト値が返る。
 //! ただし [`load_rules_dir`] は **ディレクトリ自体が存在しない** 場合はエラーを返す。
 //!
+//! ### 細分化サポート (counters / context)
+//!
+//! 大きくなりがちな counters.toml / context.toml は、それぞれ
+//! `counters/*.toml` / `context/*.toml` のサブディレクトリに分割して
+//! 配置することもできる。サブディレクトリ配下の `*.toml` はファイル名
+//! ソート順で読み込まれ、[`CountersData::merge`] / [`ContextData::merge`]
+//! で 1 つにまとめられる。
+//!
+//! 単一ファイル `counters.toml` とサブディレクトリ `counters/` が両方
+//! ある場合は単一ファイルが優先される (混在防止のため、いずれか一方に
+//! 統一することを推奨)。
+//!
 //! ## API
 //!
 //! 単一ファイル系は generic で 1 つに集約してある:
@@ -29,9 +41,9 @@
 //! ディレクトリ全体を読み込む高レベル API は [`load_rules_dir`]。
 
 use crate::error::{FuriganaError, Result};
-use crate::rules::RulesData;
+use crate::rules::{ContextData, CountersData, RulesData};
 use serde::de::DeserializeOwned;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 // ─── ファイル名定数 ───────────────────────────────────────────────────────────
 
@@ -113,8 +125,8 @@ pub fn load_rules_dir<P: AsRef<Path>>(dir: P) -> Result<RulesData> {
     }
 
     Ok(RulesData {
-        counters: load_or_default(dir.join(COUNTERS_FILE))?,
-        context: load_or_default(dir.join(CONTEXT_FILE))?,
+        counters: load_counters(dir)?,
+        context: load_context(dir)?,
         days: load_or_default(dir.join(DAYS_FILE))?,
         scales: load_or_default(dir.join(SCALES_FILE))?,
         units: load_or_default(dir.join(UNITS_FILE))?,
@@ -123,6 +135,53 @@ pub fn load_rules_dir<P: AsRef<Path>>(dir: P) -> Result<RulesData> {
         numeric_phrases: load_or_default(dir.join(NUMERIC_PHRASES_FILE))?,
         compat: load_or_default(dir.join(COMPAT_FILE))?,
     })
+}
+
+// ─── 細分化サポート (counters / context) ─────────────────────────────────────
+
+/// `counters.toml` 単一ファイル → 無ければ `counters/*.toml` を全マージ
+fn load_counters(dir: &Path) -> Result<CountersData> {
+    let single = dir.join(COUNTERS_FILE);
+    if single.is_file() {
+        return load_or_default(single);
+    }
+    let subdir = dir.join("counters");
+    let mut acc = CountersData::default();
+    for f in list_toml_files_sorted(&subdir)? {
+        let part: CountersData = load_or_default(&f)?;
+        acc.merge(part);
+    }
+    Ok(acc)
+}
+
+/// `context.toml` 単一ファイル → 無ければ `context/*.toml` を全マージ
+fn load_context(dir: &Path) -> Result<ContextData> {
+    let single = dir.join(CONTEXT_FILE);
+    if single.is_file() {
+        return load_or_default(single);
+    }
+    let subdir = dir.join("context");
+    let mut acc = ContextData::default();
+    for f in list_toml_files_sorted(&subdir)? {
+        let part: ContextData = load_or_default(&f)?;
+        acc.merge(part);
+    }
+    Ok(acc)
+}
+
+/// `dir` 直下の `*.toml` をファイル名ソート順で列挙する。
+/// `dir` が存在しない / ディレクトリでない場合は空 `Vec` を返す (エラーにしない)。
+fn list_toml_files_sorted(dir: &Path) -> Result<Vec<PathBuf>> {
+    if !dir.is_dir() {
+        return Ok(Vec::new());
+    }
+    let mut files: Vec<PathBuf> = std::fs::read_dir(dir)?
+        .filter_map(std::result::Result::ok)
+        .map(|e| e.path())
+        .filter(|p| p.is_file() && p.extension().is_some_and(|e| e == "toml"))
+        .collect();
+    files.sort();
+    Ok(files)
 }
 
 #[cfg(test)]
@@ -263,6 +322,93 @@ mod tests {
         std::fs::write(dir.join(COUNTERS_FILE), "壊れた").unwrap();
         let err = load_rules_dir(&dir).unwrap_err();
         assert!(matches!(err, FuriganaError::Toml { .. }));
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn load_rules_dir_merges_counters_subdir() {
+        let dir = fresh_temp_dir("counters_subdir");
+        let sub = dir.join("counters");
+        std::fs::create_dir_all(&sub).unwrap();
+        std::fs::write(
+            sub.join("01_simple.toml"),
+            "[simple]\n\"円\" = \"エン\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            sub.join("02_objects.toml"),
+            "[counter.\"本\"]\ndefault = \"ホン\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            sub.join("03_time.toml"),
+            "[counter.\"時\"]\ndefault = \"ジ\"\n",
+        )
+        .unwrap();
+
+        let data = load_rules_dir(&dir).unwrap();
+        assert_eq!(data.counters.simple.get("円").map(String::as_str), Some("エン"));
+        assert_eq!(
+            data.counters
+                .counter
+                .get("本")
+                .and_then(|c| c.default.as_deref()),
+            Some("ホン")
+        );
+        assert_eq!(
+            data.counters
+                .counter
+                .get("時")
+                .and_then(|c| c.default.as_deref()),
+            Some("ジ")
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn load_rules_dir_merges_context_subdir_in_filename_order() {
+        let dir = fresh_temp_dir("context_subdir");
+        let sub = dir.join("context");
+        std::fs::create_dir_all(&sub).unwrap();
+        std::fs::write(
+            sub.join("01_a.toml"),
+            "[[rule]]\nsurface = \"一日\"\ndefault = \"イチニチ\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            sub.join("02_b.toml"),
+            "[[rule]]\nsurface = \"二日\"\ndefault = \"フツカ\"\n",
+        )
+        .unwrap();
+
+        let data = load_rules_dir(&dir).unwrap();
+        assert_eq!(data.context.rules.len(), 2);
+        assert_eq!(data.context.rules[0].surface, "一日");
+        assert_eq!(data.context.rules[1].surface, "二日");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn load_rules_dir_single_file_takes_priority_over_subdir() {
+        // 単一ファイルとサブディレクトリの両方がある時は単一ファイルが優先
+        let dir = fresh_temp_dir("counters_priority");
+        let sub = dir.join("counters");
+        std::fs::create_dir_all(&sub).unwrap();
+        std::fs::write(
+            dir.join(COUNTERS_FILE),
+            "[counter.\"本\"]\ndefault = \"ホン\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            sub.join("ignored.toml"),
+            "[counter.\"匹\"]\ndefault = \"ヒキ\"\n",
+        )
+        .unwrap();
+
+        let data = load_rules_dir(&dir).unwrap();
+        assert!(data.counters.counter.contains_key("本"));
+        // サブディレクトリの方は無視される
+        assert!(!data.counters.counter.contains_key("匹"));
         std::fs::remove_dir_all(&dir).ok();
     }
 }
