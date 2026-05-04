@@ -1,16 +1,14 @@
 # Contributing to furigana
 
-`furigana` は **データ駆動** が基本方針なので、多くの contribution は
-**Rust コードを書かずに** TOML を編集するだけで完結します。
-気軽に PR を投げてください。
+ほとんどの contribution は TOML を編集するだけで完結する。Rust コードは不要。
 
-## 1. 読みを追加したい (一番多いケース)
+## 1. 何を追加したい?
 
-語彙辞書 (`furigana-dict` リポジトリ — 準備中) は今後別管理になりますが、
-本リポジトリ内の以下のルール表は今すぐ PR を受け付けます。
-
-| 追加したいもの | 編集するファイル |
+| 追加したいもの | PR 先 |
 |---|---|
+| 一般語・固有名詞・人名・地名の読み | [`furigana-dict`](https://github.com/RyuuNeko1107/furigana-dict) (別リポジトリ) |
+| 単漢字フォールバック | 同上 |
+| 拡充版の異体字 → 標準字 | 同上 (`core/compat.toml`) |
 | 慣用読み (例: 浮世絵→ウキヨエ) | [`data/rules/numeric_phrases.toml`](data/rules/numeric_phrases.toml) |
 | 助数詞 (例: 篇→ヘン) | [`data/rules/counters.toml`](data/rules/counters.toml) `[simple]` |
 | 連濁・促音化が複雑な助数詞 | [`data/rules/counters.toml`](data/rules/counters.toml) `[counter."X"]` |
@@ -18,8 +16,11 @@
 | 単位 | [`data/rules/units.toml`](data/rules/units.toml) |
 | 記号 | [`data/rules/symbols.toml`](data/rules/symbols.toml) |
 | ラテン文字 | [`data/rules/latin.toml`](data/rules/latin.toml) |
-| 異体字 → 標準字 | [`data/rules/compat_map.toml`](data/rules/compat_map.toml) |
+| 異体字 → 標準字 (基本セット、binary に embed) | [`data/rules/compat_map.toml`](data/rules/compat_map.toml) |
 | 文脈で読みが変わる語 | [`data/rules/context.toml`](data/rules/context.toml) |
+
+語彙データ (人名・固有名詞・一般語) は `furigana-dict` 側、
+ルール (engine の挙動を定義する小さい表) は本リポジトリ側、と覚えてください。
 
 ### TOML ファイル形式
 
@@ -146,9 +147,5 @@ cargo test --test load_real_data
 
 ## 5. ステータス
 
-Pre-alpha のため、設計判断は流動的です。Issue で方針を議論しつつ進めています。
-
-- アーキテクチャに関する議論: GitHub Issues の `architecture` ラベル
-- 辞書の追加 / ルール修正: 普通の PR で OK
-
-ありがとうございます 🍀
+Pre-alpha。設計判断は流動的なので、大きめの変更は Issue で先に相談してください。
+小さい辞書追加・ルール修正は普通に PR で OK。
