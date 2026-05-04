@@ -50,12 +50,12 @@ pub fn scale_reading(num_str: &str, scale: &str, scales: &ScalesData) -> String 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::loader::{parse_scales_toml, parse_symbols_toml, parse_units_toml};
+    use crate::loader::parse_toml;
 
     #[test]
     fn scale_basic() {
         let raw = include_str!("../../tests/fixtures/rules/scales.toml");
-        let scales = parse_scales_toml(raw, "scales.toml").unwrap();
+        let scales: ScalesData = parse_toml(raw, "scales.toml").unwrap();
         assert_eq!(scale_reading("3", "万", &scales), "サンマン");
         assert_eq!(scale_reading("1", "兆", &scales), "イッチョウ");
         assert_eq!(scale_reading("8", "兆", &scales), "ハッチョウ");
@@ -65,7 +65,7 @@ mod tests {
     #[test]
     fn si_unit_basic() {
         let raw = include_str!("../../tests/fixtures/rules/units.toml");
-        let units = parse_units_toml(raw, "units.toml").unwrap();
+        let units: UnitsData = parse_toml(raw, "units.toml").unwrap();
         assert_eq!(si_unit_reading("100", "km", &units), "ヒャクキロメートル");
         assert_eq!(si_unit_reading("3", "L", &units), "サンリットル");
     }
@@ -73,7 +73,7 @@ mod tests {
     #[test]
     fn symbol_basic() {
         let raw = include_str!("../../tests/fixtures/rules/symbols.toml");
-        let symbols = parse_symbols_toml(raw, "symbols.toml").unwrap();
+        let symbols: SymbolsData = parse_toml(raw, "symbols.toml").unwrap();
         assert_eq!(
             symbol_char_reading('+', &symbols).as_deref(),
             Some("プラス")
