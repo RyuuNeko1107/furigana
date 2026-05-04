@@ -16,7 +16,7 @@
 | 単位 | [`data/rules/units.toml`](data/rules/units.toml) |
 | 記号 | [`data/rules/symbols.toml`](data/rules/symbols.toml) |
 | ラテン文字 | [`data/rules/latin.toml`](data/rules/latin.toml) |
-| 異体字 → 標準字 (基本セット、binary に embed) | [`data/rules/compat_map.toml`](data/rules/compat_map.toml) |
+| 異体字 → 標準字 | [`furigana-dict/core/compat.toml`](https://github.com/RyuuNeko1107/furigana-dict/blob/master/core/compat.toml) (本体には embed 無し) |
 | 文脈で読みが変わる語 | [`data/rules/context.toml`](data/rules/context.toml) |
 
 語彙データ (人名・固有名詞・一般語) は `furigana-dict` 側、
@@ -26,7 +26,7 @@
 
 全データファイルは TOML 形式で統一されています。
 
-**単純な key→value table** (numeric_phrases / symbols / latin / compat_map):
+**単純な key→value table** (numeric_phrases / symbols / latin):
 
 ```toml
 # 例: data/rules/numeric_phrases.toml

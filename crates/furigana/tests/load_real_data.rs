@@ -102,6 +102,7 @@ fn load_all_rules_succeeds() {
     assert_eq!(data.numeric_phrases.lookup("明後日"), Some("アサッテ"));
 
     // ─── Compat ────────────────────────────────────────────────────────
-    assert_eq!(data.compat.lookup("髙"), Some("高"));
-    assert_eq!(data.compat.lookup("德"), Some("徳"));
+    // 異体字データは furigana-dict 側で管理するため本リポジトリの
+    // data/rules には存在しない (役割分離)。空である事を確認するに留める。
+    assert!(data.compat.is_empty());
 }
