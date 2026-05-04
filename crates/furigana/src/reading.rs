@@ -11,6 +11,7 @@
 //! 5. fallback: None
 
 use crate::analyzer::{Analyzer, MorphToken};
+use crate::chunks::NumberChunker;
 use crate::dict::Dict;
 use crate::kana;
 use crate::numbers::NumericPhraseMatcher;
@@ -34,7 +35,8 @@ pub struct ReadingToken {
 /// 流れ:
 /// 1. 異体字正規化 (`compat_map`)
 /// 2. 慣用語句先行確定 (`numeric_phrases`)
-/// 3. 残ったチャンクを形態素解析 + dict + 文脈ルール
+/// 3. 数値テキストオーケストレーション (`NumberChunker`、日付/時刻/助数詞等)
+/// 4. 残ったチャンクを形態素解析 + dict + 文脈ルール
 #[must_use]
 pub fn tokenize_text(
     text: &str,
@@ -42,6 +44,7 @@ pub fn tokenize_text(
     rules: &RulesData,
     dict: &Dict,
     phrase_matcher: &NumericPhraseMatcher,
+    chunker: &NumberChunker,
 ) -> Vec<ReadingToken> {
     if text.is_empty() {
         return Vec::new();
@@ -53,7 +56,7 @@ pub fn tokenize_text(
     // 2. 慣用語句先行確定
     let phrase_chunks = phrase_matcher.apply(&normalized);
 
-    // 3. チャンクごとに処理
+    // 3 & 4. チャンクごとに処理
     let mut result = Vec::new();
     for (surface, reading) in phrase_chunks {
         if let Some(r) = reading {
@@ -62,10 +65,22 @@ pub fn tokenize_text(
                 surface,
                 reading: Some(r),
             });
-        } else {
-            // 形態素解析パイプライン
-            let chunk_tokens = tokenize_chunk(&surface, analyzer, &rules.context, dict);
-            result.extend(chunk_tokens);
+            continue;
+        }
+
+        // 慣用句外 → 数値オーケストレーションに通す
+        let num_chunks = chunker.split(&surface);
+        for (s, num_reading) in num_chunks {
+            if let Some(r) = num_reading {
+                result.push(ReadingToken {
+                    surface: s,
+                    reading: Some(r),
+                });
+            } else {
+                // 数値でも無い → 形態素解析
+                let chunk_tokens = tokenize_chunk(&s, analyzer, &rules.context, dict);
+                result.extend(chunk_tokens);
+            }
         }
     }
 
@@ -431,6 +446,10 @@ mod tests {
         Dict::new()
     }
 
+    fn make_chunker(r: &RulesData) -> NumberChunker {
+        NumberChunker::new(r)
+    }
+
     fn morph(surface: &str, pos: Option<&str>) -> MorphToken {
         MorphToken {
             surface: surface.to_string(),
@@ -593,7 +612,8 @@ mod tests {
     fn tokenize_text_empty() {
         let r = rules();
         let a = analyzer();
-        let result = tokenize_text("", &a, &r, &empty_dict(), &empty_phrase_matcher());
+        let c = make_chunker(&r);
+        let result = tokenize_text("", &a, &r, &empty_dict(), &empty_phrase_matcher(), &c);
         assert!(result.is_empty());
     }
 
@@ -604,8 +624,9 @@ mod tests {
         let mut d = Dict::new();
         d.insert("灰桜", "ハイザクラ");
         let m = empty_phrase_matcher();
+        let c = make_chunker(&r);
 
-        let tokens = tokenize_text("灰桜", &a, &r, &d, &m);
+        let tokens = tokenize_text("灰桜", &a, &r, &d, &m, &c);
         assert!(tokens
             .iter()
             .any(|t| t.reading.as_deref() == Some("ハイザクラ")));
@@ -616,8 +637,9 @@ mod tests {
         let r = rules();
         let a = analyzer();
         let phrases = NumericPhraseMatcher::new(&r.numeric_phrases);
+        let c = make_chunker(&r);
 
-        let tokens = tokenize_text("二十歳", &a, &r, &empty_dict(), &phrases);
+        let tokens = tokenize_text("二十歳", &a, &r, &empty_dict(), &phrases, &c);
         assert!(
             tokens
                 .iter()
@@ -633,8 +655,9 @@ mod tests {
         let mut d = Dict::new();
         d.insert("灰桜", "ハイザクラ");
         let m = empty_phrase_matcher();
+        let c = make_chunker(&r);
 
-        let tokens = tokenize_text("灰桜の道", &a, &r, &d, &m);
+        let tokens = tokenize_text("灰桜の道", &a, &r, &d, &m, &c);
         let ruby = tokens_to_ruby(&tokens);
         assert!(ruby.contains("{灰桜|はいざくら}"), "ruby: {ruby}");
     }
@@ -645,13 +668,30 @@ mod tests {
         let a = analyzer();
         let mut d = Dict::new();
         d.insert("高崎", "タカサキ");
+        let c = make_chunker(&r);
 
         // 「髙崎」 (異体字) → compat_map で「高崎」に正規化されて dict ヒット
-        let tokens = tokenize_text("髙崎", &a, &r, &d, &empty_phrase_matcher());
+        let tokens = tokenize_text("髙崎", &a, &r, &d, &empty_phrase_matcher(), &c);
         assert!(
             tokens
                 .iter()
                 .any(|t| t.reading.as_deref() == Some("タカサキ")),
+            "tokens: {tokens:?}"
+        );
+    }
+
+    #[test]
+    fn tokenize_text_handles_counter_via_chunker() {
+        let r = rules();
+        let a = analyzer();
+        let m = empty_phrase_matcher();
+        let c = make_chunker(&r);
+        let tokens = tokenize_text("3本のバナナ", &a, &r, &empty_dict(), &m, &c);
+        // 3本 → サンボン がチャンク段階で確定する
+        assert!(
+            tokens
+                .iter()
+                .any(|t| t.surface == "3本" && t.reading.as_deref() == Some("サンボン")),
             "tokens: {tokens:?}"
         );
     }

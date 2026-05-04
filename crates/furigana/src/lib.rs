@@ -24,6 +24,7 @@
 #![allow(clippy::tabs_in_doc_comments)]
 
 pub mod analyzer;
+pub mod chunks;
 pub mod dict;
 pub mod error;
 pub mod kana;
@@ -41,6 +42,7 @@ pub use crate::reading::{tokens_to_hiragana, tokens_to_ruby, ReadingToken};
 pub use crate::tts::TtsOptions;
 
 use crate::analyzer::Analyzer;
+use crate::chunks::NumberChunker;
 use crate::numbers::NumericPhraseMatcher;
 use crate::reading::tokenize_text;
 use crate::rules::RulesData;
@@ -59,6 +61,7 @@ pub struct Furigana {
     rules: RulesData,
     dict: Dict,
     phrase_matcher: NumericPhraseMatcher,
+    chunker: NumberChunker,
 }
 
 impl Furigana {
@@ -88,6 +91,7 @@ impl Furigana {
             &self.rules,
             &self.dict,
             &self.phrase_matcher,
+            &self.chunker,
         )
     }
 
@@ -243,12 +247,14 @@ impl FuriganaBuilder {
         }
 
         let phrase_matcher = NumericPhraseMatcher::new(&rules.numeric_phrases);
+        let chunker = NumberChunker::new(&rules);
 
         Ok(Furigana {
             analyzer,
             rules,
             dict,
             phrase_matcher,
+            chunker,
         })
     }
 }
