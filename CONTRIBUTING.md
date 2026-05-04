@@ -59,7 +59,7 @@ suffix = "ボン"
 
 ### Rust 環境セットアップ
 
-[Rust 1.85+](https://rustup.rs/) が必要。
+[Rust 1.86+](https://rustup.rs/) が必要。
 
 ```sh
 git clone https://github.com/RyuuNeko1107/furigana
