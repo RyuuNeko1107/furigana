@@ -27,3 +27,6 @@ pub use counter::euphonic_counter_read;
 pub use digit::number_to_katakana;
 pub use extras::{scale_reading, si_unit_reading, symbol_char_reading};
 pub use phrase::{apply_numeric_overrides, NumericPhraseMatcher};
+
+// chunker / context.rs から使う internal helper を再 export
+pub(crate) use helpers::kansuji_to_arabic;

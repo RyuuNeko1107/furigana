@@ -12,6 +12,10 @@ use regex::{Captures, Regex};
 pub(super) const NUM_PAT: &str =
     r"[+\-\u{2212}\u{FF0D}\u{FF0B}]?[0-9０-９]+(?:,[0-9０-９]{3})*(?:\.[0-9０-９]+)?";
 
+/// 日付・月日用に「Arabic 数字または漢数字 (一〜九十、二十一 等)」を 1〜3 文字
+/// マッチさせる pattern。NumberChunker の DATE_KANJI_*_RE で使われる。
+pub(super) const DATE_NUM_PAT: &str = r"(?:[0-9０-９]{1,4}|[一二三四五六七八九十〇零]{1,3})";
+
 // ─── 静的 regex ───────────────────────────────────────────────────────────
 
 pub(super) static URL_RE: Lazy<Regex> = Lazy::new(|| {
@@ -29,11 +33,15 @@ pub(super) static TIME_JP_FULL_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"([0-9０-９]{1,2})時(?:([0-9０-９]{1,2})分)?(?:([0-9０-９]{1,2})秒)?").unwrap()
 });
 
-pub(super) static DATE_KANJI_FULL_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"([0-9０-９]{1,4})年([0-9０-９]{1,2})月([0-9０-９]{1,2})日").unwrap());
+pub(super) static DATE_KANJI_FULL_RE: Lazy<Regex> = Lazy::new(|| {
+    let pat = format!(r"({DATE_NUM_PAT})年({DATE_NUM_PAT})月({DATE_NUM_PAT})日");
+    Regex::new(&pat).unwrap()
+});
 
-pub(super) static DATE_KANJI_MD_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"([0-9０-９]{1,2})月([0-9０-９]{1,2})日").unwrap());
+pub(super) static DATE_KANJI_MD_RE: Lazy<Regex> = Lazy::new(|| {
+    let pat = format!(r"({DATE_NUM_PAT})月({DATE_NUM_PAT})日");
+    Regex::new(&pat).unwrap()
+});
 
 pub(super) static DIGIT_RE: Lazy<Regex> = Lazy::new(|| Regex::new(NUM_PAT).unwrap());
 
