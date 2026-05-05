@@ -11,6 +11,7 @@ pub mod counters;
 pub mod days;
 pub mod latin;
 pub mod numeric_phrases;
+pub mod postprocess;
 pub mod scales;
 pub mod symbols;
 pub mod units;
@@ -21,6 +22,7 @@ pub use counters::{CounterMode, CounterRule, CountersData, EuphonicRule, KanaRep
 pub use days::DaysData;
 pub use latin::LatinData;
 pub use numeric_phrases::NumericPhrasesData;
+pub use postprocess::{PostProcessData, PostProcessRuleSpec, PostProcessSpec};
 pub use scales::{ScaleEntry, ScalesData};
 pub use symbols::SymbolsData;
 pub use units::{UnitEntry, UnitsData};
@@ -46,4 +48,6 @@ pub struct RulesData {
     pub numeric_phrases: NumericPhrasesData,
     /// 異体字マップ (compat_map.toml)
     pub compat: CompatData,
+    /// 出力後処理 (postprocess.toml、本番 Step 7 互換)
+    pub postprocess: PostProcessData,
 }

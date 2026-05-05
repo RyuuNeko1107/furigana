@@ -55,7 +55,7 @@ impl NumberChunker {
     #[must_use]
     pub fn new(rules: &RulesData) -> Self {
         let counter_re = build_counter_regex(&rules.counters);
-        let scale_re = build_scale_regex(&rules.scales);
+        let scale_re = build_scale_regex(&rules.scales, &rules.units);
         let si_unit_re = build_si_unit_regex(&rules.units);
 
         Self {
@@ -100,6 +100,7 @@ impl NumberChunker {
             }
 
             // ─── 2. 和式日付 ─────────────────────────────────────────────────
+            // 日付内では「日」counter は days.toml の特殊読み (1=ツイタチ 等) を採用
             if let Some(caps) = at_start(&DATE_KANJI_FULL_RE, rest) {
                 let m_end = caps.get(0).unwrap().end();
                 let y = caps.get(1).unwrap().as_str();
@@ -108,9 +109,9 @@ impl NumberChunker {
                 let surface = rest[..m_end].to_string();
                 let reading = format!(
                     "{}{}{}",
-                    self.read_counter(y, "年"),
-                    self.read_counter(mo, "月"),
-                    self.read_counter(d, "日")
+                    self.read_counter_in_date(y, "年"),
+                    self.read_counter_in_date(mo, "月"),
+                    self.read_counter_in_date(d, "日")
                 );
                 parts.push((surface, Some(reading)));
                 i += m_end;
@@ -123,8 +124,8 @@ impl NumberChunker {
                 let surface = rest[..m_end].to_string();
                 let reading = format!(
                     "{}{}",
-                    self.read_counter(mo, "月"),
-                    self.read_counter(d, "日")
+                    self.read_counter_in_date(mo, "月"),
+                    self.read_counter_in_date(d, "日")
                 );
                 parts.push((surface, Some(reading)));
                 i += m_end;
@@ -167,14 +168,25 @@ impl NumberChunker {
                 continue;
             }
 
-            // ─── 5. 数値 + 大数スケール (+ 末尾助数詞) ─────────────────────
+            // ─── 5. 数値 + 大数スケール (+ 末尾漢字単位) ─────────────────────
+            // 「1万円」「3億ドル」のような scale + 漢字 1 文字 unit を 1 chunk に。
+            // 漢字 unit は build_scale_regex で optional capture (3) として注入済み。
             if let Some(re) = &self.scale_re {
                 if let Some(caps) = at_start(re, rest) {
                     let m_end = caps.get(0).unwrap().end();
                     let num = caps.get(1).unwrap().as_str();
                     let scale = caps.get(2).unwrap().as_str();
+                    let trailing_unit = caps.get(3).map(|m| m.as_str());
                     let surface = rest[..m_end].to_string();
-                    let reading = scale_reading(num, scale, &self.scales);
+                    let mut reading = scale_reading(num, scale, &self.scales);
+                    if let Some(u) = trailing_unit {
+                        if let Some(unit_kana) = self.units.lookup(u) {
+                            reading.push_str(unit_kana);
+                        } else {
+                            // units にあるはずだが lookup 失敗時は surface をそのまま
+                            reading.push_str(u);
+                        }
+                    }
                     parts.push((surface, Some(reading)));
                     i += m_end;
                     continue;
@@ -234,12 +246,40 @@ impl NumberChunker {
         merge_non_numeric(parts)
     }
 
-    /// 数値 + 助数詞 を読みに変換する内部ヘルパ
+    /// 数値 + 助数詞 を読みに変換する (**単独 counter 用**、期間文脈)
     ///
     /// raw_num は Arabic 数字 / 全角数字 / 漢数字 (一〜二十一 程度) を許容。
     /// 漢数字は内部で Arabic に変換してから [`euphonic_counter_read`] に渡す。
+    ///
+    /// **「N日」の特殊扱い**: 単独で出てきた「N日」は **期間文脈** とみなし、
+    /// days.toml の特殊読み (1=ツイタチ、2=フツカ等) を bypass して default
+    /// 「Nニチ」にする。暦の「N日」(月日付き) は [`Self::read_counter_in_date`]
+    /// 経由で日付として処理されるので、こちらでは bypass で OK。
+    /// 例: 「1日に2〜3回」の「1日」は単独 counter で chunker.split に来るので
+    /// 「イチニチ」になる。「6月1日に集合」の「1日」は DATE_KANJI_MD_RE 経由で
+    /// `read_counter_in_date` に行き「ツイタチ」になる。
     fn read_counter(&self, raw_num: &str, counter: &str) -> String {
-        // 漢数字なら Arabic に変換 (一→1、二十→20 など)
+        let normalized = kansuji_to_arabic(raw_num).unwrap_or_else(|| raw_num.to_string());
+        let nk = number_to_katakana(&normalized);
+
+        // 「N日」単独は期間扱い: days.toml 特殊読みを bypass
+        if counter == "日" {
+            if let Some(rule) = self.counters.counter.get("日") {
+                if let Some(default) = &rule.default {
+                    return format!("{nk}{default}");
+                }
+            }
+            return format!("{nk}ニチ");
+        }
+
+        euphonic_counter_read(&nk, counter, &normalized, &self.counters, &self.days)
+    }
+
+    /// 数値 + 助数詞 を読みに変換する (**日付内用**)
+    ///
+    /// 「N年M月D日」のように日付パターンとしてマッチした内部で呼ばれる。
+    /// 「日」counter は days.toml の特殊読み (1=ツイタチ 等) を採用する。
+    fn read_counter_in_date(&self, raw_num: &str, counter: &str) -> String {
         let normalized = kansuji_to_arabic(raw_num).unwrap_or_else(|| raw_num.to_string());
         let nk = number_to_katakana(&normalized);
         euphonic_counter_read(&nk, counter, &normalized, &self.counters, &self.days)

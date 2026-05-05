@@ -60,9 +60,43 @@ pub(super) fn build_counter_regex(counters: &CountersData) -> Option<Regex> {
 }
 
 /// 大数スケール regex (空なら `None`)
-pub(super) fn build_scale_regex(scales: &ScalesData) -> Option<Regex> {
+///
+/// `units` を渡すと、scale 末尾に optional で漢字 1 文字 unit (円 / % など) を
+/// 連結したパターンになる。これにより「1万円」のような scale + unit 連結が
+/// 1 chunk として処理できる (Lindera が「1万」+「円」に切ると「円」単独の
+/// reading が Lindera の訓読みに倒れる問題を回避)。
+pub(super) fn build_scale_regex(scales: &ScalesData, units: &UnitsData) -> Option<Regex> {
     let kanjis: Vec<String> = scales.entries.iter().map(|e| e.kanji.clone()).collect();
-    build_alt_regex_opt(&kanjis, "scale")
+    if kanjis.is_empty() {
+        return None;
+    }
+    let mut sorted_scales = kanjis;
+    sorted_scales.sort_by_key(|s| std::cmp::Reverse(s.chars().count()));
+    let scale_alts: Vec<String> = sorted_scales.iter().map(|s| regex::escape(s)).collect();
+
+    // units の中で「1 文字の漢字 (ASCII 以外)」を抽出。これらが scale 末尾に
+    // 続く場合に optional で連結マッチさせる。「km / kg」のような ASCII unit は
+    // scale 末尾に来ないので除外。
+    let kanji_units: Vec<String> = units
+        .entries
+        .keys()
+        .filter(|s| {
+            s.chars().count() == 1 && s.chars().next().is_some_and(|c| !c.is_ascii_alphanumeric())
+        })
+        .map(|s| regex::escape(s))
+        .collect();
+
+    let pat = if kanji_units.is_empty() {
+        format!(r"({NUM_PAT})({})", scale_alts.join("|"))
+    } else {
+        format!(
+            r"({NUM_PAT})({})({})?",
+            scale_alts.join("|"),
+            kanji_units.join("|")
+        )
+    };
+
+    Some(Regex::new(&pat).unwrap_or_else(|_| panic!("scale regex build failed")))
 }
 
 /// SI 単位 regex (case-insensitive: `1km` `1KM` `1Km` `1kM` 全て chunk 化)。

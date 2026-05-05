@@ -41,7 +41,7 @@
 //! ディレクトリ全体を読み込む高レベル API は [`load_rules_dir`]。
 
 use crate::error::{FuriganaError, Result};
-use crate::rules::{ContextData, CountersData, RulesData};
+use crate::rules::{ContextData, CountersData, PostProcessData, PostProcessSpec, RulesData};
 use serde::de::DeserializeOwned;
 use std::path::{Path, PathBuf};
 
@@ -65,6 +65,8 @@ pub const LATIN_FILE: &str = "latin.toml";
 pub const NUMERIC_PHRASES_FILE: &str = "numeric_phrases.toml";
 /// 異体字マップ
 pub const COMPAT_FILE: &str = "compat_map.toml";
+/// 後処理ルール (本番 Step 7 互換)
+pub const POSTPROCESS_FILE: &str = "postprocess.toml";
 
 // ─── 汎用 parse / load ──────────────────────────────────────────────────────
 
@@ -134,7 +136,22 @@ pub fn load_rules_dir<P: AsRef<Path>>(dir: P) -> Result<RulesData> {
         latin: load_or_default(dir.join(LATIN_FILE))?,
         numeric_phrases: load_or_default(dir.join(NUMERIC_PHRASES_FILE))?,
         compat: load_or_default(dir.join(COMPAT_FILE))?,
+        postprocess: load_postprocess(dir)?,
     })
+}
+
+/// `postprocess.toml` を読み込んで [`PostProcessData`] にコンパイルする。
+///
+/// ファイル不在なら空の default を返す (no-op で apply される)。
+fn load_postprocess(dir: &Path) -> Result<PostProcessData> {
+    let path = dir.join(POSTPROCESS_FILE);
+    if !path.exists() {
+        return Ok(PostProcessData::default());
+    }
+    let spec: PostProcessSpec = load_or_default(&path)?;
+    PostProcessData::from_spec(spec).map_err(|e| FuriganaError::Validation(format!(
+        "postprocess.toml: regex compile failed: {e}"
+    )))
 }
 
 // ─── 細分化サポート (counters / context) ─────────────────────────────────────
