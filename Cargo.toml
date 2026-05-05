@@ -11,8 +11,8 @@ edition = "2021"
 rust-version = "1.88"
 license = "MIT"
 authors = ["RyuuNeko <mail@ryuuneko.com>"]
-repository = "https://github.com/RyuuNeko1107/furigana"
-homepage = "https://github.com/RyuuNeko1107/furigana"
+repository = "https://github.com/RyuuNeko1107/ja-furigana"
+homepage = "https://github.com/RyuuNeko1107/ja-furigana"
 keywords = ["japanese", "furigana", "ruby", "kana", "nlp"]
 categories = ["text-processing", "internationalization"]
 

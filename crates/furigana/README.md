@@ -12,7 +12,7 @@ let ruby = f.to_ruby("灰桜の散る道");
 // → "{灰桜|はいざくら}の{散|ち}る{道|みち}"
 ```
 
-See the [project README](https://github.com/RyuuNeko1107/furigana) for full docs.
+See the [project README](https://github.com/RyuuNeko1107/ja-furigana) for full docs.
 
 ## License
 
