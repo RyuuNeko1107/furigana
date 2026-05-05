@@ -16,7 +16,7 @@ license. Its full notice is preserved in this file via the `lindera-ipadic` crat
 
 ## License summary
 
-- **MIT License** — used by 270 crate(s)
+- **MIT License** — used by 268 crate(s)
 - **Unicode License v3** — used by 19 crate(s)
 - **Apache License 2.0** — used by 8 crate(s)
 - **ISC License** — used by 5 crate(s)
@@ -4731,8 +4731,8 @@ SOFTWARE.
 
 Used by:
 
-- [`ja-furigana` v0.1.0-alpha.3](https://github.com/RyuuNeko1107/ja-furigana)
-- [`ja-furigana-cli` v0.1.0-alpha.3](https://github.com/RyuuNeko1107/ja-furigana)
+- [`ja-furigana` v0.1.0-alpha.5](https://github.com/RyuuNeko1107/ja-furigana)
+- [`ja-furigana-cli` v0.1.0-alpha.5](https://github.com/RyuuNeko1107/ja-furigana)
 - [`anes` v0.1.6](https://github.com/zrzka/anes-rs)
 - [`jni-macros` v0.22.4](https://github.com/jni-rs/jni-rs)
 - [`jni-sys-macros` v0.4.1](https://github.com/jni-rs/jni-sys)
@@ -4748,7 +4748,6 @@ Used by:
 - [`winapi-x86_64-pc-windows-gnu` v0.4.0](https://github.com/retep998/winapi-rs)
 - [`windows-link` v0.2.1](https://github.com/microsoft/windows-rs)
 - [`windows-sys` v0.52.0](https://github.com/microsoft/windows-rs)
-- [`windows-sys` v0.59.0](https://github.com/microsoft/windows-rs)
 - [`windows-sys` v0.61.2](https://github.com/microsoft/windows-rs)
 - [`windows-targets` v0.52.6](https://github.com/microsoft/windows-rs)
 - [`windows_aarch64_gnullvm` v0.52.6](https://github.com/microsoft/windows-rs)
@@ -5130,7 +5129,7 @@ SOFTWARE.
 
 Used by:
 
-- [`endian-type` v0.1.2](https://github.com/Lolirofle/endian-type.git)
+- [`endian-type` v0.2.0](https://github.com/Lolirofle/endian-type.git)
 
 <details>
 <summary>License text</summary>
@@ -5245,7 +5244,7 @@ THE SOFTWARE.
 
 Used by:
 
-- [`nix` v0.29.0](https://github.com/nix-rust/nix)
+- [`nix` v0.31.2](https://github.com/nix-rust/nix)
 
 <details>
 <summary>License text</summary>
@@ -5319,7 +5318,7 @@ SOFTWARE.
 
 Used by:
 
-- [`rustyline` v15.0.0](https://github.com/kkawakam/rustyline)
+- [`rustyline` v18.0.0](https://github.com/kkawakam/rustyline)
 
 <details>
 <summary>License text</summary>
@@ -5394,7 +5393,7 @@ THE SOFTWARE.
 Used by:
 
 - [`nibble_vec` v0.1.0](https://github.com/michaelsproul/rust_nibble_vec)
-- [`radix_trie` v0.2.1](https://github.com/michaelsproul/rust_radix_trie)
+- [`radix_trie` v0.3.0](https://github.com/michaelsproul/rust_radix_trie)
 
 <details>
 <summary>License text</summary>
@@ -5678,42 +5677,6 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-```
-
-</details>
-
-### MIT License
-
-Used by:
-
-- [`fd-lock` v4.0.4](https://github.com/yoshuawuyts/fd-lock)
-
-<details>
-<summary>License text</summary>
-
-```
-The MIT License (MIT)
-
-Copyright (c) 2019 Yoshua Wuyts
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the &quot;Software&quot;), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED &quot;AS IS&quot;, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-
 ```
 
 </details>
