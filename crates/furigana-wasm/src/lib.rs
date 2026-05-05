@@ -49,6 +49,24 @@ impl WasmFurigana {
         self.inner.add_reading(surface, reading);
     }
 
+    /// TOML 文字列を辞書に一括 merge。返値は追加 (上書き含む) されたエントリ数。
+    ///
+    /// 典型的な使い方:
+    /// ```js
+    /// const toml = await fetch("./data/unihan.toml").then(r => r.text());
+    /// const added = f.mergeDictToml(toml);
+    /// console.log(`loaded ${added} entries`);
+    /// ```
+    ///
+    /// `[entries]` セクションを持つ TOML だけが対象。`units.toml` 等の
+    /// inline-table 系 TOML は内部で silent skip される。
+    #[wasm_bindgen(js_name = mergeDictToml)]
+    pub fn merge_dict_toml(&mut self, toml: &str) -> Result<usize, JsError> {
+        self.inner
+            .merge_dict_toml(toml)
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
+
     /// `{灰桜|はいざくら}の{散る|ちる}{道|みち}` 形式で出力。
     #[wasm_bindgen(js_name = toRuby)]
     pub fn to_ruby(&self, text: &str) -> String {
