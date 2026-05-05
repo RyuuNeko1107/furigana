@@ -17,6 +17,13 @@ updates:
     labels:
       - "dependencies"
       - "rust"
+    # API breaking が大きい major bump は手動対応に回す (Dependabot 再生産を抑制)。
+    # 必要になったら ignore を外す or 個別に PR 作る。
+    ignore:
+      - dependency-name: "toml"
+        update-types: ["version-update:semver-major"]   # 0.8 → 1.x は spec 違いで loader 変更要
+      - dependency-name: "directories"
+        update-types: ["version-update:semver-major"]   # 5 → 6 は ProjectDirs API 変更可能性
     # 関連 crate を 1 PR にまとめてレビュー負担を下げる
     groups:
       tokio-stack:
