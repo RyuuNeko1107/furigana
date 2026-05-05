@@ -34,7 +34,7 @@ lindera = { version = "3", features = ["embed-ipadic"] }
 [dev-dependencies]
 serde_json = { workspace = true }
 regex = { workspace = true }
-criterion = { version = "0.5", default-features = false, features = ["cargo_bench_support", "html_reports"] }
+criterion = { version = "0.8", default-features = false, features = ["cargo_bench_support", "html_reports"] }
 
 [[bench]]
 name = "lookup"
