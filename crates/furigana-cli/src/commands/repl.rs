@@ -13,7 +13,7 @@ use crate::config::Config;
 use crate::paths::Paths;
 use anyhow::Result;
 use clap::Args as ClapArgs;
-use furigana::{Furigana, TtsOptions};
+use furigana::{Furigana, RomajiStyle, TtsOptions};
 use rustyline::completion::{Completer, Pair};
 use rustyline::error::ReadlineError;
 use rustyline::highlight::Highlighter;
@@ -46,6 +46,8 @@ enum Mode {
     Hiragana,
     Tts,
     Kanji,
+    Romaji,
+    RomajiKunrei,
 }
 
 impl Mode {
@@ -56,6 +58,8 @@ impl Mode {
             "hiragana" | "hira" => Self::Hiragana,
             "tts" => Self::Tts,
             "kanji" => Self::Kanji,
+            "romaji" => Self::Romaji,
+            "romaji-kunrei" | "kunrei" => Self::RomajiKunrei,
             _ => return None,
         })
     }
@@ -67,6 +71,8 @@ impl Mode {
             Self::Hiragana => "hiragana",
             Self::Tts => "tts",
             Self::Kanji => "kanji",
+            Self::Romaji => "romaji",
+            Self::RomajiKunrei => "romaji-kunrei",
         }
     }
 }
@@ -77,7 +83,15 @@ const META_COMMANDS: &[&str] = &[
     "debug", "help", "mode", "pull", "quit", "reload", "size", "tokens",
 ];
 
-const MODE_NAMES: &[&str] = &["all", "ruby", "hiragana", "tts", "kanji"];
+const MODE_NAMES: &[&str] = &[
+    "all",
+    "ruby",
+    "hiragana",
+    "tts",
+    "kanji",
+    "romaji",
+    "romaji-kunrei",
+];
 
 /// 入力行の先頭がメタコマンドっぽいかを判定する用に、エイリアスも含めて拾う。
 const META_COMMAND_ALIASES: &[&str] = &[
@@ -235,6 +249,20 @@ pub fn run(args: Args, paths: &Paths, _cfg: &Config) -> Result<()> {
                 println!("  {}", furigana::tts::normalize_for_tts(&hira, &opts));
             }
             Mode::Kanji => println!("  {line}"),
+            Mode::Romaji => {
+                let hira = furigana::tokens_to_hiragana(&tokens);
+                println!(
+                    "  {}",
+                    furigana::hiragana_to_romaji(&hira, RomajiStyle::Hepburn)
+                );
+            }
+            Mode::RomajiKunrei => {
+                let hira = furigana::tokens_to_hiragana(&tokens);
+                println!(
+                    "  {}",
+                    furigana::hiragana_to_romaji(&hira, RomajiStyle::Kunrei)
+                );
+            }
         }
         let t_conv = t1.elapsed();
 

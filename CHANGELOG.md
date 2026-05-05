@@ -7,6 +7,15 @@
 ## [Unreleased]
 
 ### Added
+- **ローマ字出力モード** (`--mode romaji` / `--mode romaji-kunrei`):
+  - lib: `Furigana::to_romaji(text, RomajiStyle)` + 公開 `hiragana_to_romaji` 関数
+  - CLI: `furigana lookup --mode romaji` / `--mode romaji-kunrei`
+  - REPL: `mode romaji` / `mode romaji-kunrei`
+  - HTTP API: `mode=romaji` / `mode=romaji-kunrei`
+  - ヘボン式 (default): し→shi、ち→chi、つ→tsu、b/m/p 前 ん→m、母音/y 前 `'` 区切り
+  - 訓令式: し→si、ち→ti、つ→tu、ん→常に n
+  - 促音 (っ) は次の子音を重ねる、ヘボン式 ち系の前は t (motchi)
+  - 長音 (ー) は直前の母音を repeat
 - `Furigana::merge_dict_toml(content)` — TOML 文字列を辞書に一括 merge する API。
   ファイルシステムベースの `core_dict_dir` が使えない環境向け。
 - `Furigana::preload()` — Lindera 形態素解析器を eager に初期化する API

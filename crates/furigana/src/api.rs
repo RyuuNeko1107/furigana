@@ -129,6 +129,18 @@ impl Furigana {
         tts::normalize_for_tts(&hira, opts)
     }
 
+    /// テキスト → ローマ字
+    ///
+    /// 内部で [`Self::to_hiragana`] → [`crate::romaji::hiragana_to_romaji`] を走らせる。
+    /// 例: `"灰桜の散る道"` → `"haizakura no chiru michi"` (ヘボン式)。
+    /// `style = RomajiStyle::Hepburn` (default) で b/m/p 前の n→m や ち→chi、
+    /// `Kunrei` で規則的な si/ti/tu を出す。
+    #[must_use]
+    pub fn to_romaji(&self, text: &str, style: crate::romaji::RomajiStyle) -> String {
+        let hira = self.to_hiragana(text);
+        crate::romaji::hiragana_to_romaji(&hira, style)
+    }
+
     /// TTS 出力を文末・読点で分割
     ///
     /// `max_segment_len` 以内のチャンクに分割した配列を返す。
