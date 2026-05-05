@@ -1,10 +1,10 @@
-//! Furigana の処理パイプラインのどの層で巨大 alloc 暴走が起きるかを切り分ける。
+//! Furigana の処理パイプラインのどの層で巨大 alloc 暴走が起きるかを切り分けるための
+//! reproducer 集 (修正済み、参考のため残置)。
 //!
 //! Lindera 単体は問題なしと判明したので (lindera_minimal_repro.rs)、
-//! - reading::tokenize_text (内部で Analyzer + dict + rules + phrase_matcher + chunker)
-//! - tokens_to_hiragana / tokens_to_ruby
-//! - tts::normalize_for_tts
-//! のどこに bug があるかを順番に試す。
+//! reading::tokenize_text / tokens_to_hiragana / tokens_to_ruby / tts::normalize_for_tts
+//! のどこに bug があるかを順番に試して、最終的に NumberChunker の never-match
+//! pattern が原因と特定した経緯。
 //!
 //! 実行:
 //! ```sh
