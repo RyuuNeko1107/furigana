@@ -33,3 +33,8 @@ lindera = { version = "3", features = ["embed-ipadic"] }
 
 [dev-dependencies]
 serde_json = { workspace = true }
+criterion = { version = "0.5", default-features = false, features = ["cargo_bench_support", "html_reports"] }
+
+[[bench]]
+name = "lookup"
+harness = false

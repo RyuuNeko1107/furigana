@@ -57,7 +57,14 @@ pub struct Args {
 }
 
 pub fn run(args: Args, paths: &Paths, cfg: &Config) -> Result<()> {
-    let furigana: Arc<Furigana> = Arc::new(super::build_furigana(paths)?);
+    let furigana_inner = super::build_furigana(paths)?;
+    // server は最初のリクエストレイテンシを下げるため、Lindera analyzer を eager init。
+    // build_furigana 自体は lazy なので listen 前にここで明示的に init して
+    // 起動失敗を listen 前に検知できるようにもする。
+    furigana_inner
+        .preload()
+        .map_err(|e| anyhow!("形態素解析器の初期化に失敗: {e}"))?;
+    let furigana: Arc<Furigana> = Arc::new(furigana_inner);
 
     let bind = args.bind.unwrap_or_else(|| cfg.server.bind.clone());
     let mut tokens = cfg.auth.tokens.clone();

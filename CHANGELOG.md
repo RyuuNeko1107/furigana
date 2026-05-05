@@ -9,8 +9,20 @@
 ### Added
 - `Furigana::merge_dict_toml(content)` — TOML 文字列を辞書に一括 merge する API。
   ファイルシステムベースの `core_dict_dir` が使えない環境向け。
+- `Furigana::preload()` — Lindera 形態素解析器を eager に初期化する API
+  (server 起動時の preload 用)。
 - `examples/clients/{python,nodejs,curl}/` — `furigana serve` HTTP API を他言語から
   叩く最小サンプル (TTS パイプライン / Discord bot / shell パイプ用途)。
+- `crates/furigana/benches/lookup.rs` — criterion ベンチ (init / mode 別 / tokenize)。
+
+### Changed
+- **`Furigana` の Lindera 初期化を lazy に**。`Furigana::minimal()` /
+  `FuriganaBuilder::build()` の時点では Analyzer を init せず、最初の
+  `tokenize` / `to_*` 呼び出し時に [`OnceLock`] で 1 度だけ init。
+  `Furigana::minimal()` 単体の bench で **5.97 ms → 27.3 µs (-99.5%)**。
+  CLI レベルでは `--version` / `--help` 等の Lindera 不要経路が
+  ~80 ms → ~10 ms に高速化。`furigana serve` は preload を起動時に呼んで
+  最初のリクエストレイテンシを保つ。
 
 ### Removed
 - `crates/furigana-wasm/` (WebAssembly bindings) を削除。`.wasm` が Lindera + IPADIC
