@@ -3,15 +3,26 @@
 //! 対話モード。1 行入力すると現在の mode で変換して即時出力。
 //! `:` プレフィクスでメタコマンド (`:help` で一覧)。
 //!
-//! 依存追加なしで `std::io::stdin()` のみ使用 (history / 矢印キーは未対応)。
+//! 行編集は `rustyline` で:
+//! - 矢印キーで履歴 / カーソル移動
+//! - Tab でメタコマンド補完 (`:` プレフィックス時) と `:mode <name>` の候補補完
+//! - Ctrl-C 1 回で readline キャンセル、Ctrl-D で終了
+//! - 履歴は `<data_dir>/repl_history` に永続化
 
 use crate::config::Config;
 use crate::paths::Paths;
 use anyhow::Result;
 use clap::Args as ClapArgs;
 use furigana::{Furigana, TtsOptions};
-use std::io::{self, BufRead, Write};
+use rustyline::completion::{Completer, Pair};
+use rustyline::error::ReadlineError;
+use rustyline::highlight::Highlighter;
+use rustyline::hint::Hinter;
+use rustyline::history::DefaultHistory;
+use rustyline::validate::Validator;
+use rustyline::{Context, Editor, Helper};
 use std::time::Instant;
+use unicode_width::UnicodeWidthStr;
 
 #[derive(ClapArgs, Debug)]
 pub struct Args {
@@ -30,7 +41,6 @@ impl Default for Args {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Mode {
-    /// ruby + hiragana を 2 行で同時表示 (試す用途のデフォルト)
     All,
     Ruby,
     Hiragana,
@@ -61,106 +71,129 @@ impl Mode {
     }
 }
 
+const META_COMMANDS: &[&str] = &[
+    ":debug", ":help", ":mode", ":pull", ":quit", ":reload", ":size", ":tokens",
+];
+
+const MODE_NAMES: &[&str] = &["all", "ruby", "hiragana", "tts", "kanji"];
+
+/// rustyline Helper: タブ補完だけ実装。highlight / hint / validate は default。
+#[derive(Default)]
+struct ReplHelper;
+
+impl Completer for ReplHelper {
+    type Candidate = Pair;
+    fn complete(
+        &self,
+        line: &str,
+        pos: usize,
+        _: &Context<'_>,
+    ) -> rustyline::Result<(usize, Vec<Pair>)> {
+        let head = &line[..pos];
+
+        // ":mode <prefix>" → mode 候補
+        if let Some(arg) = head.strip_prefix(":mode ") {
+            let start = pos - arg.len();
+            let candidates = MODE_NAMES
+                .iter()
+                .filter(|m| m.starts_with(arg))
+                .map(|m| Pair {
+                    display: (*m).to_string(),
+                    replacement: (*m).to_string(),
+                })
+                .collect();
+            return Ok((start, candidates));
+        }
+
+        // ":<prefix>" → メタコマンド候補
+        if head.starts_with(':') {
+            let candidates = META_COMMANDS
+                .iter()
+                .filter(|c| c.starts_with(head))
+                .map(|c| Pair {
+                    display: (*c).to_string(),
+                    replacement: (*c).to_string(),
+                })
+                .collect();
+            return Ok((0, candidates));
+        }
+
+        Ok((pos, vec![]))
+    }
+}
+
+impl Hinter for ReplHelper {
+    type Hint = String;
+}
+impl Highlighter for ReplHelper {}
+impl Validator for ReplHelper {}
+impl Helper for ReplHelper {}
+
 pub fn run(args: Args, paths: &Paths, _cfg: &Config) -> Result<()> {
     let Args { mode: initial_mode } = args;
     let mut f = super::build_furigana(paths)?;
     let mut mode = Mode::parse(&initial_mode).unwrap_or(Mode::All);
     let mut debug = false;
 
-    eprintln!("furigana REPL");
-    eprintln!("  dict_size: {}", f.dict_size());
-    if f.dict_size() == 0 {
-        eprintln!("  (辞書が空です。`:pull` で furigana-dict を取得するとフリガナ精度が上がります)");
-    }
-    eprintln!("  type :help for commands, Ctrl-D to quit");
+    let mut editor: Editor<ReplHelper, DefaultHistory> = Editor::new()?;
+    editor.set_helper(Some(ReplHelper));
+    let history_path = paths.data_dir.join("repl_history");
+    let _ = editor.load_history(&history_path); // 無くても無視
 
-    let stdin = io::stdin();
-    let mut stdout = io::stdout();
+    println!("furigana REPL  (dict_size: {})", f.dict_size());
+    println!("  Tab で補完 / ↑↓ で履歴 / :help でコマンド / :quit で終了");
+    println!();
+
+    // 初回起動 (辞書空) のとき :pull を提案
+    if f.dict_size() == 0 {
+        println!("辞書が未配置です。furigana-dict (~226 KB) を取得して使えるようにしますか？");
+        if let Ok(ans) = editor.readline("[Y/n] > ") {
+            let ans = ans.trim().to_ascii_lowercase();
+            if ans.is_empty() || ans == "y" || ans == "yes" {
+                if let Err(e) = run_pull_and_reload(paths, None, &mut f) {
+                    eprintln!("pull failed: {e}");
+                }
+            } else {
+                println!("(skipped — あとで `:pull` で取得できます)");
+            }
+        }
+        // EOF / Ctrl-C は skip
+        println!();
+    }
 
     loop {
-        write!(stdout, "{}> ", mode.as_str())?;
-        stdout.flush()?;
-
-        let mut line = String::new();
-        match stdin.lock().read_line(&mut line) {
-            Ok(0) => {
-                writeln!(stdout)?;
+        let prompt = format!("{}> ", mode.as_str());
+        let line = match editor.readline(&prompt) {
+            Ok(l) => l,
+            Err(ReadlineError::Interrupted) => {
+                // Ctrl-C: 行をキャンセルして次の行へ
+                continue;
+            }
+            Err(ReadlineError::Eof) => {
+                // Ctrl-D: 終了
                 break;
             }
-            Ok(_) => {}
             Err(e) => {
                 eprintln!("read error: {e}");
                 break;
             }
-        }
-        let line = line.trim_end_matches(['\r', '\n']);
+        };
+        let line = line.trim();
         if line.is_empty() {
             continue;
         }
+        let _ = editor.add_history_entry(line);
 
         if let Some(rest) = line.strip_prefix(':') {
             let mut parts = rest.splitn(2, char::is_whitespace);
             let cmd = parts.next().unwrap_or("");
             let arg = parts.next().unwrap_or("").trim();
-            match cmd {
-                "h" | "help" => print_help(&mut stdout)?,
-                "q" | "quit" | "exit" => break,
-                "size" => writeln!(stdout, "dict_size: {}", f.dict_size())?,
-                "r" | "reload" => match super::build_furigana(paths) {
-                    Ok(new) => {
-                        f = new;
-                        writeln!(stdout, "reloaded. dict_size: {}", f.dict_size())?;
-                    }
-                    Err(e) => writeln!(stdout, "reload failed: {e}")?,
-                },
-                "pull" => {
-                    let version = if arg.is_empty() { None } else { Some(arg) };
-                    match super::dict_pull::run(paths, version) {
-                        Ok(()) => match super::build_furigana(paths) {
-                            Ok(new) => {
-                                f = new;
-                                writeln!(
-                                    stdout,
-                                    "pull + reload 完了。dict_size: {}",
-                                    f.dict_size()
-                                )?;
-                            }
-                            Err(e) => writeln!(stdout, "reload failed: {e}")?,
-                        },
-                        Err(e) => writeln!(stdout, "pull failed: {e}")?,
-                    }
-                }
-                "mode" => {
-                    if arg.is_empty() {
-                        writeln!(stdout, "current mode: {}", mode.as_str())?;
-                        writeln!(
-                            stdout,
-                            "available: all | ruby | hiragana | tts | kanji"
-                        )?;
-                    } else if let Some(m) = Mode::parse(arg) {
-                        mode = m;
-                        writeln!(stdout, "mode -> {}", mode.as_str())?;
-                    } else {
-                        writeln!(stdout, "unknown mode: {arg}")?;
-                    }
-                }
-                "debug" => {
-                    debug = !debug;
-                    writeln!(stdout, "debug: {}", if debug { "on" } else { "off" })?;
-                }
-                "tokens" => {
-                    if arg.is_empty() {
-                        writeln!(stdout, "usage: :tokens <text>")?;
-                    } else {
-                        dump_tokens(&mut stdout, &f, arg)?;
-                    }
-                }
-                other => writeln!(stdout, "unknown command: :{other} (try :help)")?,
-            }
+            handle_meta(cmd, arg, &mut mode, &mut debug, &mut f, paths);
+            println!();
             continue;
         }
 
-        // 通常の入力 → 変換
+        // 通常変換
         let t0 = Instant::now();
         let tokens = f.tokenize(line);
         let t_tok = t0.elapsed();
@@ -168,74 +201,135 @@ pub fn run(args: Args, paths: &Paths, _cfg: &Config) -> Result<()> {
         let t1 = Instant::now();
         match mode {
             Mode::All => {
-                writeln!(stdout, "  ruby:     {}", furigana::tokens_to_ruby(&tokens))?;
-                writeln!(
-                    stdout,
-                    "  hiragana: {}",
-                    furigana::tokens_to_hiragana(&tokens)
-                )?;
+                println!("  ruby:     {}", furigana::tokens_to_ruby(&tokens));
+                println!("  hiragana: {}", furigana::tokens_to_hiragana(&tokens));
             }
-            Mode::Ruby => writeln!(stdout, "{}", furigana::tokens_to_ruby(&tokens))?,
-            Mode::Hiragana => writeln!(stdout, "{}", furigana::tokens_to_hiragana(&tokens))?,
+            Mode::Ruby => println!("  {}", furigana::tokens_to_ruby(&tokens)),
+            Mode::Hiragana => println!("  {}", furigana::tokens_to_hiragana(&tokens)),
             Mode::Tts => {
                 let opts = TtsOptions::default();
                 let hira = furigana::tokens_to_hiragana(&tokens);
-                writeln!(stdout, "{}", furigana::tts::normalize_for_tts(&hira, &opts))?;
+                println!("  {}", furigana::tts::normalize_for_tts(&hira, &opts));
             }
-            Mode::Kanji => writeln!(stdout, "{line}")?,
+            Mode::Kanji => println!("  {line}"),
         }
         let t_conv = t1.elapsed();
 
         if debug {
-            writeln!(
-                stdout,
-                "  [debug] tokenize {:.2}ms / convert {:.2}ms / total {:.2}ms",
+            println!(
+                "  \x1b[2m[debug] tokenize {:.2}ms / convert {:.2}ms / total {:.2}ms\x1b[0m",
                 t_tok.as_secs_f64() * 1000.0,
                 t_conv.as_secs_f64() * 1000.0,
                 (t_tok + t_conv).as_secs_f64() * 1000.0,
-            )?;
+            );
         }
+        println!(); // 結果と次 prompt の間に空行
     }
+
+    let _ = editor.save_history(&history_path);
     Ok(())
 }
 
-fn dump_tokens(w: &mut impl Write, f: &Furigana, text: &str) -> io::Result<()> {
+fn handle_meta(
+    cmd: &str,
+    arg: &str,
+    mode: &mut Mode,
+    debug: &mut bool,
+    f: &mut Furigana,
+    paths: &Paths,
+) {
+    match cmd {
+        "h" | "help" => print_help(),
+        "q" | "quit" | "exit" => std::process::exit(0),
+        "size" => println!("  dict_size: {}", f.dict_size()),
+        "r" | "reload" => match super::build_furigana(paths) {
+            Ok(new) => {
+                *f = new;
+                println!("  reloaded. dict_size: {}", f.dict_size());
+            }
+            Err(e) => println!("  reload failed: {e}"),
+        },
+        "pull" => {
+            let version = if arg.is_empty() { None } else { Some(arg) };
+            if let Err(e) = run_pull_and_reload(paths, version, f) {
+                println!("  pull failed: {e}");
+            }
+        }
+        "mode" => {
+            if arg.is_empty() {
+                println!("  current: {}", mode.as_str());
+                println!("  available: {}", MODE_NAMES.join(" | "));
+            } else if let Some(m) = Mode::parse(arg) {
+                *mode = m;
+                println!("  mode -> {}", mode.as_str());
+            } else {
+                println!("  unknown mode: {arg}");
+            }
+        }
+        "debug" => {
+            *debug = !*debug;
+            println!("  debug: {}", if *debug { "on" } else { "off" });
+        }
+        "tokens" => {
+            if arg.is_empty() {
+                println!("  usage: :tokens <text>");
+            } else {
+                dump_tokens(f, arg);
+            }
+        }
+        other => println!("  unknown command: :{other}  (try :help)"),
+    }
+}
+
+/// `:pull` 共通実装: dict_pull::run → build_furigana で in-place 差し替え
+fn run_pull_and_reload(
+    paths: &Paths,
+    version: Option<&str>,
+    f: &mut Furigana,
+) -> anyhow::Result<()> {
+    super::dict_pull::run(paths, version)?;
+    let new = super::build_furigana(paths)?;
+    *f = new;
+    println!("  reload 完了。dict_size: {}", f.dict_size());
+    Ok(())
+}
+
+fn dump_tokens(f: &Furigana, text: &str) {
     let tokens = f.tokenize(text);
     if tokens.is_empty() {
-        writeln!(w, "  (no tokens)")?;
-        return Ok(());
+        println!("  (no tokens)");
+        return;
     }
     let surface_w = tokens
         .iter()
-        .map(|t| t.surface.chars().count())
+        .map(|t| UnicodeWidthStr::width(t.surface.as_str()))
         .max()
         .unwrap_or(0)
         .max(7);
-    writeln!(w, "  {:width$}  reading", "surface", width = surface_w)?;
-    writeln!(w, "  {:-<width$}  -------", "", width = surface_w)?;
+    println!("  {:width$}  reading", "surface", width = surface_w);
+    println!("  {:-<width$}  -------", "", width = surface_w);
     for t in &tokens {
-        writeln!(
-            w,
-            "  {:width$}  {}",
-            t.surface,
-            t.reading.as_deref().unwrap_or("(none)"),
-            width = surface_w
-        )?;
+        let pad = surface_w.saturating_sub(UnicodeWidthStr::width(t.surface.as_str()));
+        let reading = t
+            .reading
+            .as_deref()
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| "\x1b[2m(none)\x1b[0m".to_string());
+        println!("  {}{}  {}", t.surface, " ".repeat(pad), reading);
     }
-    Ok(())
 }
 
-fn print_help(w: &mut impl Write) -> io::Result<()> {
-    writeln!(w, "Commands:")?;
-    writeln!(w, "  :help          このヘルプ")?;
-    writeln!(w, "  :mode <m>      mode 切替 (all|ruby|hiragana|tts|kanji)")?;
-    writeln!(w, "  :debug         timing 表示の on/off (toggle)")?;
-    writeln!(w, "  :tokens <text> 内部 token 配列を dump (なぜこの読み？を調べる用)")?;
-    writeln!(w, "  :pull [vX.Y.Z] furigana-dict を取得 + 自動 reload (初回のセットアップに)")?;
-    writeln!(w, "  :reload        data_dir から辞書を再 build")?;
-    writeln!(w, "  :size          dict_size を表示")?;
-    writeln!(w, "  :quit          終了 (Ctrl-D も可)")?;
-    writeln!(w)?;
-    writeln!(w, "プレフィクス無しの入力は現在の mode で変換して表示します。")?;
-    Ok(())
+fn print_help() {
+    println!("Commands:");
+    println!("  :help          このヘルプ");
+    println!("  :mode <m>      mode 切替 (all|ruby|hiragana|tts|kanji)  ※Tab で候補補完");
+    println!("  :debug         timing 表示の on/off (toggle)");
+    println!("  :tokens <text> 内部 token 配列を dump (なぜこの読み？を調べる用)");
+    println!("  :pull [vX.Y.Z] furigana-dict を取得 + 自動 reload");
+    println!("  :reload        data_dir から辞書を再 build");
+    println!("  :size          dict_size を表示");
+    println!("  :quit          終了 (Ctrl-D も可)");
+    println!();
+    println!("プレフィクス無しの入力は現在の mode で変換して表示します。");
+    println!("Tab: コマンド補完 / ↑↓: 履歴 / Ctrl-A,E,W,U: 行編集");
 }

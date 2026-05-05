@@ -1,11 +1,11 @@
 //! データディレクトリ・設定パスの解決
 //!
-//! 優先順位: CLI 引数 > 環境変数 > XDG / `%LOCALAPPDATA%`
+//! 優先順位: CLI `--data-dir` / `--config` > 環境変数 > **実行ファイルと同じディレクトリ** > XDG fallback
 //!
-//! - **Linux / macOS**: `~/.local/share/furigana/` (XDG_DATA_HOME 準拠)
-//! - **Windows**: `%LOCALAPPDATA%\furigana\furigana\`
-//!
-//! 設定は `data_dir` とは別の `config_dir` に置く慣例 (XDG_CONFIG_HOME)。
+//! 「`furigana.exe` をダブルクリックで起動 → 同じフォルダに `dict/` 等が展開される」
+//! portable な配置を default にしてある。フォルダごとコピーすれば持ち運び可能。
+//! `current_exe()` の解決に失敗した場合のみ XDG (`~/.local/share/furigana/` /
+//! `%LOCALAPPDATA%\furigana\furigana\`) に fallback する。
 
 use anyhow::{anyhow, Result};
 use directories::ProjectDirs;
@@ -23,15 +23,14 @@ pub struct Paths {
 impl Paths {
     /// デフォルト + override で解決
     pub fn resolve(override_data: Option<&Path>, override_config: Option<&Path>) -> Result<Self> {
-        let project = ProjectDirs::from("com", "furigana", "furigana")
-            .ok_or_else(|| anyhow!("プロジェクトディレクトリの解決に失敗"))?;
-
-        let data_dir = override_data
-            .map(PathBuf::from)
-            .unwrap_or_else(|| project.data_dir().to_path_buf());
+        let data_dir = if let Some(d) = override_data {
+            d.to_path_buf()
+        } else {
+            default_data_dir()?
+        };
         let config_file = override_config
             .map(PathBuf::from)
-            .unwrap_or_else(|| project.config_dir().join("config.toml"));
+            .unwrap_or_else(|| data_dir.join("config.toml"));
 
         Ok(Self {
             data_dir,
@@ -62,4 +61,18 @@ impl Paths {
     pub fn overrides_file(&self) -> PathBuf {
         self.dict_dir().join("overrides.tsv")
     }
+}
+
+/// `--data-dir` / env 未指定時の data_dir 解決:
+/// 1. 実行ファイル (`furigana.exe`) と同じディレクトリ
+/// 2. 失敗時のみ XDG / `%LOCALAPPDATA%` (滅多に到達しない)
+fn default_data_dir() -> Result<PathBuf> {
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(parent) = exe.parent() {
+            return Ok(parent.to_path_buf());
+        }
+    }
+    let project = ProjectDirs::from("com", "furigana", "furigana")
+        .ok_or_else(|| anyhow!("プロジェクトディレクトリの解決に失敗"))?;
+    Ok(project.data_dir().to_path_buf())
 }
