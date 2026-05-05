@@ -390,7 +390,7 @@ fn dump_tokens(f: &Furigana, text: &str) {
 fn print_help() {
     println!("Commands (先頭の `:` は optional、`help` でも `:help` でも OK):");
     println!("  help          このヘルプ");
-    println!("  mode <m>      mode 切替 (all|ruby|hiragana|tts|kanji)  ※Tab で候補補完");
+    println!("  mode <m>      mode 切替 (all|ruby|hiragana|tts|kanji|romaji|romaji-kunrei)  ※Tab で候補補完");
     println!("  debug         timing 表示の on/off (toggle)");
     println!("  tokens <text> 内部 token 配列を dump (なぜこの読み？を調べる用)");
     println!("  pull [vX.Y.Z] furigana-dict を取得 + 自動 reload");

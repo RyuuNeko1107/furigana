@@ -26,7 +26,7 @@ furigana serve              # → http://127.0.0.1:8000
 - `GET  /furigana?text=灰桜の道&mode=ruby`
 - `POST /furigana` body `{"text":"灰桜の道","mode":"ruby"}`
 
-`mode` は `tts` (default) | `hiragana` | `ruby` | `kanji`。
+`mode` は `tts` (default) | `hiragana` | `ruby` | `kanji` | `romaji` | `romaji-kunrei` の 6 つ。
 レスポンスは `{"result":"...","mode":"ruby"}`。
 
 詳細は [プロジェクト README](../../README.md) を参照。

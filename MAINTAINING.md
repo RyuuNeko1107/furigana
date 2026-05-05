@@ -19,12 +19,14 @@
 
 ```sh
 # 1. workspace の version を bump
-#    crates/Cargo.toml の workspace.package.version
+#    ルート `Cargo.toml` の [workspace.package].version
 #    例: 0.1.0-alpha.2 → 0.1.0-alpha.3
-#    依存表記の =0.1.0-alpha.X (CLI → lib) も合わせて更新
+#    `crates/furigana-cli/Cargo.toml` の依存表記
+#    (`furigana = { package = "ja-furigana", path = "../furigana", version = "=0.1.0-alpha.X" }`)
+#    も合わせて更新
 
 # 2. CHANGELOG.md を整理して commit
-git add CHANGELOG.md Cargo.toml crates/*/Cargo.toml
+git add CHANGELOG.md Cargo.toml crates/furigana/Cargo.toml crates/furigana-cli/Cargo.toml
 git commit -m "chore(release): bump to 0.1.0-alpha.3"
 git push origin master
 
