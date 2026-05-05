@@ -201,8 +201,19 @@ curl -X POST http://127.0.0.1:8000/furigana \
 
 ### Bearer 認証
 `config.toml` の `[auth].tokens` または起動時 `--token` (env `FURIGANA_TOKEN`) で
-1 つ以上のトークンを設定すると `/furigana` で `Authorization: Bearer <token>` 必須。
+1 つ以上のトークンを設定すると `/furigana` で `X-API-Key` または
+`Authorization: Bearer <token>` 必須。
 `/healthz` は常に認証不要。
+
+### ホットリロード
+辞書を再読込するには:
+
+- `POST /admin/reload` — `[auth].admin_tokens` に登録した token で認証
+  (一般 `tokens` では通らない、admin 専用)
+- `kill -HUP <pid>` (Unix のみ) — systemd の `ExecReload` に相当
+
+`furigana dict pull` で新版を取得 → `/admin/reload` で反映、というのが想定フロー。
+`admin_tokens` が空の場合 `/admin/reload` は **503** を返して機能 off。
 
 ## 設定ファイル
 
@@ -214,7 +225,8 @@ bind = "127.0.0.1:8000"
 cors_origins = []  # 空 = Any 許可 (ローカル用途)
 
 [auth]
-tokens = []  # 空 = 認証無効
+tokens = []        # 空 = /furigana 認証無効 (ローカル想定)
+admin_tokens = []  # 空 = /admin/* 機能 off (503)
 ```
 
 ## アーキテクチャ概要
@@ -272,11 +284,11 @@ crates/
 - ✅ 数値テキスト全体オーケストレーション (NumberChunker)
 - ✅ [`furigana-dict`](https://github.com/RyuuNeko1107/furigana-dict) リポジトリ開設
 
-**Phase 2 (予定)**:
-- 本番 ryuuneko.com から `furigana-dict` への辞書 seed 投入
-- `furigana dict pull` の実装 (現状 stub)
-- 単漢字フォールバック (Unihan データの取り込み)
-- 辞書のホットリロード (`SIGHUP` / `POST /admin/reload`)
+**Phase 2 — 進行中**:
+- ✅ 本番 ryuuneko.com から `furigana-dict` への辞書 seed 投入 (unihan 43,749 / jukugo 605 / compat 436)
+- ✅ `furigana dict pull` の実装 (GitHub Releases から tarball を fetch + SHA-256 検証 + 展開)
+- ✅ 単漢字フォールバック (Unihan の取り込みは `furigana-dict` 側 seed で達成)
+- ✅ 辞書のホットリロード (`SIGHUP` / `POST /admin/reload`)
 - crates.io 公開 (`furigana` lib + `furigana-cli` bin)
 
 **Phase 3 (検討)**:
