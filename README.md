@@ -178,7 +178,12 @@ $ mv furigana ~/.local/bin/
 $ cargo install ja-furigana-cli
 
 # Docker
+# 注意: コンテナ内で `furigana serve` の bind を 0.0.0.0:8000 にしないと外から
+# 見えません。Docker image の起動コマンドは 0.0.0.0 前提で配置してあります。
+# 自分で `docker run ... furigana serve` を呼ぶ場合は `--bind 0.0.0.0:8000` を付ける。
 $ docker run --rm -p 8000:8000 ghcr.io/ryuuneko1107/furigana:latest
+$ docker run --rm -p 8000:8000 ghcr.io/ryuuneko1107/furigana:latest \
+    furigana serve --bind 0.0.0.0:8000
 ```
 
 実行例:
@@ -331,6 +336,35 @@ curl -X POST http://127.0.0.1:8000/furigana \
   -H 'Content-Type: application/json' \
   -d '{"text":"灰桜の道","mode":"ruby"}'
 ```
+
+### エラー例
+
+```jsonc
+// 400 Bad Request — text が空
+{"error":"no text provided"}
+
+// 400 Bad Request — text が長すぎる (> 10,000 文字)
+{"error":"text too long: 12345 chars (max 10000)"}
+
+// 400 Bad Request — text_b64 のデコード失敗
+{"error":"invalid base64 in text_b64"}
+
+// 400 Bad Request — text_b64 が UTF-8 として不正
+{"error":"text_b64 decoded bytes are not valid UTF-8"}
+
+// 401 Unauthorized — `[auth].tokens` 設定済みで X-API-Key / Bearer 不一致
+// (本文なし、status のみ)
+
+// 503 Service Unavailable — `/admin/reload` で `[auth].admin_tokens` 未設定
+// (本文なし、admin 機能 off の合図)
+```
+
+`mode` に未知の値を指定した場合は **silently `tts` (default) にフォールバック**します
+(本番 ryuuneko.com API と同じ挙動、エラーにはなりません)。
+
+辞書未配置 (`<data_dir>/data/` がまだ無い) の状態で `furigana serve` を起動した場合は、
+形態素解析だけは動くので 200 で結果を返しますが、熟語 hit なし・助数詞ルール無効・
+文脈ルール無効の degraded mode になります。`/healthz` の `dict_size` が 0 ならこの状態です。
 
 ### 他言語クライアント例
 
