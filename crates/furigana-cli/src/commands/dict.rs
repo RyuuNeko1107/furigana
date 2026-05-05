@@ -54,7 +54,7 @@ pub enum Action {
         path: PathBuf,
     },
 
-    /// GitHub Release から core 辞書を取得 (未実装)
+    /// GitHub Release から core 辞書 + rules を取得して `<data_dir>` に展開
     Pull {
         /// ピン留めバージョン (例: `v0.1.0`)。未指定で最新。
         #[arg(long)]
@@ -68,7 +68,7 @@ pub fn run(args: Args, paths: &Paths, _cfg: &Config) -> Result<()> {
         Action::List { limit } => list(paths, limit),
         Action::Remove { surface } => remove(paths, &surface),
         Action::Import { path } => import(paths, &path),
-        Action::Pull { version } => pull(version.as_deref()),
+        Action::Pull { version } => super::dict_pull::run(paths, version.as_deref()),
     }
 }
 
@@ -198,19 +198,7 @@ fn import(paths: &Paths, src: &Path) -> Result<()> {
     Ok(())
 }
 
-// ─── pull (未実装) ───────────────────────────────────────────────────────────
-
-fn pull(version: Option<&str>) -> Result<()> {
-    let v = version.unwrap_or("latest");
-    bail!(
-        "辞書配布リポジトリ (furigana-dict) はまだ未開設です。\n\
-         core 辞書 ({v}) の release が公開されたら本コマンドが有効になります。\n\
-         \n\
-         現状で辞書を追加するには:\n\
-         - 単発:        furigana dict add <surface> <reading>\n\
-         - TOML インポート: furigana dict import <path.toml>"
-    );
-}
+// ─── pull は dict_pull.rs に切り出し ─────────────────────────────────────────
 
 // ─── 内部ヘルパー: cli-added.toml の read/write ───────────────────────────────
 

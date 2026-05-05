@@ -1,6 +1,7 @@
 //! サブコマンド実装
 
 pub mod dict;
+pub mod dict_pull;
 pub mod lookup;
 pub mod serve;
 
