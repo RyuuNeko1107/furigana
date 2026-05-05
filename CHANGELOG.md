@@ -6,7 +6,18 @@
 
 ## [Unreleased]
 
-(次の release で入れる変更をここに追記)
+### Added
+- `Furigana::merge_dict_toml(content)` — TOML 文字列を辞書に一括 merge する API。
+  ファイルシステムベースの `core_dict_dir` が使えない環境向け。
+- `examples/clients/{python,nodejs,curl}/` — `furigana serve` HTTP API を他言語から
+  叩く最小サンプル (TTS パイプライン / Discord bot / shell パイプ用途)。
+
+### Removed
+- `crates/furigana-wasm/` (WebAssembly bindings) を削除。`.wasm` が Lindera + IPADIC
+  込みで 57 MB と重く、Web からは `furigana serve` (HTTP API) で十分という判断。
+  Pages workflow (`.github/workflows/pages.yml`) も合わせて削除。
+  `lib::merge_dict_toml` API は WASM 用に追加したが、サーバ無し環境からの利用にも
+  汎用的に役立つので lib 側に残してある。
 
 ## [0.1.0-alpha.2] - 2026-05-06
 

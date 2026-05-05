@@ -377,18 +377,15 @@ crates/
 - ✅ 四字熟語の分離 (`furigana-dict/core/jukugo/four_char.toml`)
 - ✅ crates.io 公開 (`ja-furigana` lib + `ja-furigana-cli` bin、0.1.0-alpha.1)
 
-**Phase 3 (進行中)**:
-- ✅ WebAssembly ビルド (`crates/furigana-wasm`、`wasm-pack build --target web`)
-  ブラウザ / Node.js から `WasmFurigana` 経由で `toRuby` / `toHiragana` を呼べる。
-  `examples/index.html` に最小デモ + `mergeDictToml` で 44k 字辞書一括投入。
-- ✅ **GitHub Pages で WASM デモ公開** — https://ryuuneko1107.github.io/ja-furigana/ で
-  ブラウザから直接試せる (master push で自動 deploy)。
-
 **Phase 3 (検討)**:
 - ローマ字出力モード
 - 速度最適化 (regex pre-compile pool 等)
-- Web Assembly ビルド
 - 人名・固有名詞の手動振り分け (機械分類が困難なため、PR で順次)
+- 0.1.0 安定版へ昇格 (alpha → 正式)
+
+> 旧 Phase 3 候補だった **WebAssembly ビルド** は一度実装したが、`.wasm` が Lindera +
+> IPADIC 込みで 57 MB と重く、Web からは `furigana serve` (HTTP API) で十分という
+> 判断で削除した。HTTP API ベースの利用例は [`examples/clients/`](./examples/clients/) を参照。
 
 ## 主要依存 (Built with)
 
