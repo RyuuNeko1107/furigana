@@ -40,9 +40,9 @@
     <button id="btn-load-jukugo" disabled>jukugo/general.toml を fetch + mergeDictToml</button>
   </div>
   <p class="meter">
-    ※ 上の 2 ファイルは <a href="https://github.com/RyuuNeko1107/ja-furigana-dict" target="_blank">ja-furigana-dict</a>
-    repo から fetch します (CORS 設定済み Pages や同じ origin にコピーすれば動作)。
-    ローカルでは <code>../../crates/furigana-wasm/examples/data/</code> 等に配置してパス調整してください。
+    ※ Pages デプロイ時は <a href="https://github.com/RyuuNeko1107/ja-furigana-dict" target="_blank">ja-furigana-dict</a>
+    から bundle した <code>data/*.toml</code> を同 origin で fetch します。
+    ローカル開発時は <code>data/</code> ディレクトリを手動配置するか raw.githubusercontent.com に切替えてください。
   </p>
 
   <h3>変換</h3>
@@ -64,7 +64,21 @@
   </div>
 
   <script type="module">
-    import init, { WasmFurigana } from "../pkg/ja_furigana_wasm.js";
+    // Pages デプロイ時は ./pkg/ に置かれる。
+    // ローカル開発時 (crates/furigana-wasm/examples/index.html を直接開く場合) は
+    // wasm-pack build 後の crates/furigana-wasm/pkg/ を ../pkg/ で参照したい。
+    // → どちらでも動くように、まず ./pkg/ を試して、無ければ ../pkg/ にフォールバック。
+    let initFn, WasmFurigana;
+    try {
+      const mod = await import("./pkg/ja_furigana_wasm.js");
+      initFn = mod.default;
+      WasmFurigana = mod.WasmFurigana;
+    } catch {
+      const mod = await import("../pkg/ja_furigana_wasm.js");
+      initFn = mod.default;
+      WasmFurigana = mod.WasmFurigana;
+    }
+    const init = initFn;
 
     const status = document.getElementById("status");
     const dictSizeEl = document.getElementById("dict-size");
@@ -101,15 +115,28 @@
       status.className = "status ready";
     }
 
-    // GitHub raw 経由 (CORS 緩い)。ローカルにコピーして使うときは URL 変更
+    // Pages デプロイ時は同 origin の ./data/、ローカル時は無いので raw.githubusercontent.com フォールバック
+    async function loadWithFallback(localPath, rawUrl) {
+      try {
+        await loadFromUrl(localPath);
+      } catch {
+        await loadFromUrl(rawUrl);
+      }
+    }
     document.getElementById("btn-load-unihan").addEventListener("click", () =>
-      loadFromUrl("https://raw.githubusercontent.com/RyuuNeko1107/ja-furigana-dict/master/core/unihan.toml").catch((e) => {
+      loadWithFallback(
+        "./data/unihan.toml",
+        "https://raw.githubusercontent.com/RyuuNeko1107/ja-furigana-dict/master/core/unihan.toml"
+      ).catch((e) => {
         status.textContent = "❌ " + e.message;
         status.className = "status err";
       })
     );
     document.getElementById("btn-load-jukugo").addEventListener("click", () =>
-      loadFromUrl("https://raw.githubusercontent.com/RyuuNeko1107/ja-furigana-dict/master/core/jukugo/general.toml").catch((e) => {
+      loadWithFallback(
+        "./data/jukugo-general.toml",
+        "https://raw.githubusercontent.com/RyuuNeko1107/ja-furigana-dict/master/core/jukugo/general.toml"
+      ).catch((e) => {
         status.textContent = "❌ " + e.message;
         status.className = "status err";
       })

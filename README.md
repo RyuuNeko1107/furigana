@@ -380,7 +380,9 @@ crates/
 **Phase 3 (進行中)**:
 - ✅ WebAssembly ビルド (`crates/furigana-wasm`、`wasm-pack build --target web`)
   ブラウザ / Node.js から `WasmFurigana` 経由で `toRuby` / `toHiragana` を呼べる。
-  `examples/index.html` に最小デモ。
+  `examples/index.html` に最小デモ + `mergeDictToml` で 44k 字辞書一括投入。
+- ✅ **GitHub Pages で WASM デモ公開** — https://ryuuneko1107.github.io/ja-furigana/ で
+  ブラウザから直接試せる (master push で自動 deploy)。
 
 **Phase 3 (検討)**:
 - ローマ字出力モード
