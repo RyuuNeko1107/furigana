@@ -30,7 +30,7 @@
 
 ```sh
 git clone https://github.com/RyuuNeko1107/ja-furigana
-cd furigana
+cd ja-furigana
 
 cargo build --all-targets
 cargo test --workspace
