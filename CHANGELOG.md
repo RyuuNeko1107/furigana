@@ -6,6 +6,84 @@
 
 ## [Unreleased]
 
+### Added
+- (次の release で入れる変更をここに追記)
+
+## [0.1.0-alpha.3] - 2026-05-06
+
+本番 ryuuneko.com の公開フリガナ API パイプラインに揃える形で読み解決の
+優先順位を整備。検証ループ (実例文 75 件回帰) で 75/75 (100%) を達成。
+
+### Changed (本番 Step 5 互換: resolve_reading の優先順位を 5 段階に)
+
+`crates/furigana/src/reading/pipeline.rs` の `resolve_reading` を:
+
+1. 漢字なし → None
+2. **context rule** (動的読み分け、同形異音語が効くように)
+3. **熟語辞書 (jukugo)** (≥2 文字 surface の固定読み)
+4. **Lindera reading** (動詞活用形等の自然な読み)
+5. **単漢字辞書 (unihan)** (1 文字 surface の最終 fallback)
+6. fallback None
+
+旧版では「dict.lookup → context rule → Lindera」の順で、unihan に登録された
+動詞活用形 / 訓読み (能=あたう、本=もと等) が context rule の default を遮断
+していた問題を根本解決。
+
+### Changed (Dict struct を jukugo / unihan に分離)
+
+`crates/furigana/src/dict.rs` の `Dict` を内部で 2 つの HashMap に分割:
+- `jukugo`: surface ≥ 2 文字 (熟語 / 固有名詞 / 複合語)
+- `unihan`: surface = 1 文字 (単漢字 fallback)
+
+新規 lookup API: `lookup_jukugo()` / `lookup_unihan()` / 互換 `lookup()` (jukugo 優先)。
+`insert()` で文字数を自動振り分け。`merge()` / `len()` は両 HashMap を合算。
+`merge_with_dict` も最長一致照合を `lookup_jukugo` のみに変更
+(単漢字 unihan を熟語結合トリガにしない)。
+
+### Added (本番 Step 7 互換: postprocess module)
+
+`crates/furigana/src/rules/postprocess.rs` 新設:
+- `PostProcessData`: コンパイル済み regex リスト + mode 別フィルタ
+- `PostProcessSpec`: TOML deserialize 用 (`[[rule]]` array)
+- `apply(text, mode)`: 順次置換、空なら no-op、`$1` 等のキャプチャ参照可
+
+`Furigana::to_{hiragana,ruby,tts,romaji}` の出力直前に該当 mode で apply。
+`loader.rs` で `postprocess.toml` を読み込み (不在なら default 空)。
+
+ja-furigana-dict v0.1.2 で `rules/postprocess.toml` に「ジュウパー → ジュッパー」
+(50% 促音化) を投入し、検証ループ #70 を解決。
+
+### Added (NumberChunker の漢数字日付 + scale+unit 連結 + counter context)
+
+- `numbers/helpers.rs` に `kansuji_to_arabic()`: 漢数字 (一〜二十一) → Arabic
+  数字文字列。`chunks::NumberChunker::read_counter` で漢数字混在パターンを処理。
+- `chunks/regex.rs` の `DATE_NUM_PAT` を Arabic + 全角数字 + 漢数字に拡張。
+  `DATE_KANJI_FULL_RE` / `DATE_KANJI_MD_RE` が「6月一日」のような漢数字日も
+  日付 chunk として認識。
+- `build_scale_regex(scales, units)` に変更: scale 末尾に「漢字 1 文字 unit」
+  (円 / %) を optional capture (3) として注入。「1万円」のような scale + unit
+  パターンが 1 chunk として処理される。
+- `chunks/mod.rs` に `read_counter_in_date` を新設: 日付内の「N日」は days.toml の
+  特殊読み (1=ツイタチ等) を採用。単独 counter としての「N日」は期間文脈とみなし
+  default ニチ にする。「6月一日」=ツイタチ / 「1日に2〜3回」=イチニチ を両立。
+
+### Fixed
+
+- `Furigana::add_reading` 経由で追加した単漢字エントリが、前優先順位 (旧) で
+  Lindera reading より先に hit する問題を解決 (Dict 分離 + 新優先順位)。
+- 検証ループで判明した動詞活用形 surface (差/能/約/見) の Lindera 出力に対し、
+  jukugo 熟語登録 + unihan 音読み正規化で解決可能に。
+
+### CI
+
+- `.github/workflows/ci.yml`: macOS test を `schedule` のみ (週次) に移動。
+  push / PR では `ubuntu-latest` + `windows-latest` の 2 OS で走らせる。
+  GitHub macOS runner queue が常に混雑し PR が 10+ 分 macOS 待ちで詰まる問題の対策。
+- 新規 `audit` job: `cargo-audit` で RustSec advisory DB を毎週 schedule + push / PR
+  でチェック。`continue-on-error: true` (advisory DB 更新による偶発失敗を blocking にしない)。
+- 新規 `corpus` job: ja-furigana-dict の master を checkout → release binary build →
+  `tools/run_corpus.py` で `should_read.toml` の各 case を `expected` と diff 検証。
+
 ### Removed
 - **役目を終えた reproducer test ファイル** 4 件を削除:
   - `crates/furigana/tests/lindera_minimal_repro.rs`
@@ -120,6 +198,7 @@
 
 ## [一覧]
 
-[Unreleased]: https://github.com/RyuuNeko1107/ja-furigana/compare/v0.1.0-alpha.2...HEAD
+[Unreleased]: https://github.com/RyuuNeko1107/ja-furigana/compare/v0.1.0-alpha.3...HEAD
+[0.1.0-alpha.3]: https://github.com/RyuuNeko1107/ja-furigana/releases/tag/v0.1.0-alpha.3
 [0.1.0-alpha.2]: https://github.com/RyuuNeko1107/ja-furigana/releases/tag/v0.1.0-alpha.2
 [0.1.0-alpha.1]: https://github.com/RyuuNeko1107/ja-furigana/releases/tag/v0.1.0-alpha.1
