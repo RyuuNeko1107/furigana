@@ -94,12 +94,17 @@ $ cargo run -p furigana --example basic
 インストール:
 
 ```sh
+# 一番楽 (Windows): GitHub Releases から furigana-vX.Y.Z-x86_64-pc-windows-msvc.zip を
+#   ダウンロードして解凍 → 中の furigana.exe をダブルクリック
+#   → 黒い画面 + REPL が立ち上がるので :pull Enter で辞書を取得して試せる
+#   https://github.com/RyuuNeko1107/furigana/releases
+
+# Linux / macOS: tar.gz を解凍して PATH のどこかに置く
+$ tar -xzf furigana-v0.1.0-x86_64-unknown-linux-gnu.tar.gz
+$ mv furigana ~/.local/bin/
+
 # crates.io 経由 (公開後)
 $ cargo install furigana-cli
-
-# GitHub Releases からプリビルド binary
-#   https://github.com/RyuuNeko1107/furigana/releases から
-#   {furigana-vX.Y.Z-<target>}.{tar.gz | zip} を取得して PATH に置く
 
 # Docker
 $ docker run --rm -p 8000:8000 ghcr.io/ryuuneko1107/furigana:latest

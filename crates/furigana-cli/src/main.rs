@@ -30,7 +30,7 @@ struct Cli {
     verbose: bool,
 
     #[command(subcommand)]
-    command: Commands,
+    command: Option<Commands>,
 }
 
 #[derive(Subcommand, Debug)]
@@ -60,10 +60,13 @@ fn main() -> Result<()> {
     tracing::debug!("config_file: {}", paths.config_file.display());
 
     match cli.command {
-        Commands::Lookup(args) => commands::lookup::run(args, &paths, &cfg),
-        Commands::Repl(args) => commands::repl::run(args, &paths, &cfg),
-        Commands::Serve(args) => commands::serve::run(args, &paths, &cfg),
-        Commands::Dict(args) => commands::dict::run(args, &paths, &cfg),
+        Some(Commands::Lookup(args)) => commands::lookup::run(args, &paths, &cfg),
+        Some(Commands::Repl(args)) => commands::repl::run(args, &paths, &cfg),
+        Some(Commands::Serve(args)) => commands::serve::run(args, &paths, &cfg),
+        Some(Commands::Dict(args)) => commands::dict::run(args, &paths, &cfg),
+        // 引数なしで起動された場合 (Windows で .exe をダブルクリック等) は REPL を立ち上げる。
+        // help が見たければ `furigana --help`、終了は Ctrl-D / `:quit`。
+        None => commands::repl::run(commands::repl::Args::default(), &paths, &cfg),
     }
 }
 
