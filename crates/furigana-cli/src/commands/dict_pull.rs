@@ -101,6 +101,21 @@ fn resolve_latest_tag(client: &reqwest::blocking::Client) -> Result<String> {
     Ok(release.tag_name)
 }
 
+/// `resolve_latest_tag` の async 版。`serve` の auto_update task のように tokio
+/// runtime 内から呼び出すためのフロント。実体は spawn_blocking で sync 版を呼ぶ。
+pub async fn resolve_latest_tag_async() -> Result<String> {
+    tokio::task::spawn_blocking(|| {
+        let client = reqwest::blocking::Client::builder()
+            .user_agent(USER_AGENT)
+            .timeout(Duration::from_secs(30))
+            .build()
+            .context("HTTP クライアント初期化失敗")?;
+        resolve_latest_tag(&client)
+    })
+    .await
+    .map_err(|e| anyhow!("spawn_blocking join error: {e}"))?
+}
+
 fn download_bytes(client: &reqwest::blocking::Client, url: &str) -> Result<Vec<u8>> {
     let resp = client.get(url).send()?;
     let status = resp.status();

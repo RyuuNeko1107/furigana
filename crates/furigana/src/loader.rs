@@ -149,9 +149,9 @@ fn load_postprocess(dir: &Path) -> Result<PostProcessData> {
         return Ok(PostProcessData::default());
     }
     let spec: PostProcessSpec = load_or_default(&path)?;
-    PostProcessData::from_spec(spec).map_err(|e| FuriganaError::Validation(format!(
-        "postprocess.toml: regex compile failed: {e}"
-    )))
+    PostProcessData::from_spec(spec).map_err(|e| {
+        FuriganaError::Validation(format!("postprocess.toml: regex compile failed: {e}"))
+    })
 }
 
 // ─── 細分化サポート (counters / context) ─────────────────────────────────────
