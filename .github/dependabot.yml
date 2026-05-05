@@ -1,0 +1,53 @@
+# Dependabot — 依存ライブラリの自動更新 PR 生成
+# 詳細: https://docs.github.com/code-security/dependabot
+
+version: 2
+updates:
+  # Rust crate の依存 (workspace.Cargo.toml と各 crate の Cargo.toml を見る)
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Asia/Tokyo"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+    labels:
+      - "dependencies"
+      - "rust"
+    # 関連 crate を 1 PR にまとめてレビュー負担を下げる
+    groups:
+      tokio-stack:
+        patterns:
+          - "tokio*"
+          - "tower*"
+          - "hyper*"
+          - "axum*"
+          - "reqwest*"
+      lindera:
+        patterns:
+          - "lindera*"
+      serde-stack:
+        patterns:
+          - "serde*"
+          - "toml"
+      misc:
+        update-types:
+          - "patch"
+
+  # GitHub Actions (.github/workflows/*.yml の actions/checkout@v4 等)
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Asia/Tokyo"
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "chore(ci)"
+    labels:
+      - "dependencies"
+      - "ci"
