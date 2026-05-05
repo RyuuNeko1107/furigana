@@ -4117,8 +4117,8 @@ SOFTWARE.
 
 Used by:
 
-- [`furigana` v0.1.0](https://github.com/RyuuNeko1107/furigana)
-- [`furigana-cli` v0.1.0](https://github.com/RyuuNeko1107/furigana)
+- [`furigana` v0.1.0](https://github.com/RyuuNeko1107/ja-furigana)
+- [`furigana-cli` v0.1.0](https://github.com/RyuuNeko1107/ja-furigana)
 - [`jni-macros` v0.22.4](https://github.com/jni-rs/jni-rs)
 - [`jni-sys-macros` v0.4.1](https://github.com/jni-rs/jni-sys)
 - [`jni` v0.22.4](https://github.com/jni-rs/jni-rs)

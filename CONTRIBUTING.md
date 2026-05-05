@@ -1,22 +1,22 @@
 # Contributing to furigana
 
 このリポジトリは **engine (Rust 実装) 専用** です。
-読みやルールデータの追加・修正は [`furigana-dict`](https://github.com/RyuuNeko1107/furigana-dict)
+読みやルールデータの追加・修正は [`furigana-dict`](https://github.com/RyuuNeko1107/ja-furigana-dict)
 リポジトリにお願いします。
 
 ## 1. 何を変更したい?
 
 | 変更したいもの | PR 先 |
 |---|---|
-| 二字 / 三字熟語 (灰桜→ハイザクラ等) | **`furigana-dict`** [`core/jukugo/general.toml`](https://github.com/RyuuNeko1107/furigana-dict/blob/master/core/jukugo/general.toml) |
-| 四字熟語 (一期一会→イチゴイチエ等) | 同上 [`core/jukugo/four_char.toml`](https://github.com/RyuuNeko1107/furigana-dict/blob/master/core/jukugo/four_char.toml) |
+| 二字 / 三字熟語 (灰桜→ハイザクラ等) | **`furigana-dict`** [`core/jukugo/general.toml`](https://github.com/RyuuNeko1107/ja-furigana-dict/blob/master/core/jukugo/general.toml) |
+| 四字熟語 (一期一会→イチゴイチエ等) | 同上 [`core/jukugo/four_char.toml`](https://github.com/RyuuNeko1107/ja-furigana-dict/blob/master/core/jukugo/four_char.toml) |
 | 固有名詞・地名・人名の読み | 同上 `core/jukugo/{proper_nouns,place_names,personal_names}.toml` |
 | 単漢字フォールバック | 同上 `core/unihan.toml` (43k+ 字) |
 | 異体字 → 標準字 (髙→高 等) | 同上 `core/compat.toml` |
 | 数字を含む例外語句 (二十歳→ハタチ 等) | 同上 `rules/numeric_phrases.toml` |
-| 助数詞 / 連濁ルール | 同上 [`rules/counters/`](https://github.com/RyuuNeko1107/furigana-dict/tree/master/rules/counters) (simple / time / objects 等) |
+| 助数詞 / 連濁ルール | 同上 [`rules/counters/`](https://github.com/RyuuNeko1107/ja-furigana-dict/tree/master/rules/counters) (simple / time / objects 等) |
 | 大数スケール / 単位 / 記号 / 文字 | 同上 `rules/{scales,units,symbols,latin}.toml` |
-| 文脈依存読み (一日→ツイタチ/イチニチ) | 同上 [`rules/context/`](https://github.com/RyuuNeko1107/furigana-dict/tree/master/rules/context) (numbers / homonyms / special) |
+| 文脈依存読み (一日→ツイタチ/イチニチ) | 同上 [`rules/context/`](https://github.com/RyuuNeko1107/ja-furigana-dict/tree/master/rules/context) (numbers / homonyms / special) |
 | **エンジン本体の改修 (Rust)** | **このリポジトリ** |
 | **新しいルール schema (TOML 構造)** | **このリポジトリ** (`rules/` モジュール) + furigana-dict 側のデータも合わせて |
 | HTTP API の挙動変更 | このリポジトリ (`crates/furigana-cli/src/commands/serve/`) |
@@ -29,7 +29,7 @@
 [Rust の stable toolchain](https://rustup.rs/) が必要 (MSRV は `Cargo.toml` の `rust-version` 参照)。
 
 ```sh
-git clone https://github.com/RyuuNeko1107/furigana
+git clone https://github.com/RyuuNeko1107/ja-furigana
 cd furigana
 
 cargo build --all-targets

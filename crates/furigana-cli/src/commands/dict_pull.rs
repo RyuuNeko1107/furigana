@@ -22,7 +22,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::Duration;
 
-const REPO: &str = "RyuuNeko1107/furigana-dict";
+const REPO: &str = "RyuuNeko1107/ja-furigana-dict";
 const USER_AGENT: &str = concat!("furigana-cli/", env!("CARGO_PKG_VERSION"));
 
 pub fn run(paths: &Paths, version: Option<&str>) -> Result<()> {

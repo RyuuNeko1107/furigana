@@ -19,7 +19,7 @@ use furigana::Furigana;
 /// - `dict/overrides.toml` : 強制上書き
 ///
 /// データ未配置の場合は warn を出すだけで起動継続 (degraded mode)。
-/// すべて [`furigana-dict`](https://github.com/RyuuNeko1107/furigana-dict)
+/// すべて [`furigana-dict`](https://github.com/RyuuNeko1107/ja-furigana-dict)
 /// から `furigana dict pull` で取得する想定。
 pub fn build_furigana(paths: &Paths) -> Result<Furigana> {
     let mut b = Furigana::builder();

@@ -30,7 +30,7 @@ furigana dict remove 灰桜
 furigana dict import path/to/extra.toml
 ```
 
-詳細は [プロジェクト README](https://github.com/RyuuNeko1107/furigana) を参照。
+詳細は [プロジェクト README](https://github.com/RyuuNeko1107/ja-furigana) を参照。
 
 ## ライセンス
 

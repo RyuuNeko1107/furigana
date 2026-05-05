@@ -2,7 +2,7 @@
 //!
 //! `Furigana::minimal()` は **空 default** で起動する (本体に rules / 辞書を embed しないため)。
 //! 助数詞や慣用語句などの高度な処理を有効にしたい場合は、
-//! [`furigana-dict`](https://github.com/RyuuNeko1107/furigana-dict) を pull した後、
+//! [`furigana-dict`](https://github.com/RyuuNeko1107/ja-furigana-dict) を pull した後、
 //! builder で `rules_dir(...)` / `core_dict_dir(...)` を mount する。
 //!
 //! このサンプルは zero-config で動く範囲の挙動 (lindera + add_reading) を示す。

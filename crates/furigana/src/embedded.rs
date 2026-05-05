@@ -3,7 +3,7 @@
 //! 本体バイナリに rules / lookup データは embed しない方針 (バイナリ肥大化を避ける + 役割分離)。
 //! [`Furigana::minimal`](crate::Furigana::minimal) は空の [`RulesData`] で起動する。
 //!
-//! 実データは [`furigana-dict`](https://github.com/RyuuNeko1107/furigana-dict)
+//! 実データは [`furigana-dict`](https://github.com/RyuuNeko1107/ja-furigana-dict)
 //! リポジトリで配布され、`furigana dict pull` で取得 → builder の
 //! `core_dict_dir(...)` / `rules_dir(...)` で mount する想定。
 

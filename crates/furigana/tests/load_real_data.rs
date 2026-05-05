@@ -2,7 +2,7 @@
 //!
 //! 本体バイナリには rules を embed しないため、テスト用に保持している
 //! fixture ファイルが loader でパースできることを確認する。
-//! 実データは [`furigana-dict`](https://github.com/RyuuNeko1107/furigana-dict)
+//! 実データは [`furigana-dict`](https://github.com/RyuuNeko1107/ja-furigana-dict)
 //! 側でメンテナンスされる。
 
 use furigana::loader::load_rules_dir;

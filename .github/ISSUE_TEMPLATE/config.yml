@@ -1,5 +1,5 @@
 blank_issues_enabled: false
 contact_links:
   - name: 読みの追加・修正
-    url: https://github.com/RyuuNeko1107/furigana-dict/issues/new/choose
+    url: https://github.com/RyuuNeko1107/ja-furigana-dict/issues/new/choose
     about: 単語の読みやルールデータの修正は furigana-dict リポジトリで受け付けています

@@ -1,6 +1,6 @@
 # furigana
 
-[![CI](https://github.com/RyuuNeko1107/furigana/actions/workflows/ci.yml/badge.svg)](https://github.com/RyuuNeko1107/furigana/actions/workflows/ci.yml)
+[![CI](https://github.com/RyuuNeko1107/ja-furigana/actions/workflows/ci.yml/badge.svg)](https://github.com/RyuuNeko1107/ja-furigana/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![MSRV](https://img.shields.io/badge/rust-stable-orange.svg)](https://www.rust-lang.org)
 
@@ -45,7 +45,7 @@
 
 辞書管理をコミュニティに分担してもらうため。
 ルール・辞書はすべて TOML テキストファイルなので、Rust 知識なしで PR を投げられる (再コンパイル不要)。
-語彙辞書本体は別リポジトリ [`furigana-dict`](https://github.com/RyuuNeko1107/furigana-dict) で受け付け、
+語彙辞書本体は別リポジトリ [`furigana-dict`](https://github.com/RyuuNeko1107/ja-furigana-dict) で受け付け、
 `furigana dict pull` で取得する。
 
 ## クイックスタート
@@ -104,7 +104,7 @@ $ cargo run -p furigana --example basic
 # 一番楽 (Windows): GitHub Releases から furigana-vX.Y.Z-x86_64-pc-windows-msvc.zip を
 #   ダウンロードして解凍 → 中の furigana.exe をダブルクリック
 #   → 黒い画面 + REPL が立ち上がるので :pull Enter で辞書を取得して試せる
-#   https://github.com/RyuuNeko1107/furigana/releases
+#   https://github.com/RyuuNeko1107/ja-furigana/releases
 
 # Linux / macOS: tar.gz を解凍して PATH のどこかに置く
 $ tar -xzf furigana-v0.1.0-x86_64-unknown-linux-gnu.tar.gz
@@ -225,17 +225,17 @@ exe + `data/` の 2 つだけが見える状態でフォルダごとコピーす
 
 | ファイル | 内容 |
 |---|---|
-| [`furigana-dict/rules/counters/`](https://github.com/RyuuNeko1107/furigana-dict/tree/master/rules/counters) | 助数詞 (本/匹/個/年/月/日…) の連濁・促音化・kana 末尾置換 — simple / time / objects 等 7 ファイルに細分化 |
-| [`furigana-dict/rules/days.toml`](https://github.com/RyuuNeko1107/furigana-dict/blob/master/rules/days.toml) | 1〜31 日の特殊読み (1→ツイタチ 等) |
-| [`furigana-dict/rules/scales.toml`](https://github.com/RyuuNeko1107/furigana-dict/blob/master/rules/scales.toml) | 万 / 億 / 兆 / 京 / 垓… 大数スケール |
-| [`furigana-dict/rules/units.toml`](https://github.com/RyuuNeko1107/furigana-dict/blob/master/rules/units.toml) | SI 単位 (km / kg / mL …) |
-| [`furigana-dict/rules/symbols.toml`](https://github.com/RyuuNeko1107/furigana-dict/blob/master/rules/symbols.toml) | 記号読み (+ / − / % / ‰ …) |
-| [`furigana-dict/rules/latin.toml`](https://github.com/RyuuNeko1107/furigana-dict/blob/master/rules/latin.toml) | ラテン文字読み (A→エー…) |
-| [`furigana-dict/rules/numeric_phrases.toml`](https://github.com/RyuuNeko1107/furigana-dict/blob/master/rules/numeric_phrases.toml) | 例外語句 (二十歳→ハタチ 等) |
-| [`furigana-dict/rules/context/`](https://github.com/RyuuNeko1107/furigana-dict/tree/master/rules/context) | 前後トークンを見る文脈ルール (一日→ツイタチ/イチニチ) — numbers / homonyms / special の 3 ファイルに細分化 |
-| (異体字マップは [`furigana-dict/core/compat.toml`](https://github.com/RyuuNeko1107/furigana-dict/blob/master/core/compat.toml)) | 役割分離のため別リポジトリで管理 |
+| [`furigana-dict/rules/counters/`](https://github.com/RyuuNeko1107/ja-furigana-dict/tree/master/rules/counters) | 助数詞 (本/匹/個/年/月/日…) の連濁・促音化・kana 末尾置換 — simple / time / objects 等 7 ファイルに細分化 |
+| [`furigana-dict/rules/days.toml`](https://github.com/RyuuNeko1107/ja-furigana-dict/blob/master/rules/days.toml) | 1〜31 日の特殊読み (1→ツイタチ 等) |
+| [`furigana-dict/rules/scales.toml`](https://github.com/RyuuNeko1107/ja-furigana-dict/blob/master/rules/scales.toml) | 万 / 億 / 兆 / 京 / 垓… 大数スケール |
+| [`furigana-dict/rules/units.toml`](https://github.com/RyuuNeko1107/ja-furigana-dict/blob/master/rules/units.toml) | SI 単位 (km / kg / mL …) |
+| [`furigana-dict/rules/symbols.toml`](https://github.com/RyuuNeko1107/ja-furigana-dict/blob/master/rules/symbols.toml) | 記号読み (+ / − / % / ‰ …) |
+| [`furigana-dict/rules/latin.toml`](https://github.com/RyuuNeko1107/ja-furigana-dict/blob/master/rules/latin.toml) | ラテン文字読み (A→エー…) |
+| [`furigana-dict/rules/numeric_phrases.toml`](https://github.com/RyuuNeko1107/ja-furigana-dict/blob/master/rules/numeric_phrases.toml) | 例外語句 (二十歳→ハタチ 等) |
+| [`furigana-dict/rules/context/`](https://github.com/RyuuNeko1107/ja-furigana-dict/tree/master/rules/context) | 前後トークンを見る文脈ルール (一日→ツイタチ/イチニチ) — numbers / homonyms / special の 3 ファイルに細分化 |
+| (異体字マップは [`furigana-dict/core/compat.toml`](https://github.com/RyuuNeko1107/ja-furigana-dict/blob/master/core/compat.toml)) | 役割分離のため別リポジトリで管理 |
 
-これらは [`furigana-dict`](https://github.com/RyuuNeko1107/furigana-dict) リポジトリで管理され、
+これらは [`furigana-dict`](https://github.com/RyuuNeko1107/ja-furigana-dict) リポジトリで管理され、
 `furigana dict pull` で取得 → builder の `rules_dir(path)` で mount する。
 本体バイナリには embed しない (バイナリ肥大化を避けるため)。
 未配置の状態で `Furigana::minimal()` を呼ぶと空 default で起動し、
@@ -353,7 +353,7 @@ crates/
 - ✅ 辞書管理コマンド
 - ✅ GitHub Release ワークフロー (5 platform binary + Docker image)
 - ✅ 数値テキスト全体オーケストレーション (NumberChunker)
-- ✅ [`furigana-dict`](https://github.com/RyuuNeko1107/furigana-dict) リポジトリ開設
+- ✅ [`furigana-dict`](https://github.com/RyuuNeko1107/ja-furigana-dict) リポジトリ開設
 
 **Phase 2 — ほぼ完了**:
 - ✅ 本番 ryuuneko.com から `furigana-dict` への辞書 seed 投入 (unihan 43,749 / jukugo 605 / compat 436)

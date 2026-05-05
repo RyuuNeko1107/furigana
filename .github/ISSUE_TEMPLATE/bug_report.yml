@@ -5,7 +5,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        **データ問題** (誤読など) は [furigana-dict](https://github.com/RyuuNeko1107/furigana-dict)
+        **データ問題** (誤読など) は [furigana-dict](https://github.com/RyuuNeko1107/ja-furigana-dict)
         の Issue へお願いします。本リポジトリは engine (Rust) のバグのみ受け付けます。
   - type: textarea
     id: input
