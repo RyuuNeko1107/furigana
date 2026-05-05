@@ -71,11 +71,19 @@ impl Mode {
     }
 }
 
+/// メタコマンド名 (`:` なしの canonical 形)。`:` は optional でユーザーが
+/// `help` でも `:help` でも打てるようにしている。
 const META_COMMANDS: &[&str] = &[
-    ":debug", ":help", ":mode", ":pull", ":quit", ":reload", ":size", ":tokens",
+    "debug", "help", "mode", "pull", "quit", "reload", "size", "tokens",
 ];
 
 const MODE_NAMES: &[&str] = &["all", "ruby", "hiragana", "tts", "kanji"];
+
+/// 入力行の先頭がメタコマンドっぽいかを判定する用に、エイリアスも含めて拾う。
+const META_COMMAND_ALIASES: &[&str] = &[
+    "debug", "exit", "h", "help", "mode", "pull", "q", "quit", "r", "reload",
+    "size", "tokens",
+];
 
 /// rustyline Helper: タブ補完だけ実装。highlight / hint / validate は default。
 #[derive(Default)]
@@ -91,8 +99,11 @@ impl Completer for ReplHelper {
     ) -> rustyline::Result<(usize, Vec<Pair>)> {
         let head = &line[..pos];
 
-        // ":mode <prefix>" → mode 候補
-        if let Some(arg) = head.strip_prefix(":mode ") {
+        // "<mode-cmd> <prefix>" → mode 候補。":" は optional。
+        let mode_arg = head
+            .strip_prefix(":mode ")
+            .or_else(|| head.strip_prefix("mode "));
+        if let Some(arg) = mode_arg {
             let start = pos - arg.len();
             let candidates = MODE_NAMES
                 .iter()
@@ -105,8 +116,22 @@ impl Completer for ReplHelper {
             return Ok((start, candidates));
         }
 
-        // ":<prefix>" → メタコマンド候補
-        if head.starts_with(':') {
+        // ":<prefix>" → メタコマンド候補 (":" 付きで返す)
+        if let Some(rest) = head.strip_prefix(':') {
+            let candidates = META_COMMANDS
+                .iter()
+                .filter(|c| c.starts_with(rest))
+                .map(|c| Pair {
+                    display: format!(":{c}"),
+                    replacement: format!(":{c}"),
+                })
+                .collect();
+            return Ok((0, candidates));
+        }
+
+        // ASCII 英字 prefix → "<prefix>" → メタコマンド候補 (":" なしで返す)
+        // 日本語など ASCII 以外を含むテキストでは補完しない (誤動作防止)
+        if !head.is_empty() && head.chars().all(|c| c.is_ascii_alphabetic()) {
             let candidates = META_COMMANDS
                 .iter()
                 .filter(|c| c.starts_with(head))
@@ -141,7 +166,7 @@ pub fn run(args: Args, paths: &Paths, _cfg: &Config) -> Result<()> {
     let _ = editor.load_history(&history_path); // 無くても無視
 
     println!("furigana REPL  (dict_size: {})", f.dict_size());
-    println!("  Tab で補完 / ↑↓ で履歴 / :help でコマンド / :quit で終了");
+    println!("  Tab で補完 / ↑↓ で履歴 / `help` でコマンド / `quit` で終了 (`:` は optional)");
     println!();
 
     // 初回起動 (辞書空) のとき :pull を提案
@@ -184,10 +209,9 @@ pub fn run(args: Args, paths: &Paths, _cfg: &Config) -> Result<()> {
         }
         let _ = editor.add_history_entry(line);
 
-        if let Some(rest) = line.strip_prefix(':') {
-            let mut parts = rest.splitn(2, char::is_whitespace);
-            let cmd = parts.next().unwrap_or("");
-            let arg = parts.next().unwrap_or("").trim();
+        // メタコマンド判定: ":" は optional。先頭 token が既知コマンド名に
+        // 完全一致した場合のみコマンド扱い (一致しなければ通常変換)。
+        if let Some((cmd, arg)) = parse_meta(line) {
             handle_meta(cmd, arg, &mut mode, &mut debug, &mut f, paths);
             println!();
             continue;
@@ -228,6 +252,23 @@ pub fn run(args: Args, paths: &Paths, _cfg: &Config) -> Result<()> {
 
     let _ = editor.save_history(&history_path);
     Ok(())
+}
+
+/// 入力行をメタコマンドとして parse する。`:` は optional。
+///
+/// 先頭 token (`:` を除いたもの) が [`META_COMMAND_ALIASES`] に含まれる場合のみ
+/// `Some((cmd, arg))` を返す。それ以外は `None` (通常テキスト変換に流す)。
+/// これにより「灰桜」のような先頭が漢字の入力は確実に変換側に行く。
+fn parse_meta(line: &str) -> Option<(&str, &str)> {
+    let stripped = line.strip_prefix(':').unwrap_or(line);
+    let mut parts = stripped.splitn(2, char::is_whitespace);
+    let cmd = parts.next()?;
+    let arg = parts.next().unwrap_or("").trim();
+    if META_COMMAND_ALIASES.contains(&cmd) {
+        Some((cmd, arg))
+    } else {
+        None
+    }
 }
 
 fn handle_meta(
@@ -320,16 +361,16 @@ fn dump_tokens(f: &Furigana, text: &str) {
 }
 
 fn print_help() {
-    println!("Commands:");
-    println!("  :help          このヘルプ");
-    println!("  :mode <m>      mode 切替 (all|ruby|hiragana|tts|kanji)  ※Tab で候補補完");
-    println!("  :debug         timing 表示の on/off (toggle)");
-    println!("  :tokens <text> 内部 token 配列を dump (なぜこの読み？を調べる用)");
-    println!("  :pull [vX.Y.Z] furigana-dict を取得 + 自動 reload");
-    println!("  :reload        data_dir から辞書を再 build");
-    println!("  :size          dict_size を表示");
-    println!("  :quit          終了 (Ctrl-D も可)");
+    println!("Commands (先頭の `:` は optional、`help` でも `:help` でも OK):");
+    println!("  help          このヘルプ");
+    println!("  mode <m>      mode 切替 (all|ruby|hiragana|tts|kanji)  ※Tab で候補補完");
+    println!("  debug         timing 表示の on/off (toggle)");
+    println!("  tokens <text> 内部 token 配列を dump (なぜこの読み？を調べる用)");
+    println!("  pull [vX.Y.Z] furigana-dict を取得 + 自動 reload");
+    println!("  reload        data_dir から辞書を再 build");
+    println!("  size          dict_size を表示");
+    println!("  quit          終了 (Ctrl-D も可)");
     println!();
-    println!("プレフィクス無しの入力は現在の mode で変換して表示します。");
+    println!("コマンド名と一致しない入力は現在の mode で変換して表示します。");
     println!("Tab: コマンド補完 / ↑↓: 履歴 / Ctrl-A,E,W,U: 行編集");
 }
