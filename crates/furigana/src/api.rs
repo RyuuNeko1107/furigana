@@ -111,6 +111,30 @@ impl Furigana {
         self.dict.insert(surface, reading);
     }
 
+    /// TOML 文字列を辞書に merge して、追加 (上書き含む) されたエントリ数を返す。
+    ///
+    /// ファイルシステムベースの `core_dict_dir` が使えない環境 (WASM など) 向け。
+    /// ブラウザでは `fetch('./data/unihan.toml').then(r => r.text())` の結果を
+    /// そのまま渡せる。形式は通常の `[entries]` セクション付き TOML:
+    ///
+    /// ```toml
+    /// [entries]
+    /// "灰桜" = "ハイザクラ"
+    /// "黎明" = "レイメイ"
+    /// ```
+    ///
+    /// `[entries]` 以外の TOML (例: `units.toml` の inline table) は内部で
+    /// 自動的に skip される (lib 側 `Dict::from_toml_str` の defensive 実装による)。
+    ///
+    /// # Errors
+    /// TOML parse 失敗時 [`crate::FuriganaError::Toml`]。
+    pub fn merge_dict_toml(&mut self, content: &str) -> Result<usize> {
+        let added = Dict::from_toml_str(content, "<merge_dict_toml>")?;
+        let count = added.len();
+        self.dict.merge(added);
+        Ok(count)
+    }
+
     /// 内部辞書のサイズ (デバッグ用)
     #[must_use]
     pub fn dict_size(&self) -> usize {
