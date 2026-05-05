@@ -40,30 +40,34 @@ impl Paths {
 
     /// データルート: `<data_dir>/data/`
     ///
-    /// 実 data はすべてこの 1 階層に集約 (`core/` `user/` `rules/` `overrides.toml`)。
-    /// exe 横に複数の dir がぶら下がるのを避けて、`furigana.exe` + `data/` の
-    /// 2 アイテムだけが見える portable レイアウトにする。
+    /// すべてのデータをこの 1 階層に flat に集約する。core 辞書と rules を
+    /// 別ディレクトリに分けない (どちらも同じ furigana-dict から PR/配布される
+    /// もので、ユーザー視点で分ける意味が薄いため)。lib の loader は内部的に
+    /// 必要なファイルだけ拾うため、両方に同じ path を渡しても衝突しない:
+    /// `Dict::from_toml_dir(data/)` は `[entries]` セクション持つ TOML だけ
+    /// merge し、`load_rules_dir(data/)` は `days.toml` / `counters/*.toml`
+    /// 等の特定ファイル名だけ拾う (両者のスキャン対象は重ならない)。
     #[must_use]
     pub fn data_root(&self) -> PathBuf {
         self.data_dir.join("data")
     }
 
-    /// core 辞書: `<data_dir>/data/core/`
+    /// core 辞書 (`data_root` と同じ。lib API 互換のため別 method を残してある)
     #[must_use]
     pub fn dict_core_dir(&self) -> PathBuf {
-        self.data_root().join("core")
+        self.data_root()
+    }
+
+    /// rules (`data_root` と同じ。lib API 互換のため別 method を残してある)
+    #[must_use]
+    pub fn rules_dir(&self) -> PathBuf {
+        self.data_root()
     }
 
     /// user 辞書: `<data_dir>/data/user/`
     #[must_use]
     pub fn dict_user_dir(&self) -> PathBuf {
         self.data_root().join("user")
-    }
-
-    /// rules: `<data_dir>/data/rules/`
-    #[must_use]
-    pub fn rules_dir(&self) -> PathBuf {
-        self.data_root().join("rules")
     }
 
     /// overrides ファイル: `<data_dir>/data/overrides.toml`
