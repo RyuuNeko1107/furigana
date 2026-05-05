@@ -20,6 +20,14 @@ pub struct Args {
     mode: String,
 }
 
+impl Default for Args {
+    fn default() -> Self {
+        Self {
+            mode: "all".to_string(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Mode {
     /// ruby + hiragana を 2 行で同時表示 (試す用途のデフォルト)
@@ -61,6 +69,9 @@ pub fn run(args: Args, paths: &Paths, _cfg: &Config) -> Result<()> {
 
     eprintln!("furigana REPL");
     eprintln!("  dict_size: {}", f.dict_size());
+    if f.dict_size() == 0 {
+        eprintln!("  (辞書が空です。`:pull` で furigana-dict を取得するとフリガナ精度が上がります)");
+    }
     eprintln!("  type :help for commands, Ctrl-D to quit");
 
     let stdin = io::stdin();
@@ -102,6 +113,23 @@ pub fn run(args: Args, paths: &Paths, _cfg: &Config) -> Result<()> {
                     }
                     Err(e) => writeln!(stdout, "reload failed: {e}")?,
                 },
+                "pull" => {
+                    let version = if arg.is_empty() { None } else { Some(arg) };
+                    match super::dict_pull::run(paths, version) {
+                        Ok(()) => match super::build_furigana(paths) {
+                            Ok(new) => {
+                                f = new;
+                                writeln!(
+                                    stdout,
+                                    "pull + reload 完了。dict_size: {}",
+                                    f.dict_size()
+                                )?;
+                            }
+                            Err(e) => writeln!(stdout, "reload failed: {e}")?,
+                        },
+                        Err(e) => writeln!(stdout, "pull failed: {e}")?,
+                    }
+                }
                 "mode" => {
                     if arg.is_empty() {
                         writeln!(stdout, "current mode: {}", mode.as_str())?;
@@ -203,6 +231,7 @@ fn print_help(w: &mut impl Write) -> io::Result<()> {
     writeln!(w, "  :mode <m>      mode 切替 (all|ruby|hiragana|tts|kanji)")?;
     writeln!(w, "  :debug         timing 表示の on/off (toggle)")?;
     writeln!(w, "  :tokens <text> 内部 token 配列を dump (なぜこの読み？を調べる用)")?;
+    writeln!(w, "  :pull [vX.Y.Z] furigana-dict を取得 + 自動 reload (初回のセットアップに)")?;
     writeln!(w, "  :reload        data_dir から辞書を再 build")?;
     writeln!(w, "  :size          dict_size を表示")?;
     writeln!(w, "  :quit          終了 (Ctrl-D も可)")?;
