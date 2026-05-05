@@ -268,6 +268,17 @@ curl -X POST http://127.0.0.1:8000/furigana \
   -d '{"text":"灰桜の道","mode":"ruby"}'
 ```
 
+### 他言語クライアント例
+
+`furigana serve` は普通の HTTP API なので、HTTP が話せる言語ならどこからでも使えます。
+`examples/clients/` に最小サンプル:
+
+- [Python (`requests`)](./examples/clients/python/example.py) — TTS パイプライン / NLP 系
+- [Node.js (組込 `fetch`)](./examples/clients/nodejs/example.mjs) — Discord bot / Web フロント
+- [curl + bash](./examples/clients/curl/example.sh) — shell パイプ / 動作確認用
+
+C++ / C# / Go / Ruby などは上の例を参考に好きな HTTP クライアントで。
+
 ### Bearer 認証
 `config.toml` の `[auth].tokens` または起動時 `--token` (env `FURIGANA_TOKEN`) で
 1 つ以上のトークンを設定すると `/furigana` で `X-API-Key` または
