@@ -5,9 +5,30 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![MSRV](https://img.shields.io/badge/rust-1.88+-orange.svg)](https://www.rust-lang.org)
 
-> Japanese furigana (ruby) lookup library and HTTP server in Rust — fully data-driven rules, no DB required.
+> A **data-driven local furigana / TTS-prep engine** for Japanese, in Rust.
+> Not a complete reading-inference engine — see [立ち位置と精度の限界](#立ち位置と精度の限界).
 
 日本語テキストに **フリガナ (読み仮名 / ルビ)** を付けるための Rust 製ライブラリ + ローカル HTTP サーバー。
+形態素解析 (Lindera + IPADIC) と TOML 辞書・ルールを組み合わせた **決定論的** なエンジンで、
+TTS 音声合成の前段やふりがな補助での使用を想定しています。
+
+## 立ち位置と精度の限界
+
+このプロジェクトは **「完全な日本語読み推定エンジン」ではありません**。次のような位置付けです:
+
+- ✅ **データ駆動のローカルふりがな / TTS 補助**:
+  - VOICEVOX / OpenAI TTS 等の前段で「漢字を含む文 → ひらがな」を一括変換
+  - Web / ブログ記事の `<ruby>` タグ自動生成
+  - 配信テロップ用の難読語チェック
+  - DB の人名・地名フィールドに読みフリガナを付与
+- ❌ 苦手なこと (期待しないでほしいこと):
+  - **超高精度な文脈読み分け**: 機械学習ベース (BERT 等) のニューラル推論はしません
+  - **辞書にない人名・固有名詞**: 形態素解析だけでは自然な読みにならないので、`furigana-dict` の手動 PR で語彙拡充が前提
+  - **古文 / 文語 / 方言**: IPADIC ベースなので現代語が中心
+  - **同形異音語の完璧な解決**: `rules/context/*.toml` でカバーする範囲は限定的、辞書 PR で個別対応
+
+「不確かなときは形態素解析の素朴な結果に fall back する」「辞書 hit したものは確実に固定する」
+という **保守的な決定論** を選んでいます。コミュニティが PR で辞書を拡充するほど精度が上がる設計です。
 
 > **Status**: v0.1.x (alpha)。Phase 1/2 機能は動作するが、**`0.1.x` の間は以下が予告なく変更され得ます**:
 > - 公開 Rust API (`Furigana` / `FuriganaBuilder` のメソッドシグネチャ)
@@ -15,7 +36,23 @@
 > - CLI 引数の名前 / デフォルト値
 > - HTTP レスポンスの JSON フィールド名 / 構造
 >
-> 安定版 (0.1.0 正式) 以降は SemVer で互換を守ります。Rust toolchain は **1.88+** が必要 (workspace.package の `rust-version`)。
+> 安定版 (0.1.0 正式) 以降は SemVer で互換を守ります。Rust toolchain は **1.88+** が必要。
+
+## 名前の対応 (混乱しやすい点)
+
+歴史的経緯により、crate 名 / import 名 / バイナリ名がそれぞれ違います:
+
+| 場面 | 名前 | 補足 |
+|---|---|---|
+| **crates.io の lib crate** | **`ja-furigana`** | `cargo add ja-furigana` で取得 |
+| **lib の import 名** | **`ja_furigana`** | `use ja_furigana::Furigana;` (Rust 慣例で `-` → `_`) |
+| **crates.io の CLI crate** | **`ja-furigana-cli`** | `cargo install ja-furigana-cli` で導入 |
+| **インストール後のバイナリ名** | **`furigana`** | `furigana lookup ...` で実行 (旧来の慣れた名前で残置) |
+| **GitHub repo (本体)** | **`RyuuNeko1107/ja-furigana`** | このリポジトリ |
+| **GitHub repo (辞書)** | **`RyuuNeko1107/ja-furigana-dict`** | 辞書 PR はここに |
+
+`furigana` という crate 名は別 OSS に取られていたため、`ja-` prefix 付きで OSS 公開しています。
+バイナリ名だけは `furigana` のまま (打ちやすさ優先)。
 
 ---
 
@@ -81,7 +118,27 @@ println!("{}", f.to_hiragana("灰桜の散る道"));
 // → "はいざくらのちるみち"
 ```
 
-builder API で辞書ディレクトリを指定:
+#### `Furigana::minimal()` で何が動いて、何が動かないか
+
+`minimal()` は **空 default** で起動します (辞書ファイルやルール TOML を読まない)。
+それでも次は動きます:
+
+- ✅ Lindera (IPADIC) による形態素解析の素朴な読み (動詞・形容詞・既知の名詞)
+- ✅ `add_reading()` で動的に追加した語彙の上書き
+- ✅ `to_ruby` / `to_hiragana` / `to_tts` / `to_romaji` の各出力モード
+
+逆に **動かない / 機能しないもの**:
+
+- ❌ 助数詞ルール (3冊→さんさつ 等の連濁)
+- ❌ 文脈ルール (一日→ツイタチ/イチニチ)
+- ❌ 大数スケール / SI 単位 / 記号読み
+- ❌ 異体字正規化 (髙→高)
+- ❌ 慣用語句 (二十歳→ハタチ)
+
+これらを有効化するには [`furigana-dict`](https://github.com/RyuuNeko1107/ja-furigana-dict)
+の TOML を mount します (下の builder API 参照、CLI なら自動配置)。
+
+#### builder API で辞書 / ルールを指定
 
 ```rust
 use ja_furigana::Furigana;
