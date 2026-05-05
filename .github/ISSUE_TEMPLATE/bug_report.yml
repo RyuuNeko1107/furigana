@@ -41,10 +41,11 @@ body:
     attributes:
       label: 利用形態
       options:
-        - "lib (cargo add furigana)"
+        - "lib (cargo add ja-furigana)"
         - "CLI (furigana lookup)"
+        - "REPL (furigana repl / 引数なし起動)"
         - "HTTP server (furigana serve)"
-        - "Docker"
+        - "Docker (ghcr.io/ryuuneko1107/furigana)"
     validations:
       required: true
   - type: textarea

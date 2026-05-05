@@ -1,5 +1,11 @@
 blank_issues_enabled: false
 contact_links:
-  - name: 読みの追加・修正
+  - name: 💬 使い方の質問 / アイデア相談 (Discussions)
+    url: https://github.com/RyuuNeko1107/ja-furigana/discussions
+    about: 「これってどうすればいい？」「こんな使い方できる？」など、バグ報告や機能要望でないものは Discussions へ
+  - name: 📖 読み・ルールの追加・修正
     url: https://github.com/RyuuNeko1107/ja-furigana-dict/issues/new/choose
-    about: 単語の読みやルールデータの修正は furigana-dict リポジトリで受け付けています
+    about: 単語の読みやルール TOML の修正は別リポジトリ (ja-furigana-dict) で受け付けています
+  - name: 🔒 Security / 脆弱性報告
+    url: https://github.com/RyuuNeko1107/ja-furigana/security/advisories/new
+    about: 脆弱性は public issue ではなく Private vulnerability reporting でお願いします
