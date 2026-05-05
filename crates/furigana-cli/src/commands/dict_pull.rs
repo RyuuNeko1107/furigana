@@ -140,34 +140,68 @@ fn sha256_hex(data: &[u8]) -> String {
     hex::encode(hasher.finalize())
 }
 
-/// tar.gz バイト列を `dest_root` 直下に展開。
+/// tar.gz バイト列を `data_dir` 配下に rebase 展開。
 ///
-/// archive 内は `core/...` `rules/...` の相対パスなので、`dest_root/core/`
-/// `dest_root/rules/` に配置される。先に既存の `core/` `rules/` を削除して
-/// 古いファイルが残らないようにする (ユーザー追加の `dict/user/` `overrides.toml`
-/// は別パスなので影響なし)。
-fn extract_to(tarball: &[u8], dest_root: &Path) -> Result<()> {
-    fs::create_dir_all(dest_root)
-        .with_context(|| format!("ディレクトリ作成失敗: {}", dest_root.display()))?;
-
-    for sub in ["core", "rules"] {
-        let p = dest_root.join(sub);
+/// archive 内のエントリは furigana-dict repo の構造そのまま (`core/...` /
+/// `rules/...`)。一方エンジン側 (paths.rs / build_furigana) は:
+/// - 語彙辞書を `<data_dir>/dict/core/`
+/// - エンジンルールを `<data_dir>/rules/`
+/// から読むため、`core/` のみ `dict/core/` にプレフィックスを付け替えて配置する。
+///
+/// 既存の `<data_dir>/dict/core/` と `<data_dir>/rules/` は先に削除する
+/// (古いファイルが残らないように)。ユーザー追加の `<data_dir>/dict/user/` や
+/// `<data_dir>/dict/overrides.toml` は別パスなので影響なし。
+fn extract_to(tarball: &[u8], data_dir: &Path) -> Result<()> {
+    let dict_core = data_dir.join("dict").join("core");
+    let rules_dir = data_dir.join("rules");
+    for p in [&dict_core, &rules_dir] {
         if p.exists() {
-            fs::remove_dir_all(&p)
+            fs::remove_dir_all(p)
                 .with_context(|| format!("既存削除失敗: {}", p.display()))?;
         }
     }
+    fs::create_dir_all(&dict_core)?;
+    fs::create_dir_all(&rules_dir)?;
 
     let gz = GzDecoder::new(tarball);
     let mut archive = tar::Archive::new(gz);
     archive.set_preserve_permissions(false);
     archive.set_overwrite(true);
 
-    // archive 内エントリの相対パスをそのまま dest_root に展開。
-    // path traversal (../) を含む archive を弾くために unpack_in を使う。
-    archive
-        .unpack(dest_root)
-        .with_context(|| format!("展開先: {}", dest_root.display()))?;
+    for entry in archive.entries()? {
+        let mut entry = entry?;
+        let entry_path = entry.path()?.into_owned();
+        let dest = if let Ok(rest) = entry_path.strip_prefix("core") {
+            data_dir.join("dict").join("core").join(rest)
+        } else if let Ok(rest) = entry_path.strip_prefix("rules") {
+            data_dir.join("rules").join(rest)
+        } else {
+            // 想定外の top-level entry は無視 (README 等が混入してもスキップ)
+            tracing::debug!("skip archive entry: {}", entry_path.display());
+            continue;
+        };
+        // path traversal 防御: dest が data_dir 配下に収まることを確認
+        let canonical_root = data_dir.canonicalize().unwrap_or_else(|_| data_dir.to_path_buf());
+        if let Some(parent) = dest.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let canonical_parent = dest
+            .parent()
+            .and_then(|p| p.canonicalize().ok())
+            .unwrap_or_else(|| dest.clone());
+        if !canonical_parent.starts_with(&canonical_root) {
+            bail!(
+                "path traversal を検出: {} は {} の外",
+                entry_path.display(),
+                data_dir.display()
+            );
+        }
+        if entry.header().entry_type().is_dir() {
+            fs::create_dir_all(&dest)?;
+        } else {
+            entry.unpack(&dest)?;
+        }
+    }
     Ok(())
 }
 
