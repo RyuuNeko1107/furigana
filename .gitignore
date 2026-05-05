@@ -4,6 +4,10 @@
 # wasm-pack output (commit せず、wasm-pack build で再生成)
 /crates/furigana-wasm/pkg/
 
+# Python (examples/clients/python/ 等で生成される)
+__pycache__/
+*.pyc
+
 # IDE / editor
 .idea/
 .vscode/
