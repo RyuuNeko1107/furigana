@@ -1,13 +1,15 @@
-# furigana-cli
+# ja-furigana-cli
 
-`furigana` CLI バイナリ + ローカル HTTP サーバー。`furigana` lib crate のフロントエンド。
+`furigana` CLI バイナリ + ローカル HTTP サーバー。
+[`ja-furigana`](https://crates.io/crates/ja-furigana) lib crate のフロントエンド。
 
-⚠️ Pre-alpha — 公開 API は変更される。
+> Status: v0.1.x (alpha) — 公開 API はまだ変更され得る。
 
 ## インストール
 
 ```sh
-cargo install furigana-cli
+cargo install ja-furigana-cli
+# → ~/.cargo/bin/furigana がインストールされる
 ```
 
 ## 使い方

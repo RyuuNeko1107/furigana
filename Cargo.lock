@@ -610,33 +610,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "42703706b716c37f96a77aea830392ad231f44c9e9a67872fa5548707e11b11c"
 
 [[package]]
-name = "furigana-cli"
-version = "0.1.0-alpha.1"
-dependencies = [
- "anyhow",
- "axum",
- "base64",
- "clap",
- "directories",
- "flate2",
- "hex",
- "ja-furigana",
- "reqwest 0.12.28",
- "rustyline",
- "serde",
- "serde_json",
- "sha2",
- "tar",
- "thiserror 2.0.18",
- "tokio",
- "toml",
- "tower-http",
- "tracing",
- "tracing-subscriber",
- "unicode-width",
-]
-
-[[package]]
 name = "futures-channel"
 version = "0.3.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1038,6 +1011,33 @@ dependencies = [
  "toml",
  "tracing",
  "unicode-normalization",
+]
+
+[[package]]
+name = "ja-furigana-cli"
+version = "0.1.0-alpha.1"
+dependencies = [
+ "anyhow",
+ "axum",
+ "base64",
+ "clap",
+ "directories",
+ "flate2",
+ "hex",
+ "ja-furigana",
+ "reqwest 0.12.28",
+ "rustyline",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tar",
+ "thiserror 2.0.18",
+ "tokio",
+ "toml",
+ "tower-http",
+ "tracing",
+ "tracing-subscriber",
+ "unicode-width",
 ]
 
 [[package]]

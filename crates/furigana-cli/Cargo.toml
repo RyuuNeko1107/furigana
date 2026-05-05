@@ -1,6 +1,6 @@
 [package]
-name = "furigana-cli"
-description = "CLI and HTTP server for furigana — Japanese ruby annotation"
+name = "ja-furigana-cli"
+description = "CLI and HTTP server for ja-furigana — Japanese ruby annotation. Installs the `furigana` binary."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
