@@ -1,0 +1,91 @@
+# 数字を含む慣用語句の文脈ルール
+#
+# 「一日 = ツイタチ / イチニチ」「一月 = イチガツ / ヒトツキ」 のように
+# 数字 + 助数詞風の連体修飾語が文脈で読み分かれるパターン。
+
+# ─── 一日: 月名の後ならツイタチ、期間文脈ならイチニチ、default は イチニチ ──
+[[rule]]
+surface = "一日"
+default = "イチニチ"
+
+[[rule.match]]
+prev_ends_with_month = true
+reading = "ツイタチ"
+
+[[rule.match]]
+next_starts_with_any = ["中", "間", "分", "以上", "以下", "程", "ほど", "かけて"]
+reading = "イチニチ"
+
+[[rule.match]]
+prev_ends_with_any = ["毎", "約", "丸", "まる"]
+reading = "イチニチ"
+
+# ─── 一人 / 二人 ───────────────────────────────────────────────────────
+[[rule]]
+surface = "一人"
+default = "ヒトリ"
+
+[[rule]]
+surface = "二人"
+default = "フタリ"
+
+# ─── 一月 / 二月: 暦 vs 期間 ─────────────────────────────────────────
+[[rule]]
+surface = "一月"
+
+[[rule.match]]
+next_starts_with_any = ["日", "から", "まで", "に", "の", "は", "も", "、", "。"]
+reading = "イチガツ"
+
+[[rule.match]]
+next_starts_with_digit = true
+reading = "イチガツ"
+
+[[rule.match]]
+next_starts_with_any = ["中", "間", "分", "以上", "以下", "程", "ほど", "かけて"]
+reading = "ヒトツキ"
+
+[[rule]]
+surface = "二月"
+
+[[rule.match]]
+next_starts_with_any = ["日", "から", "まで", "に", "の", "は", "も", "、", "。"]
+reading = "ニガツ"
+
+[[rule.match]]
+next_starts_with_digit = true
+reading = "ニガツ"
+
+[[rule.match]]
+next_starts_with_any = ["中", "間", "分", "以上", "以下", "程", "ほど", "かけて"]
+reading = "フタツキ"
+
+# ─── 一時 ──────────────────────────────────────────────────────────────
+[[rule]]
+surface = "一時"
+default = "イチジ"
+
+# ─── 一番 / 一体 / 一杯 / 一生 / 一緒 / 一人前 ───────────────────────
+[[rule]]
+surface = "一番"
+default = "イチバン"
+
+[[rule]]
+surface = "一体"
+default = "イッタイ"
+
+[[rule]]
+surface = "一杯"
+default = "イッパイ"
+
+[[rule]]
+surface = "一生"
+default = "イッショウ"
+
+[[rule]]
+surface = "一緒"
+default = "イッショ"
+
+[[rule]]
+surface = "一人前"
+default = "イチニンマエ"

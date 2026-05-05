@@ -1,0 +1,39 @@
+# 場所を数える助数詞 (階 / ヶ所 / 箇所 / か所)
+
+# ─── 階 ────────────────────────────────────────────────────────────────────
+[counter."階"]
+default = "カイ"
+
+[[counter."階".rules]]
+last_digit = [1, 6, 8, 0]
+suffix = "カイ"
+sokuonize = true
+
+[[counter."階".rules]]
+last_digit = [3]
+suffix = "ガイ"
+
+# ─── ヶ所 / 箇所 / か所 ────────────────────────────────────────────────────
+[counter."ヶ所"]
+default = "カショ"
+
+[[counter."ヶ所".rules]]
+last_digit = [1, 6, 8, 0]
+suffix = "カショ"
+sokuonize = true
+
+[counter."箇所"]
+default = "カショ"
+
+[[counter."箇所".rules]]
+last_digit = [1, 6, 8, 0]
+suffix = "カショ"
+sokuonize = true
+
+[counter."か所"]
+default = "カショ"
+
+[[counter."か所".rules]]
+last_digit = [1, 6, 8, 0]
+suffix = "カショ"
+sokuonize = true

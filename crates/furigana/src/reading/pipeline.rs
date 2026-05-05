@@ -38,12 +38,18 @@ pub(super) fn tokenize_chunk(
 
 /// 個別トークンの読みを解決する
 ///
-/// 優先順位:
+/// 優先順位 (新):
 /// 1. 漢字を含まない → 読み不要 (`None`)
-/// 2. dict lookup
-/// 3. 文脈ルール ([`ContextData`])
+/// 2. **文脈ルール** ([`ContextData`]) — 同形異音語 (一日 / 上手 / 市場 等) の
+///    動的読み分けが効くように、辞書 lookup より先に評価する。
+///    rule にマッチしない or default 無しなら次へ。
+/// 3. dict lookup — 熟語固定読み (灰桜=ハイザクラ 等)
 /// 4. 形態素解析 (lindera) の reading
 /// 5. fallback `None`
+///
+/// 旧版では dict lookup が context rule より先だった結果、unihan に登録された
+/// 単漢字読み (能=あたう、本=もと 等の動詞活用形 / 訓読み) が context rule の
+/// default を遮断してしまっていた。
 fn resolve_reading(
     token: &MorphToken,
     all_tokens: &[MorphToken],
@@ -57,12 +63,12 @@ fn resolve_reading(
         return None;
     }
 
-    if let Some(reading) = dict.lookup(surface) {
-        return Some(reading.to_string());
-    }
-
     if let Some(reading) = apply_context_rules(context, all_tokens, idx) {
         return Some(reading);
+    }
+
+    if let Some(reading) = dict.lookup(surface) {
+        return Some(reading.to_string());
     }
 
     if let Some(reading) = &token.reading {
