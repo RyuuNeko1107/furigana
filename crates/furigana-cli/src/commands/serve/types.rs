@@ -1,20 +1,30 @@
 //! `serve` の HTTP 型 + AppState + エラーヘルパ
 
+use crate::paths::Paths;
 use axum::http::StatusCode;
 use axum::Json;
 use furigana::Furigana;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::sync::Arc;
+use tokio::sync::RwLock;
 
 /// 1 リクエストあたりの最大入力文字数 (公開 API 仕様)
 pub(super) const MAX_TEXT_LEN: usize = 10_000;
 
 /// HTTP サーバーの共有状態
+///
+/// `furigana` は `RwLock<Arc<...>>` でホットリロード対応:
+/// - read 側 (lookup): `read().await.clone()` で `Arc` を即取り出して lock を即解放
+/// - write 側 (reload): `write().await` で中の `Arc` を差し替え
+///
+/// `paths` は reload 時に `build_furigana` を再実行するため保持。
 #[derive(Clone)]
 pub(super) struct AppState {
-    pub(super) furigana: Arc<Furigana>,
+    pub(super) furigana: Arc<RwLock<Arc<Furigana>>>,
     pub(super) tokens: Arc<Vec<String>>,
+    pub(super) admin_tokens: Arc<Vec<String>>,
+    pub(super) paths: Arc<Paths>,
 }
 
 /// `/furigana` のクエリ / body パラメータ

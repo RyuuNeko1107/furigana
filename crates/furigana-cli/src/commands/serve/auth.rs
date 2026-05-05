@@ -27,6 +27,27 @@ pub(super) async fn require_token(
     }
 }
 
+/// `/admin/*` 用の認証ミドルウェア
+///
+/// `state.admin_tokens` が空なら 503 (admin 機能 disabled)。
+/// 空でなければ `X-API-Key` または `Authorization: Bearer` を厳密に照合。
+/// 認証は常に必須 (一般 tokens では通らない)。
+pub(super) async fn require_admin_token(
+    State(state): State<AppState>,
+    req: Request,
+    next: Next,
+) -> Result<Response, StatusCode> {
+    if state.admin_tokens.is_empty() {
+        return Err(StatusCode::SERVICE_UNAVAILABLE);
+    }
+    let presented = extract_token(&req).ok_or(StatusCode::UNAUTHORIZED)?;
+    if state.admin_tokens.iter().any(|t| t == &presented) {
+        Ok(next.run(req).await)
+    } else {
+        Err(StatusCode::UNAUTHORIZED)
+    }
+}
+
 /// `X-API-Key` 優先、無ければ `Authorization: Bearer <token>` を読む
 fn extract_token(req: &Request) -> Option<String> {
     if let Some(v) = req.headers().get("x-api-key").and_then(|v| v.to_str().ok()) {

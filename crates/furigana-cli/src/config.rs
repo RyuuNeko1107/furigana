@@ -47,9 +47,13 @@ fn default_bind() -> String {
 /// `[auth]` セクション
 #[derive(Debug, Default, Clone, Deserialize)]
 pub struct AuthConfig {
-    /// 受理する bearer トークン (空 = 認証無効)
+    /// `/furigana` 認証用 (空 = 認証無効、ローカル想定のデフォルト)
     #[serde(default)]
     pub tokens: Vec<String>,
+
+    /// `/admin/*` (reload 等) 専用トークン (空 = `/admin/*` 無効化)
+    #[serde(default)]
+    pub admin_tokens: Vec<String>,
 }
 
 impl Config {

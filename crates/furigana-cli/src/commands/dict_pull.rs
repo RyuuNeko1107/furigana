@@ -143,10 +143,9 @@ fn sha256_hex(data: &[u8]) -> String {
 /// tar.gz バイト列を `data_dir` 配下に rebase 展開。
 ///
 /// archive 内のエントリは furigana-dict repo の構造そのまま (`core/...` /
-/// `rules/...`)。一方エンジン側 (paths.rs / build_furigana) は:
-/// - 語彙辞書を `<data_dir>/dict/core/`
-/// - エンジンルールを `<data_dir>/rules/`
-/// から読むため、`core/` のみ `dict/core/` にプレフィックスを付け替えて配置する。
+/// `rules/...`)。一方エンジン側 (paths.rs / build_furigana) は語彙辞書を
+/// `<data_dir>/dict/core/`、エンジンルールを `<data_dir>/rules/` から読むため、
+/// `core/` のみ `dict/core/` にプレフィックスを付け替えて配置する。
 ///
 /// 既存の `<data_dir>/dict/core/` と `<data_dir>/rules/` は先に削除する
 /// (古いファイルが残らないように)。ユーザー追加の `<data_dir>/dict/user/` や

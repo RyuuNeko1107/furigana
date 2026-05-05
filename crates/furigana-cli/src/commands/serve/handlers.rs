@@ -13,9 +13,10 @@ use std::time::Instant;
 
 /// `GET /healthz`
 pub(super) async fn healthz(State(state): State<AppState>) -> Json<Value> {
+    let f = state.furigana.read().await;
     Json(json!({
         "status": "ok",
-        "dict_size": state.furigana.dict_size(),
+        "dict_size": f.dict_size(),
     }))
 }
 
@@ -24,7 +25,8 @@ pub(super) async fn furigana_get(
     State(state): State<AppState>,
     Query(params): Query<FuriganaParams>,
 ) -> Result<Json<FuriganaResponse>, ApiError> {
-    process(&state.furigana, &params)
+    let f = state.furigana.read().await.clone();
+    process(f.as_ref(), &params)
 }
 
 /// `POST /furigana` (JSON body)
@@ -32,7 +34,41 @@ pub(super) async fn furigana_post(
     State(state): State<AppState>,
     Json(params): Json<FuriganaParams>,
 ) -> Result<Json<FuriganaResponse>, ApiError> {
-    process(&state.furigana, &params)
+    let f = state.furigana.read().await.clone();
+    process(f.as_ref(), &params)
+}
+
+/// `POST /admin/reload` — `<data_dir>` から辞書を再ロードして state を swap
+pub(super) async fn admin_reload(
+    State(state): State<AppState>,
+) -> Result<Json<Value>, ApiError> {
+    let dict_size = do_reload(&state).await.map_err(|e| {
+        error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("reload failed: {e}"),
+        )
+    })?;
+    Ok(Json(json!({
+        "status": "reloaded",
+        "dict_size": dict_size,
+    })))
+}
+
+/// 辞書を再ビルド → state.furigana を差し替え。`POST /admin/reload` と SIGHUP の共通実装。
+///
+/// build 自体は CPU bound + I/O 込みなので `spawn_blocking` で逃がす。
+/// 戻り値は新 dict のサイズ。
+pub(super) async fn do_reload(state: &AppState) -> Result<usize, String> {
+    let paths = state.paths.clone();
+    let new = tokio::task::spawn_blocking(move || crate::commands::build_furigana(&paths))
+        .await
+        .map_err(|e| format!("reload task join error: {e}"))?
+        .map_err(|e| format!("build_furigana failed: {e}"))?;
+    let new_arc = std::sync::Arc::new(new);
+    let dict_size = new_arc.dict_size();
+    *state.furigana.write().await = new_arc;
+    tracing::info!("辞書を reload しました (dict_size={dict_size})");
+    Ok(dict_size)
 }
 
 /// パラメータをデコード → モード別変換 → JSON レスポンス組み立て
