@@ -105,28 +105,36 @@ impl Furigana {
     /// テキスト → ひらがな文字列
     ///
     /// 漢字部分を読みのひらがなに置き換えた完全展開形を返す。TTS 等向け。
+    /// 出力直前に `postprocess.toml` の `mode = "hiragana"` ルールを適用。
     #[must_use]
     pub fn to_hiragana(&self, text: &str) -> String {
-        tokens_to_hiragana(&self.tokenize(text))
+        let hira = tokens_to_hiragana(&self.tokenize(text));
+        self.rules.postprocess.apply(&hira, "hiragana")
     }
 
     /// テキスト → `{漢字|ひらがな}` 形式の ruby 文字列
     ///
     /// 例: `"灰桜の道"` → `"{灰桜|はいざくら}の{道|みち}"`
     /// 漢字を含まない部分はそのまま、読みなし部分も surface のまま。
+    /// 出力直前に `postprocess.toml` の `mode = "ruby"` ルールを適用。
     #[must_use]
     pub fn to_ruby(&self, text: &str) -> String {
-        tokens_to_ruby(&self.tokenize(text))
+        let ruby = tokens_to_ruby(&self.tokenize(text));
+        self.rules.postprocess.apply(&ruby, "ruby")
     }
 
     /// テキスト → TTS 向けに整形されたひらがな (ポーズ込み)
     ///
     /// 内部で [`Self::to_hiragana`] → [`tts::normalize_for_tts`] を走らせる。
     /// VOICEVOX 等の音声合成に流す前段で使う想定。
+    /// 出力直前に `postprocess.toml` の `mode = "tts"` ルールを適用。
     #[must_use]
     pub fn to_tts(&self, text: &str, opts: &TtsOptions) -> String {
-        let hira = self.to_hiragana(text);
-        tts::normalize_for_tts(&hira, opts)
+        // hiragana 自体の postprocess はここでは飛ばす (二重適用回避)。
+        // 必要なら hiragana 用 postprocess を tts mode で再度書く想定。
+        let hira = tokens_to_hiragana(&self.tokenize(text));
+        let normalized = tts::normalize_for_tts(&hira, opts);
+        self.rules.postprocess.apply(&normalized, "tts")
     }
 
     /// テキスト → ローマ字
@@ -137,8 +145,10 @@ impl Furigana {
     /// `Kunrei` で規則的な si/ti/tu を出す。
     #[must_use]
     pub fn to_romaji(&self, text: &str, style: crate::romaji::RomajiStyle) -> String {
+        // to_hiragana 内で hiragana 用 postprocess は適用済み
         let hira = self.to_hiragana(text);
-        crate::romaji::hiragana_to_romaji(&hira, style)
+        let romaji = crate::romaji::hiragana_to_romaji(&hira, style);
+        self.rules.postprocess.apply(&romaji, "romaji")
     }
 
     /// TTS 出力を文末・読点で分割
