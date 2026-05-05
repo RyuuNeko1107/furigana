@@ -171,15 +171,24 @@ exe + `data/` の 2 つだけが見える状態でフォルダごとコピーす
 ├── config.toml                    # 設定 (任意)
 ├── repl_history                   # REPL の入力履歴 (自動)
 └── data/                          # :pull で展開 / ユーザー追加もここに集約
-    ├── core/                      # 配布版辞書 (`furigana-dict` のリリース)
-    │   ├── unihan.toml
-    │   ├── compat.toml
-    │   └── jukugo/*.toml
-    ├── user/                      # ユーザー追加
-    │   └── cli-added.toml         # `furigana dict add` の保存先
-    ├── rules/                     # 助数詞・文脈・スケール等のエンジンルール
-    └── overrides.toml             # 強制上書き用 (最優先、任意)
+    ├── unihan.toml                # 単漢字フォールバック
+    ├── compat.toml                # 異体字マップ
+    ├── jukugo/*.toml              # 熟語 / 固有名詞 / 地名 / 人名
+    ├── days.toml                  # 1〜31 日特殊読み
+    ├── scales.toml                # 万 / 億 / 兆 ...
+    ├── units.toml                 # SI 単位
+    ├── symbols.toml               # 記号読み
+    ├── latin.toml                 # ラテン文字読み
+    ├── numeric_phrases.toml       # 慣用語句 (二十歳→ハタチ等)
+    ├── counters/*.toml            # 助数詞ルール
+    ├── context/*.toml             # 文脈ルール
+    ├── user/                      # ユーザー追加 (`furigana dict add` で生成)
+    └── overrides.toml              # 強制上書き用 (最優先、任意)
 ```
+
+すべて `data/` 直下に flat に並ぶ (旧バージョンの `core/` と `rules/` の分離は廃止)。
+内部的に lib loader が「dict 用 (`[entries]` 持つもの) と rules 用 (特定ファイル名)」を
+排他的に拾うため、ファイル衝突は発生しない。
 
 `--data-dir <path>` または `FURIGANA_DATA_DIR` 環境変数で別の場所を指定できる
 (`cargo install` した場合に `~/.local/share/furigana/` に置きたい等)。

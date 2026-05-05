@@ -140,28 +140,48 @@ fn sha256_hex(data: &[u8]) -> String {
     hex::encode(hasher.finalize())
 }
 
-/// tar.gz バイト列を `<data_dir>/data/` 配下に rebase 展開。
+/// tar.gz バイト列を `<data_dir>/data/` 配下に flat 展開する。
 ///
-/// archive 内のエントリは furigana-dict repo の構造そのまま (`core/...` /
-/// `rules/...`)。エンジン側は paths::Paths::dict_core_dir / rules_dir を経由して
-/// `<data_dir>/data/core/`、`<data_dir>/data/rules/` から読むため、
-/// `core/` `rules/` どちらも `data/` プレフィックスを付け足して配置する。
+/// furigana-dict repo の archive は `core/...` `rules/...` で 2 階層に分かれて
+/// いるが、配布物は最終的に `data/` 1 階層にまとめる:
+/// - `core/unihan.toml`        → `data/unihan.toml`
+/// - `core/jukugo/general.toml`→ `data/jukugo/general.toml`
+/// - `rules/days.toml`         → `data/days.toml`
+/// - `rules/counters/*.toml`   → `data/counters/*.toml`
 ///
-/// 既存の `<data_dir>/data/core/` と `<data_dir>/data/rules/` は先に削除する
-/// (古いファイルが残らないように)。ユーザー追加の `<data_dir>/data/user/` や
-/// `<data_dir>/data/overrides.toml` は別パスなので影響なし。
+/// lib loader は内部的に「Dict (recursive *.toml で `[entries]` 拾う) vs Rules
+/// (特定ファイル名 + counters/ context/ サブのみ)」と排他的に scan するので、
+/// 同じ `data/` ディレクトリを両方に渡しても干渉しない (paths.rs 参照)。
+///
+/// 「core/ と rules/ を分ける必要ない (同じ furigana-dict から PR/DL する
+/// データなのに)」という指摘を受けてこの flat layout に統合した。
+///
+/// 既存の `data_root/` 配下にあった分は **`user/` と `overrides.toml` を残して**
+/// 削除してから展開する。これにより古い配布ファイルが残らない一方、ユーザー
+/// 追加分は保持される。
 fn extract_to(tarball: &[u8], paths: &Paths) -> Result<()> {
-    let dict_core: PathBuf = paths.dict_core_dir();
-    let rules: PathBuf = paths.rules_dir();
     let data_root: PathBuf = paths.data_root();
-    for p in [&dict_core, &rules] {
-        if p.exists() {
-            fs::remove_dir_all(p)
-                .with_context(|| format!("既存削除失敗: {}", p.display()))?;
+    let user_dir: PathBuf = paths.dict_user_dir();
+    let overrides: PathBuf = paths.overrides_file();
+
+    // 既存の配布ファイルを掃除 (user / overrides は保持)
+    if data_root.exists() {
+        for entry in fs::read_dir(&data_root)? {
+            let path = entry?.path();
+            if path == user_dir || path == overrides {
+                continue;
+            }
+            if path.is_dir() {
+                fs::remove_dir_all(&path)
+                    .with_context(|| format!("既存削除失敗: {}", path.display()))?;
+            } else {
+                fs::remove_file(&path)
+                    .with_context(|| format!("既存削除失敗: {}", path.display()))?;
+            }
         }
+    } else {
+        fs::create_dir_all(&data_root)?;
     }
-    fs::create_dir_all(&dict_core)?;
-    fs::create_dir_all(&rules)?;
 
     let gz = GzDecoder::new(tarball);
     let mut archive = tar::Archive::new(gz);
@@ -175,10 +195,19 @@ fn extract_to(tarball: &[u8], paths: &Paths) -> Result<()> {
     for entry in archive.entries()? {
         let mut entry = entry?;
         let entry_path = entry.path()?.into_owned();
+        // archive 内 `core/...` `rules/...` の prefix を剥がして `data/` 直下に。
+        // prefix だけのディレクトリエントリ (`core/` `rules/`) は rest が空に
+        // なるので skip (data_root はすでに作ってある)。
         let dest = if let Ok(rest) = entry_path.strip_prefix("core") {
-            dict_core.join(rest)
+            if rest.as_os_str().is_empty() {
+                continue;
+            }
+            data_root.join(rest)
         } else if let Ok(rest) = entry_path.strip_prefix("rules") {
-            rules.join(rest)
+            if rest.as_os_str().is_empty() {
+                continue;
+            }
+            data_root.join(rest)
         } else {
             // 想定外の top-level entry は無視 (README 等が混入してもスキップ)
             tracing::debug!("skip archive entry: {}", entry_path.display());

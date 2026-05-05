@@ -19,10 +19,17 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::Path;
 
+/// TOML ファイルの `[entries]` セクションを受ける defensive な型。
+///
+/// value を `toml::Value` で受けて、後段で「string 値だけを拾う」フィルタを
+/// かける。これにより rules 系ファイル (例: `units.toml` の `[entries]` は
+/// `{ kana = "..." }` の inline table) と同じディレクトリに置かれていても
+/// silent skip できる。core 辞書と rules を `data/` 1 階層に flat 配置する
+/// ユースケース (paths::Paths::dict_core_dir == rules_dir) のための防御。
 #[derive(Debug, Default, Deserialize)]
 struct DictFile {
     #[serde(default)]
-    entries: HashMap<String, String>,
+    entries: HashMap<String, toml::Value>,
 }
 
 /// 単純 HashMap ベースの surface→reading 辞書
@@ -50,9 +57,13 @@ impl Dict {
             file: file.to_string(),
             source: e,
         })?;
-        Ok(Self {
-            entries: parsed.entries,
-        })
+        // string 値だけ採用。inline table 等は rules 用ファイルなので silent skip。
+        let entries = parsed
+            .entries
+            .into_iter()
+            .filter_map(|(k, v)| v.as_str().map(|s| (k, s.to_string())))
+            .collect();
+        Ok(Self { entries })
     }
 
     /// 単一 TOML ファイルから辞書を構築
