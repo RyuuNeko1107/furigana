@@ -36,7 +36,7 @@
 提供形態:
 
 - **ライブラリ** (`ja-furigana` crate): `cargo add ja-furigana` で組み込める (import 名は `furigana`)。DB 不要、async 不要、Pure Rust。
-- **CLI / ローカル サーバー** (`furigana-cli` → `furigana` バイナリ): ローカル HTTP API + 辞書管理コマンド。
+- **CLI / ローカル サーバー** (`ja-furigana-cli` → `furigana` バイナリ): ローカル HTTP API + 辞書管理コマンド。
 
 **ローカル利用 / 組み込み用途** を前提に設計。デフォルト bind は `127.0.0.1:8000`、
 `/furigana` 認証は無効 (token 設定で有効化)、レート制限なし、ホットリロード対応。
@@ -110,8 +110,8 @@ $ cargo run -p furigana --example basic
 $ tar -xzf furigana-v0.1.0-x86_64-unknown-linux-gnu.tar.gz
 $ mv furigana ~/.local/bin/
 
-# crates.io 経由
-$ cargo install furigana-cli
+# crates.io 経由 (`furigana` バイナリが ~/.cargo/bin にインストールされる)
+$ cargo install ja-furigana-cli
 
 # Docker
 $ docker run --rm -p 8000:8000 ghcr.io/ryuuneko1107/furigana:latest
@@ -328,7 +328,7 @@ crates/
 │       ├── merge.rs          #   merge_with_dict (最長一致結合)
 │       ├── context.rs        #   apply_context_rules (data-driven)
 │       └── output.rs         #   tokens_to_hiragana / tokens_to_ruby
-└── furigana-cli/             # bin crate (`furigana` バイナリ)
+└── furigana-cli/             # bin crate (crates.io: ja-furigana-cli、binary は furigana)
     └── src/
         ├── main.rs           # clap dispatch (引数なしは repl にフォールバック)
         ├── paths.rs          # 実行ファイル横を default、--data-dir / FURIGANA_DATA_DIR で上書き
@@ -364,7 +364,7 @@ crates/
 - ✅ 対話 REPL (`furigana repl` / 引数なし起動 / Tab 補完 / 履歴 / `:` optional)
 - ✅ SI 単位の case-insensitive lookup (`1km` / `1KM` / `1Km` 全部 hit)
 - ✅ 四字熟語の分離 (`furigana-dict/core/jukugo/four_char.toml`)
-- 🚧 crates.io 公開 (`furigana` lib + `furigana-cli` bin)
+- ✅ crates.io 公開 (`ja-furigana` lib + `ja-furigana-cli` bin、0.1.0-alpha.1)
 
 **Phase 3 (検討)**:
 - ローマ字出力モード
