@@ -36,7 +36,7 @@ cargo build --all-targets
 cargo test --workspace
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo run -p furigana --example basic
+cargo run -p ja-furigana --example basic
 ```
 
 ### 2-2. テスト用 fixture
