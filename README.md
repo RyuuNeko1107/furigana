@@ -29,7 +29,8 @@
 
 「不確かなときは形態素解析の素朴な結果に fall back」「辞書 hit したものは確実に固定」という **保守的な決定論**。コミュニティ PR で精度が上がる設計。
 
-> **Status**: v0.1.x (alpha)。`0.1.x` の間は公開 API / TOML スキーマ / CLI 引数 / HTTP レスポンス構造が予告なく変わりえます。詳細とロードマップは [docs/ROADMAP.md](./docs/ROADMAP.md)。
+> **Status**: **v0.1.0-alpha.3** (2026-05-06)。本番 ryuuneko.com の公開フリガナ API パイプラインに揃えた `context rule → jukugo → Lindera → unihan` の 5 段階優先順位を実装、内部例文 75 件回帰で **75/75 (100%)** 達成。
+> `0.1.x` の間は公開 API / TOML スキーマ / CLI 引数 / HTTP レスポンス構造が予告なく変わりえます。詳細とロードマップは [docs/ROADMAP.md](./docs/ROADMAP.md)。
 
 ## 名前の対応 (混乱しやすい点)
 
@@ -53,7 +54,7 @@
 ```toml
 # Cargo.toml
 [dependencies]
-ja-furigana = "0.1.0-alpha.2"
+ja-furigana = "0.1.0-alpha.3"
 ```
 
 ```rust
