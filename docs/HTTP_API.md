@@ -122,43 +122,84 @@ curl -H 'X-API-Key: secret' \
 
 設定の詳細は [CONFIG.md](./CONFIG.md) を参照。
 
-## ホットリロード
+## ホットリロード / 自動更新
 
-辞書を再読込する 2 経路:
+辞書を更新する経路は用途別に **5 通り**。一番簡単なのは「pull して再起動」(設定ゼロ)。
 
-### `POST /admin/reload`
-
-`[auth].admin_tokens` (一般 `tokens` とは別系列) で認証。
+### A. プロセス再起動 (個人 / 開発、設定ゼロ、一番シンプル)
 
 ```sh
+furigana dict pull            # GitHub Releases から最新を DL + flat 展開
+# → 起動中の furigana を Ctrl-C で止めて再度起動 (起動時に新辞書をロード)
+furigana serve
+```
+
+- **トークン不要 / config.toml 不要**
+- ダウンタイム ~数秒 (起動コスト)
+- 個人運用ならこれで十分
+
+### B. `furigana serve --auto-pull` (起動時 1 回 pull、alpha.5+)
+
+```sh
+furigana serve --auto-pull
+# → listen 開始前に dict pull を内部実行 → 失敗時は warn のみで起動継続
+```
+
+- **トークン不要 / config.toml 不要**
+- network なし / GitHub 一時障害でも壊れない
+- systemd の `Restart=on-failure` と組み合わせると、再起動するたびに最新を引いてくる
+
+`config.toml [auto_update].pin` が空でなければそれを尊重 (空なら latest 追従)。
+
+### C. `[auto_update]` 定期 polling (無停止運用、alpha.5+)
+
+```toml
+# config.toml
+[auto_update]
+enabled  = true
+interval = "6h"      # 30m / 1h / 6h / 1d 等。1h 以上推奨 (GitHub API rate limit)
+# pin = "v0.1.2"     # 空なら最新追従
+```
+
+- **トークン不要** (内部呼び出しで HTTP 経由しないため)
+- background task が定期 polling → 新 tag があれば自動 pull + 自動 reload
+- 既存リクエスト中も `RwLock<Arc<Furigana>>` swap で **ダウンタイムなし**
+- failed tick は warn のみで稼働継続
+
+### D. `SIGHUP` シグナル (Unix のみ)
+
+```sh
+furigana dict pull --version v0.1.2  # 先に DL
+kill -HUP $(pgrep furigana)          # signal で reload
+# systemd なら ExecReload=/bin/kill -HUP $MAINPID
+```
+
+- **トークン不要** (プロセス権限で signal 送信できる人だけ)
+- Windows ではビルドから除外、E に移行
+
+### E. `POST /admin/reload` (外部から HTTP で reload、admin_tokens 必須)
+
+```sh
+furigana dict pull --version v0.1.2
+
 curl -X POST -H 'X-API-Key: <admin-token>' \
   http://127.0.0.1:8000/admin/reload
 # → {"status":"reloaded","dict_size":44354}
 ```
 
-`admin_tokens` が未設定の場合は **503 Service Unavailable** を返して機能 off (一般利用者がうっかり叩いても害がない設計)。
+- **`[auth].admin_tokens` 設定済みのときだけ動く**。未設定なら 503 返却で機能 off
+- マルチプロセス / マルチホストで同期 reload を打ちたい運用者向け
+- 認証: `X-API-Key` または `Authorization: Bearer`、admin_tokens に一致するもののみ通る
+- 一般 `tokens` では通らない (`/admin/*` は完全に別系列)
 
-### `SIGHUP` (Unix のみ)
+### どれを選ぶ?
 
-```sh
-kill -HUP $(pgrep furigana)
-# systemd なら ExecReload=/bin/kill -HUP $MAINPID
-```
-
-Windows ではビルドから除外。`POST /admin/reload` を使う。
-
-### 想定フロー
-
-```sh
-# 1. 新しい辞書版を取得
-furigana dict pull --version v0.1.2
-
-# 2. サーバープロセスに reload を促す
-curl -X POST -H 'X-API-Key: <admin-token>' http://127.0.0.1:8000/admin/reload
-# あるいは Unix なら kill -HUP <pid>
-```
-
-ダウンタイムなしで辞書差し替え可能。
+| 用途 | お勧め経路 |
+|---|---|
+| 個人 / 開発 / 趣味 | **A** (再起動)、または **B** (`--auto-pull`) |
+| 個人サーバ・無停止運用 | **C** (`[auto_update]`) |
+| Linux サーバ・systemd 連携 | **C** + **D** (auto_update + SIGHUP の併用) |
+| 外部から reload を打つマルチ replica | **E** (`admin_tokens` 必須) |
 
 ## 他言語クライアント
 

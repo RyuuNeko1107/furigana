@@ -99,6 +99,10 @@ furigana dict pull                       # 最新 release
 furigana dict pull --version v0.1.1      # version pin
 ```
 
+サーバ運用 (alpha.5+) では、これを **起動時に自動実行** する `--auto-pull` フラグや、
+**起動中に定期 polling** する `[auto_update]` config もある (admin_tokens 不要)。
+詳細は [HTTP_API.md#ホットリロード--自動更新](./HTTP_API.md#ホットリロード--自動更新) を参照。
+
 詳細フロー:
 
 1. `--version` 指定 or GitHub API `/releases/latest` で tag 解決
