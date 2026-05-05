@@ -1,6 +1,6 @@
 [package]
-name = "furigana"
-description = "Japanese furigana (ruby) lookup library — analyzer + dictionary + data-driven rules"
+name = "ja-furigana"
+description = "Japanese furigana (ruby) lookup library — Lindera-based analyzer + data-driven dictionary/rules from furigana-dict"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -11,6 +11,12 @@ homepage.workspace = true
 keywords.workspace = true
 categories.workspace = true
 readme = "README.md"
+
+# crates.io 上の package 名は `ja-furigana` (`furigana` は別 crate に取られているため)。
+# import 名は `furigana` のままにして `use furigana::Furigana;` のように使えるようにする。
+[lib]
+name = "furigana"
+path = "src/lib.rs"
 
 [lints]
 workspace = true

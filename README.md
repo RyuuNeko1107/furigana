@@ -35,7 +35,7 @@
 
 提供形態:
 
-- **ライブラリ** (`furigana` crate): `cargo add furigana` で組み込める。DB 不要、async 不要、Pure Rust。
+- **ライブラリ** (`ja-furigana` crate): `cargo add ja-furigana` で組み込める (import 名は `furigana`)。DB 不要、async 不要、Pure Rust。
 - **CLI / ローカル サーバー** (`furigana-cli` → `furigana` バイナリ): ローカル HTTP API + 辞書管理コマンド。
 
 **ローカル利用 / 組み込み用途** を前提に設計。デフォルト bind は `127.0.0.1:8000`、
@@ -56,11 +56,13 @@
 
 ```toml
 [dependencies]
-furigana = "0.1"
+# crates.io 上の crate 名は `ja-furigana` (`furigana` は別 crate で取られているため)。
+# 本リポジトリのライブラリを使うには:
+ja-furigana = "0.1.0-alpha.1"
 ```
 
 ```rust
-use furigana::Furigana;
+use ja_furigana::Furigana;  // import 名は ja_furigana
 
 let mut f = Furigana::minimal()?;
 f.add_reading("灰桜", "ハイザクラ");
@@ -108,7 +110,7 @@ $ cargo run -p furigana --example basic
 $ tar -xzf furigana-v0.1.0-x86_64-unknown-linux-gnu.tar.gz
 $ mv furigana ~/.local/bin/
 
-# crates.io 経由 (公開後)
+# crates.io 経由
 $ cargo install furigana-cli
 
 # Docker
@@ -300,7 +302,7 @@ admin_tokens = []  # 空 = /admin/* 機能 off (503)
 
 ```
 crates/
-├── furigana/                 # lib crate (cargo add furigana)
+├── furigana/                 # lib crate (crates.io 上の名前は ja-furigana)
 │   ├── lib.rs                # module 宣言 + 公開 API re-export (ファサード)
 │   ├── api.rs                # Furigana 構造体 + FuriganaBuilder
 │   ├── analyzer.rs           # Lindera + IPADIC (形態素解析)
