@@ -366,6 +366,11 @@ crates/
 - ✅ 四字熟語の分離 (`furigana-dict/core/jukugo/four_char.toml`)
 - ✅ crates.io 公開 (`ja-furigana` lib + `ja-furigana-cli` bin、0.1.0-alpha.1)
 
+**Phase 3 (進行中)**:
+- ✅ WebAssembly ビルド (`crates/furigana-wasm`、`wasm-pack build --target web`)
+  ブラウザ / Node.js から `WasmFurigana` 経由で `toRuby` / `toHiragana` を呼べる。
+  `examples/index.html` に最小デモ。
+
 **Phase 3 (検討)**:
 - ローマ字出力モード
 - 速度最適化 (regex pre-compile pool 等)
