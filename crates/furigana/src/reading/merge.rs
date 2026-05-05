@@ -28,7 +28,9 @@ pub(super) fn merge_with_dict(tokens: &[MorphToken], dict: &Dict) -> Vec<MorphTo
 
         for (j, t) in tokens.iter().enumerate().take(limit).skip(i) {
             combined.push_str(&t.surface);
-            if j > i && dict.lookup(&combined).is_some() {
+            // 「複合語として結合する」というのは熟語辞書 (≥ 2 文字) でのみ起きる動作。
+            // 単漢字 unihan は結合トリガにしない (j > i で既に 2 文字以上ある前提)。
+            if j > i && dict.lookup_jukugo(&combined).is_some() {
                 best_end = j + 1;
             }
         }

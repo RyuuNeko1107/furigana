@@ -38,18 +38,18 @@ pub(super) fn tokenize_chunk(
 
 /// 個別トークンの読みを解決する
 ///
-/// 優先順位 (新):
+/// 優先順位 (本番 ryuuneko.com の公開 API パイプラインに準拠):
+///
 /// 1. 漢字を含まない → 読み不要 (`None`)
 /// 2. **文脈ルール** ([`ContextData`]) — 同形異音語 (一日 / 上手 / 市場 等) の
-///    動的読み分けが効くように、辞書 lookup より先に評価する。
-///    rule にマッチしない or default 無しなら次へ。
-/// 3. dict lookup — 熟語固定読み (灰桜=ハイザクラ 等)
-/// 4. 形態素解析 (lindera) の reading
-/// 5. fallback `None`
-///
-/// 旧版では dict lookup が context rule より先だった結果、unihan に登録された
-/// 単漢字読み (能=あたう、本=もと 等の動詞活用形 / 訓読み) が context rule の
-/// default を遮断してしまっていた。
+///    動的読み分け
+/// 3. **熟語辞書** ([`Dict::lookup_jukugo`]) — surface 2 文字以上の固定読み
+///    (灰桜 / 円周率 / 駆逐艦 等)
+/// 4. **形態素解析 (lindera) の reading** — 動詞活用形などで Lindera が自然に
+///    返してくる読み (これを 5 より優先することで、unihan の保守的な単漢字
+///    読みが Lindera の文脈考慮を遮断するのを防ぐ)
+/// 5. **単漢字辞書** ([`Dict::lookup_unihan`]) — 1 文字の最終 fallback
+/// 6. fallback `None`
 fn resolve_reading(
     token: &MorphToken,
     all_tokens: &[MorphToken],
@@ -63,18 +63,26 @@ fn resolve_reading(
         return None;
     }
 
+    // 2. context rule
     if let Some(reading) = apply_context_rules(context, all_tokens, idx) {
         return Some(reading);
     }
 
-    if let Some(reading) = dict.lookup(surface) {
+    // 3. 熟語辞書 (≥ 2 文字)
+    if let Some(reading) = dict.lookup_jukugo(surface) {
         return Some(reading.to_string());
     }
 
+    // 4. Lindera reading
     if let Some(reading) = &token.reading {
         if kana::has_katakana(reading) && reading != surface {
             return Some(reading.clone());
         }
+    }
+
+    // 5. 単漢字 fallback (1 文字)
+    if let Some(reading) = dict.lookup_unihan(surface) {
+        return Some(reading.to_string());
     }
 
     None
