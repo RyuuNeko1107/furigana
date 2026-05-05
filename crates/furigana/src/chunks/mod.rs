@@ -27,7 +27,8 @@ use self::regex::{
     URL_RE,
 };
 use crate::numbers::{
-    euphonic_counter_read, number_to_katakana, scale_reading, si_unit_reading, symbol_char_reading,
+    euphonic_counter_read, kansuji_to_arabic, number_to_katakana, scale_reading, si_unit_reading,
+    symbol_char_reading,
 };
 use crate::rules::{CountersData, DaysData, RulesData, ScalesData, SymbolsData, UnitsData};
 
@@ -234,9 +235,14 @@ impl NumberChunker {
     }
 
     /// 数値 + 助数詞 を読みに変換する内部ヘルパ
+    ///
+    /// raw_num は Arabic 数字 / 全角数字 / 漢数字 (一〜二十一 程度) を許容。
+    /// 漢数字は内部で Arabic に変換してから [`euphonic_counter_read`] に渡す。
     fn read_counter(&self, raw_num: &str, counter: &str) -> String {
-        let nk = number_to_katakana(raw_num);
-        euphonic_counter_read(&nk, counter, raw_num, &self.counters, &self.days)
+        // 漢数字なら Arabic に変換 (一→1、二十→20 など)
+        let normalized = kansuji_to_arabic(raw_num).unwrap_or_else(|| raw_num.to_string());
+        let nk = number_to_katakana(&normalized);
+        euphonic_counter_read(&nk, counter, &normalized, &self.counters, &self.days)
     }
 }
 

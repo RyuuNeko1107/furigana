@@ -24,6 +24,59 @@ pub(crate) fn norm_num(s: &str) -> String {
     zen2han(s).replace(',', "")
 }
 
+/// 漢数字 (一〜九十、数十、十数、二十一 等) を Arabic 数字文字列に変換する。
+///
+/// サポート範囲は 0〜99 (日付・月の用途で十分)。複雑なケース (百二十三 等) は
+/// 未対応で `None` を返す。
+///
+/// 主に [`crate::chunks::NumberChunker`] の日付/月日処理から呼ばれ、
+/// 「6月**一**日」「**二**月**十**日」のような漢数字混在パターンを
+/// `read_counter` に投入できるようにするのが目的。
+pub(crate) fn kansuji_to_arabic(s: &str) -> Option<String> {
+    let chars: Vec<char> = s.chars().collect();
+    match chars.len() {
+        // 単漢字: 一〜九 / 十
+        1 => digit_of_kansuji(chars[0]).map(|d| d.to_string()),
+        // 二字: 「十X」「X十」「二十」「数十」 等
+        2 => match (chars[0], chars[1]) {
+            // 「十X」 = 10 + X (例: 十一=11)
+            ('十', c) => digit_of_kansuji(c).map(|d| format!("1{d}")),
+            // 「X十」 = X * 10 (例: 二十=20、九十=90)
+            (c, '十') => digit_of_kansuji(c).map(|d| format!("{d}0")),
+            _ => None,
+        },
+        // 三字: 「X十Y」 = X*10 + Y (例: 二十一=21)
+        3 => match (chars[0], chars[1], chars[2]) {
+            (a, '十', b) => match (digit_of_kansuji(a), digit_of_kansuji(b)) {
+                (Some(da), Some(db)) if (1..=9).contains(&da) && (1..=9).contains(&db) => {
+                    Some(format!("{da}{db}"))
+                }
+                _ => None,
+            },
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// 漢数字 1 文字 → 0〜10 の int
+fn digit_of_kansuji(c: char) -> Option<u8> {
+    match c {
+        '〇' | '零' => Some(0),
+        '一' => Some(1),
+        '二' => Some(2),
+        '三' => Some(3),
+        '四' => Some(4),
+        '五' => Some(5),
+        '六' => Some(6),
+        '七' => Some(7),
+        '八' => Some(8),
+        '九' => Some(9),
+        '十' => Some(10),
+        _ => None,
+    }
+}
+
 /// 数値文字列 → i64 (全角・カンマ対応、不正なら `None`)
 pub(crate) fn to_int(s: &str) -> Option<i64> {
     norm_num(s).parse::<i64>().ok()
