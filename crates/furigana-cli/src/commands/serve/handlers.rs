@@ -39,9 +39,7 @@ pub(super) async fn furigana_post(
 }
 
 /// `POST /admin/reload` — `<data_dir>` から辞書を再ロードして state を swap
-pub(super) async fn admin_reload(
-    State(state): State<AppState>,
-) -> Result<Json<Value>, ApiError> {
+pub(super) async fn admin_reload(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
     let dict_size = do_reload(&state).await.map_err(|e| {
         error(
             StatusCode::INTERNAL_SERVER_ERROR,

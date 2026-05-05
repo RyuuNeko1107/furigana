@@ -81,8 +81,7 @@ const MODE_NAMES: &[&str] = &["all", "ruby", "hiragana", "tts", "kanji"];
 
 /// 入力行の先頭がメタコマンドっぽいかを判定する用に、エイリアスも含めて拾う。
 const META_COMMAND_ALIASES: &[&str] = &[
-    "debug", "exit", "h", "help", "mode", "pull", "q", "quit", "r", "reload",
-    "size", "tokens",
+    "debug", "exit", "h", "help", "mode", "pull", "q", "quit", "r", "reload", "size", "tokens",
 ];
 
 /// rustyline Helper: タブ補完だけ実装。highlight / hint / validate は default。

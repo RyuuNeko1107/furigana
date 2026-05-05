@@ -27,7 +27,11 @@ mod types;
 use crate::config::Config;
 use crate::paths::Paths;
 use anyhow::{anyhow, Result};
-use axum::{middleware, routing::{get, post}, Router};
+use axum::{
+    middleware,
+    routing::{get, post},
+    Router,
+};
 use clap::Args as ClapArgs;
 use furigana::Furigana;
 use std::sync::Arc;
@@ -35,9 +39,9 @@ use tokio::net::TcpListener;
 use tokio::sync::RwLock;
 
 use auth::{build_cors, require_admin_token, require_token};
-use handlers::{admin_reload, furigana_get, furigana_post, healthz};
 #[cfg(unix)]
 use handlers::do_reload;
+use handlers::{admin_reload, furigana_get, furigana_post, healthz};
 use types::AppState;
 
 #[derive(ClapArgs, Debug)]

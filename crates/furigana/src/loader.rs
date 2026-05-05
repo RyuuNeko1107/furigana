@@ -330,11 +330,7 @@ mod tests {
         let dir = fresh_temp_dir("counters_subdir");
         let sub = dir.join("counters");
         std::fs::create_dir_all(&sub).unwrap();
-        std::fs::write(
-            sub.join("01_simple.toml"),
-            "[simple]\n\"円\" = \"エン\"\n",
-        )
-        .unwrap();
+        std::fs::write(sub.join("01_simple.toml"), "[simple]\n\"円\" = \"エン\"\n").unwrap();
         std::fs::write(
             sub.join("02_objects.toml"),
             "[counter.\"本\"]\ndefault = \"ホン\"\n",
@@ -347,7 +343,10 @@ mod tests {
         .unwrap();
 
         let data = load_rules_dir(&dir).unwrap();
-        assert_eq!(data.counters.simple.get("円").map(String::as_str), Some("エン"));
+        assert_eq!(
+            data.counters.simple.get("円").map(String::as_str),
+            Some("エン")
+        );
         assert_eq!(
             data.counters
                 .counter
