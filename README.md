@@ -370,9 +370,33 @@ crates/
 - Web Assembly ビルド
 - 人名・固有名詞の手動振り分け (機械分類が困難なため、PR で順次)
 
+## 主要依存 (Built with)
+
+形態素解析:
+- [`lindera`](https://github.com/lindera-morphology/lindera) (MIT) + [`lindera-ipadic`](https://github.com/lindera-morphology/lindera) — IPADIC 形態素解析辞書を embed (NAIST IPADIC 由来、BSD-3-clause-style)
+
+HTTP server / client:
+- [`axum`](https://github.com/tokio-rs/axum) (MIT) — `furigana serve` の HTTP レイヤ
+- [`tokio`](https://github.com/tokio-rs/tokio) (MIT) — async runtime
+- [`reqwest`](https://github.com/seanmonstar/reqwest) (MIT/Apache-2.0) — `furigana dict pull` の HTTP fetch
+
+CLI:
+- [`clap`](https://github.com/clap-rs/clap) (MIT/Apache-2.0) — 引数 parser
+- [`rustyline`](https://github.com/kkawakam/rustyline) (MIT) — `furigana repl` の line editor (Tab 補完 / 履歴)
+
+その他:
+- [`serde`](https://github.com/serde-rs/serde) + [`toml`](https://github.com/toml-rs/toml) (MIT/Apache-2.0) — TOML 設定 / 辞書 parse
+- [`flate2`](https://github.com/rust-lang/flate2-rs) + [`tar`](https://github.com/alexcrichton/tar-rs) (MIT/Apache-2.0) — `dict pull` の tar.gz 展開
+- [`sha2`](https://github.com/RustCrypto/hashes) (MIT/Apache-2.0) — `dict pull` の SHA-256 検証
+- [`regex`](https://github.com/rust-lang/regex) (MIT/Apache-2.0) — pattern matching
+
+依存全件のライセンス全文は [NOTICE.md](NOTICE.md) を参照
+([`cargo-about`](https://github.com/EmbarkStudios/cargo-about) で自動生成、CI で license drift を検知)。
+
 ## ライセンス
 
-[MIT License](LICENSE)。
+[MIT License](LICENSE)。本リポジトリのコードのみ。
+依存ライブラリ各々のライセンスは [NOTICE.md](NOTICE.md) で保持。
 
 ## コントリビュート
 
