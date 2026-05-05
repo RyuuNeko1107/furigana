@@ -13,6 +13,22 @@
 //!
 //! 優先度の制御は呼び出し側 (Furigana 構造体) で行う想定。
 //! Dict 自体は単一階層 — 後に挿入したエントリが先のエントリを上書きする。
+//!
+//! ## 内部構造 (jukugo / unihan の二段)
+//!
+//! 内部では surface 文字数で 2 つの HashMap に振り分ける:
+//!
+//! - **`jukugo`** : surface が 2 文字以上 (= 漢字熟語 / 固有名詞 / 複合語)
+//! - **`unihan`** : surface が 1 文字 (= 単漢字フォールバック)
+//!
+//! [`Self::lookup_jukugo`] と [`Self::lookup_unihan`] で別々に lookup できる。
+//! [`Self::lookup`] は両者を試す互換 API (jukugo 優先)。
+//!
+//! 呼び出し側 ([`crate::reading::pipeline::resolve_reading`]) は本番 ryuuneko.com の
+//! 公開 API パイプラインに揃えて
+//! `context rule → jukugo lookup → Lindera reading → unihan lookup` の順で評価する。
+//! こうすることで、Lindera が動詞活用形 surface に対して持っている自然な reading を
+//! 単漢字 unihan の保守的読みが横取りすることがなくなる。
 
 use crate::error::{FuriganaError, Result};
 use serde::Deserialize;
@@ -33,9 +49,14 @@ struct DictFile {
 }
 
 /// 単純 HashMap ベースの surface→reading 辞書
+///
+/// 内部では surface 文字数で `jukugo` (≥2 文字) と `unihan` (1 文字) を分けて保持。
 #[derive(Debug, Default, Clone)]
 pub struct Dict {
-    entries: HashMap<String, String>,
+    /// 熟語・固有名詞・複合語 (surface ≥ 2 文字)
+    jukugo: HashMap<String, String>,
+    /// 単漢字フォールバック (surface = 1 文字)
+    unihan: HashMap<String, String>,
 }
 
 impl Dict {
@@ -49,6 +70,7 @@ impl Dict {
     ///
     /// `[entries]` セクション直下の key→value を全て取り込む。
     /// 後勝ち (同じ surface があれば最後のものが採用)。
+    /// surface 文字数で内部的に jukugo / unihan に振り分け。
     ///
     /// # Errors
     /// TOML パース失敗時 [`FuriganaError::Toml`]。
@@ -57,13 +79,14 @@ impl Dict {
             file: file.to_string(),
             source: e,
         })?;
+        let mut d = Self::default();
         // string 値だけ採用。inline table 等は rules 用ファイルなので silent skip。
-        let entries = parsed
-            .entries
-            .into_iter()
-            .filter_map(|(k, v)| v.as_str().map(|s| (k, s.to_string())))
-            .collect();
-        Ok(Self { entries })
+        for (k, v) in parsed.entries {
+            if let Some(s) = v.as_str() {
+                d.insert(k, s.to_string());
+            }
+        }
+        Ok(d)
     }
 
     /// 単一 TOML ファイルから辞書を構築
@@ -122,32 +145,71 @@ impl Dict {
         Ok(merged)
     }
 
-    /// surface に対応する読みを返す (なければ None)
+    /// surface に対応する読みを返す (jukugo 優先で fallback で unihan を見る、互換 API)
+    ///
+    /// 新規コードは [`Self::lookup_jukugo`] / [`Self::lookup_unihan`] を分けて
+    /// 使い、resolve_reading の優先順位に組み込むのが推奨。
     #[must_use]
     pub fn lookup(&self, surface: &str) -> Option<&str> {
-        self.entries.get(surface).map(String::as_str)
+        self.jukugo
+            .get(surface)
+            .or_else(|| self.unihan.get(surface))
+            .map(String::as_str)
+    }
+
+    /// 熟語辞書 (surface ≥ 2 文字) のみを lookup
+    #[must_use]
+    pub fn lookup_jukugo(&self, surface: &str) -> Option<&str> {
+        self.jukugo.get(surface).map(String::as_str)
+    }
+
+    /// 単漢字辞書 (surface = 1 文字) のみを lookup
+    #[must_use]
+    pub fn lookup_unihan(&self, surface: &str) -> Option<&str> {
+        self.unihan.get(surface).map(String::as_str)
     }
 
     /// エントリを追加 (既存 surface は上書き)
+    ///
+    /// surface 文字数で内部的に jukugo / unihan に振り分け。
     pub fn insert(&mut self, surface: impl Into<String>, reading: impl Into<String>) {
-        self.entries.insert(surface.into(), reading.into());
+        let s = surface.into();
+        let r = reading.into();
+        if s.chars().count() == 1 {
+            self.unihan.insert(s, r);
+        } else {
+            self.jukugo.insert(s, r);
+        }
     }
 
     /// 別の Dict を merge (other の方が後勝ち)
     pub fn merge(&mut self, other: Self) {
-        self.entries.extend(other.entries);
+        self.jukugo.extend(other.jukugo);
+        self.unihan.extend(other.unihan);
     }
 
-    /// 件数
+    /// 件数 (jukugo + unihan の合計)
     #[must_use]
     pub fn len(&self) -> usize {
-        self.entries.len()
+        self.jukugo.len() + self.unihan.len()
     }
 
     /// 空判定
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.entries.is_empty()
+        self.jukugo.is_empty() && self.unihan.is_empty()
+    }
+
+    /// 熟語のみの件数 (デバッグ用)
+    #[must_use]
+    pub fn jukugo_len(&self) -> usize {
+        self.jukugo.len()
+    }
+
+    /// 単漢字のみの件数 (デバッグ用)
+    #[must_use]
+    pub fn unihan_len(&self) -> usize {
+        self.unihan.len()
     }
 }
 
