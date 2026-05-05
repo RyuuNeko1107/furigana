@@ -16,15 +16,29 @@ default では **実行ファイルと同じディレクトリ**:
 └── data/                          # `furigana dict pull` で展開、ユーザー追加もここに集約
     ├── unihan.toml                # 単漢字フォールバック (43k+ 字)
     ├── compat.toml                # 異体字マップ (髙→高 等)
-    ├── jukugo/*.toml              # 熟語 / 固有名詞 / 地名 / 人名 (5 ファイル)
+    ├── jukugo/                    # 熟語 / 固有名詞 / 自然・文化系 (13 ファイル、自由分割)
+    │   ├── general.toml           #   一般熟語 + 季節 / 行事 / 慣用句
+    │   ├── four_char.toml         #   四字熟語 (一期一会等)
+    │   ├── personal_names.toml    #   人名 (戦国 / 古典作家 + 異体字姓)
+    │   ├── place_names.toml       #   地名 (47 都道府県 + 都市 + 駅 + 寺社仏閣)
+    │   ├── proper_nouns.toml      #   固有名詞 (大学 / 中央官庁 / 元号 / 歴史的事象)
+    │   ├── animals.toml           #   動植物 / 魚介
+    │   ├── foods.toml             #   食べ物 / 料理
+    │   ├── specialized.toml       #   専門用語 (医学 / 軍事 / 法学 / 学術)
+    │   ├── body_parts.toml        #   体の部位 / 内臓
+    │   ├── weather.toml           #   気象 / 天候
+    │   ├── colors.toml            #   色名 / 染色 / 模様
+    │   ├── arts.toml              #   楽器 / 古典芸能 / 武道
+    │   └── abstracts.toml         #   美意識 / 古典文学 / 仏教 / 思想
     ├── days.toml                  # 1〜31 日特殊読み
     ├── scales.toml                # 万 / 億 / 兆 / 京 / 垓 ...
-    ├── units.toml                 # SI 単位
-    ├── symbols.toml               # 記号読み
+    ├── units.toml                 # SI 単位 + 「円」「%」(N+漢字単位 連結用、0.1.2)
+    ├── symbols.toml               # 記号読み (〜→から、・→ナカグロ 等)
     ├── latin.toml                 # ラテン文字読み (A→エー …)
-    ├── numeric_phrases.toml       # 慣用語句 (二十歳→ハタチ 等)
-    ├── counters/*.toml            # 助数詞ルール (7 ファイル)
-    ├── context/*.toml             # 文脈ルール (3 ファイル)
+    ├── numeric_phrases.toml       # 慣用語句 (二十歳→ハタチ 等) + 百個 / 千個 等
+    ├── counters/*.toml            # 助数詞ルール (年度 / 時間半 含む 7+ ファイル)
+    ├── context/*.toml             # 文脈ルール (3 ファイル: numbers / homonyms / special)
+    ├── postprocess.toml           # 後処理 regex 置換 (本番 Step 7、0.1.2 新設)
     ├── user/                      # ユーザー追加 (`furigana dict add` で自動生成)
     │   └── cli-added.toml         #   `furigana dict add` 経由のエントリ
     └── overrides.toml              # 強制上書き用 (最優先、任意)
@@ -52,16 +66,27 @@ furigana lookup '灰桜'
 - Windows: `%LOCALAPPDATA%\furigana\furigana\`
 - macOS: `~/Library/Application Support/com.furigana.furigana/`
 
-## 優先順位 (高→低)
+## 優先順位 (本番 ryuuneko.com 互換、0.1.0-alpha.3 で整備)
 
-辞書 lookup 時にどの源を優先するか:
+辞書ソースの **merge 順** (後勝ち、`Furigana::builder` で組立):
 
-1. **`data/overrides.toml`** — `FuriganaBuilder::overrides_file()` で mount。最強の上書き
-2. **`data/user/*.toml`** — `FuriganaBuilder::user_dict_dir()`。`furigana dict add` の保存先
-3. **`data/*.toml` + `data/jukugo/*.toml`** — `FuriganaBuilder::core_dict_dir()`。`furigana dict pull` 配布版
-4. **文脈ルール** (`data/context/*.toml`) — `FuriganaBuilder::rules_dir()` で mount。前後トークンを見て読みを決定
-5. **Lindera (IPADIC)** — 形態素解析の素朴な読み。details[7] のカタカナ
-6. **読みなし** (`None`) — どこにも hit しなければ surface のまま出力
+1. **`core_dict_dir`** ← 配布版 (`furigana dict pull`)、最弱
+2. **`user_dict_dir`** ← `furigana dict add` の保存先 (`cli-added.toml`)
+3. **`overrides_file`** ← `data/overrides.toml`
+4. **`add_entry`** ← API で直接追加 (最強)
+
+その上で **token 単位での読み解決優先順位** は (`reading::pipeline::resolve_reading`):
+
+1. 漢字なし → `None`
+2. **context rule** (`data/context/*.toml`) — 同形異音語 (一日 / 上手 / 市場) の動的読み分け
+3. **熟語辞書 jukugo** (`Dict::lookup_jukugo`、surface ≥ 2 文字) — 灰桜=ハイザクラ等
+4. **Lindera reading** — IPADIC `details[7]` のカタカナ (動詞活用形などの自然な読み)
+5. **単漢字 unihan** (`Dict::lookup_unihan`、surface = 1 文字) — 最終 fallback
+6. fallback `None`
+
+context rule が **辞書より先** に評価されるため、`一日` を `general.toml` に登録していても、context rule の `prev_ends_with_month` で「6月一日」が「ロクガツツイタチ」になる。逆に `一日` を登録しないと Lindera が「一」+「日」に分解した結果がそのまま使われるため、登録は依然必要。
+
+詳しい設計は [`docs/ARCHITECTURE.md`](./ARCHITECTURE.md#step-5-の詳細-resolve_reading-の-5-段階優先順位) を参照。
 
 `furigana dict add 灰桜 ハイザクラ` で `data/user/cli-added.toml` に追加 → 次回起動時 (or `:reload`) で反映。
 
