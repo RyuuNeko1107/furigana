@@ -1,14 +1,21 @@
-# furigana
+# ja-furigana
 
 [![CI](https://github.com/RyuuNeko1107/ja-furigana/actions/workflows/ci.yml/badge.svg)](https://github.com/RyuuNeko1107/ja-furigana/actions/workflows/ci.yml)
+[![Crates.io](https://img.shields.io/crates/v/ja-furigana.svg)](https://crates.io/crates/ja-furigana)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![MSRV](https://img.shields.io/badge/rust-stable-orange.svg)](https://www.rust-lang.org)
+[![MSRV](https://img.shields.io/badge/rust-1.88+-orange.svg)](https://www.rust-lang.org)
 
 > Japanese furigana (ruby) lookup library and HTTP server in Rust — fully data-driven rules, no DB required.
 
 日本語テキストに **フリガナ (読み仮名 / ルビ)** を付けるための Rust 製ライブラリ + ローカル HTTP サーバー。
 
-> **Status**: v0.1.x (alpha) — Phase 1/2 機能はほぼ動作するが API・データ形式はまだ変更され得る。
+> **Status**: v0.1.x (alpha)。Phase 1/2 機能は動作するが、**`0.1.x` の間は以下が予告なく変更され得ます**:
+> - 公開 Rust API (`Furigana` / `FuriganaBuilder` のメソッドシグネチャ)
+> - `furigana-dict` の TOML スキーマ (新フィールド追加、廃止)
+> - CLI 引数の名前 / デフォルト値
+> - HTTP レスポンスの JSON フィールド名 / 構造
+>
+> 安定版 (0.1.0 正式) 以降は SemVer で互換を守ります。Rust toolchain は **1.88+** が必要 (workspace.package の `rust-version`)。
 
 ---
 
@@ -77,7 +84,7 @@ println!("{}", f.to_hiragana("灰桜の散る道"));
 builder API で辞書ディレクトリを指定:
 
 ```rust
-use furigana::Furigana;
+use ja_furigana::Furigana;
 
 // 推奨: furigana-dict の中身を `data/` 1 階層に展開した場合
 //       core_dict_dir と rules_dir を同じ path にして両方を読ませる
@@ -93,7 +100,7 @@ let f = Furigana::builder()
 サンプル: [`crates/furigana/examples/basic.rs`](crates/furigana/examples/basic.rs)
 
 ```sh
-$ cargo run -p furigana --example basic
+$ cargo run -p ja-furigana --example basic
 ```
 
 ### CLI として使う
