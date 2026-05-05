@@ -18,6 +18,12 @@ __pycache__/
 /data/dict/core/
 /data/dict/user/
 
+# Verification loop staging (tools/check_samples.py が --data-dir で使う一時 dir)
+/.data-staging/
+
+# 検証ループ出力 (毎回上書きされる)
+/tools/check_samples.out
+
 # OS
 Thumbs.db
 
