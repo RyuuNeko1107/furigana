@@ -19,7 +19,7 @@ categories = ["text-processing", "internationalization"]
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-toml = "0.8"
+toml = "1"
 once_cell = "1"
 regex = "1"
 thiserror = "2"
