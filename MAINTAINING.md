@@ -166,5 +166,6 @@ WASM crate と一緒に削除した。再導入する場合は過去 commit (`88
 
 ## ロードマップ
 
-`README.md` 末尾の「ステータスとロードマップ」を最新に保つ。Phase 4 以降を
-書き始める時は `ROADMAP.md` に切り出すのも検討 (現状 README にインライン)。
+[`docs/ROADMAP.md`](./docs/ROADMAP.md) を最新に保つ。完了したものは
+[`CHANGELOG.md`](./CHANGELOG.md) `[Unreleased]` に移し、ROADMAP.md からは消す。
+README には status の概要だけ書き、詳細は ROADMAP.md に集約する方針。
