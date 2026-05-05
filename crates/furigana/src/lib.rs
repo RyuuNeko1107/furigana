@@ -54,20 +54,36 @@
 //!
 //! - [`analyzer`] : 形態素解析 (Lindera + IPADIC)
 //! - [`kana`]     : ひら⇄カタ + Unicode 正規化
-//! - [`numbers`]  : 数値処理 (digit / counter / phrase / extras)
-//! - [`chunks`]   : テキスト全体の数値オーケストレーション
+//! - [`numbers`]  : 数値処理 (digit / counter / phrase / extras / `kansuji_to_arabic`)
+//! - [`chunks`]   : テキスト全体の数値オーケストレーション (NumberChunker、漢数字日付対応)
 //! - [`reading`]  : 読み解決パイプライン (pipeline / merge / context / output)
 //! - [`tts`]      : TTS 整形 + segment
 //! - [`romaji`]   : ひらがな → ローマ字 (Hepburn / Kunrei)
-//! - [`dict`]     : surface → reading 辞書 (`HashMap`)
-//! - [`rules`]    : ルールデータ型 (counters / context / scales / units / etc)
+//! - [`dict`]     : surface → reading 辞書 (内部で **jukugo (≥2 文字) / unihan (1 文字) 分離**)
+//! - [`rules`]    : ルールデータ型 (counters / context / scales / units / **postprocess** / etc)
 //! - [`loader`]   : TOML 汎用パーサ
+//!
+//! ### 読み解決の優先順位 (本番 ryuuneko.com 互換、0.1.0-alpha.3 以降)
+//!
+//! [`reading::pipeline::resolve_reading`] (private) で各 token に対して以下の順で評価:
+//!
+//! 1. 漢字を含まない → `None`
+//! 2. **context rule** (同形異音語の動的読み分け、`rules/context/*.toml`)
+//! 3. **熟語辞書 jukugo** ([`Dict::lookup_jukugo`]、surface ≥ 2 文字)
+//! 4. **Lindera reading** (動詞活用形などの自然な読み)
+//! 5. **単漢字 unihan** ([`Dict::lookup_unihan`]、surface = 1 文字)
+//! 6. fallback `None`
+//!
+//! 出力直前に `rules/postprocess.toml` の **mode 別 regex 置換** が適用される
+//! (本番 Step 7 互換、0.1.0-alpha.3 で導入)。
 //!
 //! 詳細は [docs/ARCHITECTURE.md](https://github.com/RyuuNeko1107/ja-furigana/blob/master/docs/ARCHITECTURE.md) を参照。
 //!
 //! ## ステータス
 //!
 //! v0.1.x (alpha) — 公開 API は変更されうる ([docs/ROADMAP.md](https://github.com/RyuuNeko1107/ja-furigana/blob/master/docs/ROADMAP.md) 参照)。MSRV: Rust 1.88+。
+//!
+//! 内部例文 75 件回帰で **75/75 (100%)** 達成 (0.1.0-alpha.3、CHANGELOG 参照)。
 
 #![allow(clippy::tabs_in_doc_comments)]
 
