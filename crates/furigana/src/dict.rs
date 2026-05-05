@@ -291,11 +291,7 @@ mod tests {
         )
         .unwrap();
         // 直下のファイルもまだ拾えること
-        std::fs::write(
-            dir.join("top.toml"),
-            "[entries]\n\"黎明\" = \"レイメイ\"\n",
-        )
-        .unwrap();
+        std::fs::write(dir.join("top.toml"), "[entries]\n\"黎明\" = \"レイメイ\"\n").unwrap();
 
         let d = Dict::from_toml_dir(&dir).unwrap();
         assert_eq!(d.lookup("灰桜"), Some("ハイザクラ"));

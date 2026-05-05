@@ -20,9 +20,46 @@ env:
   CARGO_INCREMENTAL: 0
 
 jobs:
+  # ─── tag を解決して GitHub Release を先に作成 (無ければ) ───
+  # taiki-e/upload-rust-binary-action は upload しかしない (release は別途作成必要)
+  # ので、binary job が走る前に release を確保する。
+  create-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 解決された tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ github.event.inputs.tag }}"
+          else
+            TAG="${GITHUB_REF#refs/tags/}"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Resolved tag: $TAG"
+
+      - name: Create release if missing
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          if gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "Release $TAG already exists, skipping creation"
+          else
+            gh release create "$TAG" --repo "${{ github.repository }}" \
+              --target "${{ github.sha }}" \
+              --title "$TAG" \
+              --generate-notes
+          fi
+
   # ─── 各プラットフォームの binary をビルドして Release にアップロード ───
   binary:
     name: ${{ matrix.target }}
+    needs: create-release
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -65,6 +102,7 @@ jobs:
   # ─── Docker image を ghcr.io に push ───
   docker:
     name: Docker (ghcr.io)
+    needs: create-release
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

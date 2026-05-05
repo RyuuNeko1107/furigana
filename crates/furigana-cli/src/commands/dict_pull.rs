@@ -1,16 +1,18 @@
 //! `furigana dict pull` の実装
 //!
-//! GitHub Releases から furigana-dict の tarball を取得して
-//! `<data_dir>/{core,rules}/` に展開する。
+//! GitHub Releases から furigana-dict の tarball を取得して `<data_dir>/data/`
+//! 1 階層に flat 展開する (`extract_to` 参照)。
 //!
 //! 流れ:
 //! 1. version 解決 (`--version` 指定 or GitHub API で latest)
 //! 2. tarball + sha256 sidecar を download
 //! 3. SHA-256 検証
-//! 4. 既存 `<data_dir>/{core,rules}/` を削除して tar.gz を展開
+//! 4. `<data_dir>/data/` 配下の旧配布ファイルを削除 (`user/`, `overrides.toml` は保持)
+//! 5. tarball を展開: `core/X` / `rules/X` を `data/X` に prefix 剥がして flat 配置
 //!
-//! tarball の中身は `core/...` と `rules/...` の相対パス (release.yml で
-//! `tar -czf ARCHIVE core/ rules/` してるため)。展開先は `<data_dir>` 直下。
+//! tarball の中身は furigana-dict repo そのままの 2 階層 (`core/...` `rules/...`)、
+//! 配布側で flat 化する。これは「PR 投稿者が見る repo 内構造」と「実際に動く配置」を
+//! 別軸で持たせるため (paths.rs の `data_root()` も参照)。
 
 use crate::paths::Paths;
 use anyhow::{anyhow, bail, Context, Result};
@@ -40,8 +42,7 @@ pub fn run(paths: &Paths, version: Option<&str>) -> Result<()> {
     println!("取得対象: {tag}");
 
     let archive_name = format!("furigana-dict-{tag}.tar.gz");
-    let tarball_url =
-        format!("https://github.com/{REPO}/releases/download/{tag}/{archive_name}");
+    let tarball_url = format!("https://github.com/{REPO}/releases/download/{tag}/{archive_name}");
     let sha_url = format!("{tarball_url}.sha256");
 
     println!("ダウンロード中: {archive_name}");
@@ -62,9 +63,7 @@ pub fn run(paths: &Paths, version: Option<&str>) -> Result<()> {
     if !expected_hex.is_empty() {
         let actual_hex = sha256_hex(&tarball);
         if !actual_hex.eq_ignore_ascii_case(&expected_hex) {
-            bail!(
-                "SHA-256 mismatch:\n  expected: {expected_hex}\n  actual:   {actual_hex}"
-            );
+            bail!("SHA-256 mismatch:\n  expected: {expected_hex}\n  actual:   {actual_hex}");
         }
         println!("SHA-256 検証 OK");
     }
@@ -72,7 +71,10 @@ pub fn run(paths: &Paths, version: Option<&str>) -> Result<()> {
     println!("展開中...");
     extract_to(&tarball, paths).context("tar.gz 展開失敗")?;
 
-    println!("完了: {tag} を {} に配置しました", paths.data_root().display());
+    println!(
+        "完了: {tag} を {} に配置しました",
+        paths.data_root().display()
+    );
     Ok(())
 }
 
@@ -260,4 +262,3 @@ mod tests {
         );
     }
 }
-
