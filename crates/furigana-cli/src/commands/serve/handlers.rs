@@ -7,7 +7,7 @@ use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::Json;
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
-use furigana::{Furigana, TtsOptions};
+use furigana::{Furigana, RomajiStyle, TtsOptions};
 use serde_json::{json, Value};
 use std::time::Instant;
 
@@ -85,6 +85,14 @@ fn process(f: &Furigana, params: &FuriganaParams) -> Result<Json<FuriganaRespons
         "kanji" => text.clone(),
         "ruby" => furigana::tokens_to_ruby(&tokens),
         "hiragana" => furigana::tokens_to_hiragana(&tokens),
+        "romaji" => {
+            let hira = furigana::tokens_to_hiragana(&tokens);
+            furigana::hiragana_to_romaji(&hira, RomajiStyle::Hepburn)
+        }
+        "romaji-kunrei" => {
+            let hira = furigana::tokens_to_hiragana(&tokens);
+            furigana::hiragana_to_romaji(&hira, RomajiStyle::Kunrei)
+        }
         _ => {
             // tts (default)
             let opts = TtsOptions {
@@ -163,7 +171,7 @@ fn validate_length(text: &str) -> Result<(), ApiError> {
 /// 不正な mode は静かに `tts` (= default) に fallback (本番 API と同挙動)
 fn normalize_mode(mode: &str) -> String {
     match mode {
-        "tts" | "hiragana" | "ruby" | "kanji" => mode.to_string(),
+        "tts" | "hiragana" | "ruby" | "kanji" | "romaji" | "romaji-kunrei" => mode.to_string(),
         _ => default_mode(),
     }
 }

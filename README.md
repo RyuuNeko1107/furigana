@@ -377,11 +377,11 @@ crates/
 - ✅ 四字熟語の分離 (`furigana-dict/core/jukugo/four_char.toml`)
 - ✅ crates.io 公開 (`ja-furigana` lib + `ja-furigana-cli` bin、0.1.0-alpha.1)
 
-**Phase 3 (検討)**:
-- ローマ字出力モード
-- 速度最適化 (regex pre-compile pool 等)
-- 人名・固有名詞の手動振り分け (機械分類が困難なため、PR で順次)
+**Phase 3 (進行中)**:
+- ✅ ローマ字出力モード (`--mode romaji` / `--mode romaji-kunrei`、ヘボン式 default)
+- ✅ 速度最適化 (Lindera analyzer の lazy init で `--version` 等が ~10x 高速)
 - 0.1.0 安定版へ昇格 (alpha → 正式)
+- 人名・固有名詞の手動振り分け (機械分類が困難なため、PR で順次) (alpha → 正式)
 
 > 旧 Phase 3 候補だった **WebAssembly ビルド** は一度実装したが、`.wasm` が Lindera +
 > IPADIC 込みで 57 MB と重く、Web からは `furigana serve` (HTTP API) で十分という

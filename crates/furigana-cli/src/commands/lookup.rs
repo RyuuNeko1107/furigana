@@ -8,7 +8,7 @@ use crate::config::Config;
 use crate::paths::Paths;
 use anyhow::{bail, Result};
 use clap::Args as ClapArgs;
-use furigana::TtsOptions;
+use furigana::{RomajiStyle, TtsOptions};
 
 /// `furigana lookup` のオプション
 #[derive(ClapArgs, Debug)]
@@ -16,7 +16,7 @@ pub struct Args {
     /// 変換対象テキスト
     text: String,
 
-    /// 変換モード: `tts` (default) | `hiragana` | `ruby` | `kanji`
+    /// 変換モード: `tts` (default) | `hiragana` | `ruby` | `kanji` | `romaji` | `romaji-kunrei`
     #[arg(short, long, default_value = "tts")]
     mode: String,
 
@@ -41,6 +41,8 @@ pub fn run(args: Args, paths: &Paths, _cfg: &Config) -> Result<()> {
         "kanji" => args.text.clone(),
         "ruby" => f.to_ruby(&args.text),
         "hiragana" | "hira" => f.to_hiragana(&args.text),
+        "romaji" => f.to_romaji(&args.text, RomajiStyle::Hepburn),
+        "romaji-kunrei" | "kunrei" => f.to_romaji(&args.text, RomajiStyle::Kunrei),
         "tts" => {
             let opts = TtsOptions {
                 short_pause: args.short_pause,
@@ -49,7 +51,9 @@ pub fn run(args: Args, paths: &Paths, _cfg: &Config) -> Result<()> {
             };
             f.to_tts(&args.text, &opts)
         }
-        other => bail!("未知の mode: {other} (使用可能: tts | hiragana | ruby | kanji)"),
+        other => bail!(
+            "未知の mode: {other} (使用可能: tts | hiragana | ruby | kanji | romaji | romaji-kunrei)"
+        ),
     };
 
     println!("{result}");
