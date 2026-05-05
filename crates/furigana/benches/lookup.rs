@@ -8,7 +8,10 @@
 //! 結果は `target/criterion/<group>/<name>/` に HTML report として出力される。
 //! 改善 PR ではベース → 修正後の比較を要約 commit すると差分が見える。
 
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+// `criterion::black_box` は 0.8 で deprecated になったため、std の方を使う
+// (MSRV 1.66+ で利用可、本 crate は 1.88+)。これで criterion 0.5 / 0.8 両対応。
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use std::hint::black_box;
 use furigana::{Furigana, TtsOptions};
 
 fn build_furigana_with_seed_dict() -> Furigana {
