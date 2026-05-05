@@ -131,6 +131,27 @@ $ furigana lookup '灰桜の散る道'
 $ furigana serve
 INFO furigana serving on http://127.0.0.1:8000
 INFO Bearer 認証: 無効 (ローカル想定)
+
+# 対話モード (REPL) — 手動で試したいとき
+$ furigana repl
+furigana REPL
+  dict_size: 44354
+  type :help for commands, Ctrl-D to quit
+all> 灰桜の散る道
+  ruby:     {灰桜|はいざくら}の{散る|ちる}{道|みち}
+  hiragana: はいざくらのちるみち
+all> :mode tts
+mode -> tts
+tts> 今日は良い天気ですね、いかがですか？
+きょうはよいてんきですね、 いかがですか?
+tts> :tokens 灰桜の散る道
+  surface  reading
+  -------  -------
+  灰桜       ハイザクラ
+  の        (none)
+  散る       チル
+  道        みち
+tts> :quit
 ```
 
 ## 辞書の置き場所

@@ -38,6 +38,9 @@ enum Commands {
     /// 1 回だけ変換してそれを stdout に出す
     Lookup(commands::lookup::Args),
 
+    /// 対話モード (REPL) で変換を試す
+    Repl(commands::repl::Args),
+
     /// HTTP サーバーを起動
     Serve(commands::serve::Args),
 
@@ -58,6 +61,7 @@ fn main() -> Result<()> {
 
     match cli.command {
         Commands::Lookup(args) => commands::lookup::run(args, &paths, &cfg),
+        Commands::Repl(args) => commands::repl::run(args, &paths, &cfg),
         Commands::Serve(args) => commands::serve::run(args, &paths, &cfg),
         Commands::Dict(args) => commands::dict::run(args, &paths, &cfg),
     }

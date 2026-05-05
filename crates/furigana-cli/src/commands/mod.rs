@@ -3,6 +3,7 @@
 pub mod dict;
 pub mod dict_pull;
 pub mod lookup;
+pub mod repl;
 pub mod serve;
 
 use crate::paths::Paths;
