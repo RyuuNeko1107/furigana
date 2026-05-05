@@ -38,28 +38,38 @@ impl Paths {
         })
     }
 
-    /// 辞書ルート: `<data_dir>/dict/`
+    /// データルート: `<data_dir>/data/`
+    ///
+    /// 実 data はすべてこの 1 階層に集約 (`core/` `user/` `rules/` `overrides.toml`)。
+    /// exe 横に複数の dir がぶら下がるのを避けて、`furigana.exe` + `data/` の
+    /// 2 アイテムだけが見える portable レイアウトにする。
     #[must_use]
-    pub fn dict_dir(&self) -> PathBuf {
-        self.data_dir.join("dict")
+    pub fn data_root(&self) -> PathBuf {
+        self.data_dir.join("data")
     }
 
-    /// core 辞書: `<data_dir>/dict/core/`
+    /// core 辞書: `<data_dir>/data/core/`
     #[must_use]
     pub fn dict_core_dir(&self) -> PathBuf {
-        self.dict_dir().join("core")
+        self.data_root().join("core")
     }
 
-    /// user 辞書: `<data_dir>/dict/user/`
+    /// user 辞書: `<data_dir>/data/user/`
     #[must_use]
     pub fn dict_user_dir(&self) -> PathBuf {
-        self.dict_dir().join("user")
+        self.data_root().join("user")
     }
 
-    /// overrides ファイル: `<data_dir>/dict/overrides.tsv`
+    /// rules: `<data_dir>/data/rules/`
+    #[must_use]
+    pub fn rules_dir(&self) -> PathBuf {
+        self.data_root().join("rules")
+    }
+
+    /// overrides ファイル: `<data_dir>/data/overrides.toml`
     #[must_use]
     pub fn overrides_file(&self) -> PathBuf {
-        self.dict_dir().join("overrides.tsv")
+        self.data_root().join("overrides.toml")
     }
 }
 
