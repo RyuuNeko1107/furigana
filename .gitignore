@@ -1,6 +1,9 @@
 # Build artifacts
 /target
 
+# wasm-pack output (commit せず、wasm-pack build で再生成)
+/crates/furigana-wasm/pkg/
+
 # IDE / editor
 .idea/
 .vscode/

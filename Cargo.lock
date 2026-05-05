@@ -320,6 +320,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "console_error_panic_hook"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a06aeb73f470f66dcdbf7223caeebb85984942f22f1adb2a088cf9668146bbbc"
+dependencies = [
+ "cfg-if",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "core-foundation"
 version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -558,7 +568,7 @@ checksum = "0ce92ff622d6dadf7349484f42c93271a0d49b7cc4d466a936405bacbe10aa78"
 dependencies = [
  "cfg-if",
  "rustix",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -1038,6 +1048,15 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "unicode-width",
+]
+
+[[package]]
+name = "ja-furigana-wasm"
+version = "0.1.0-alpha.2"
+dependencies = [
+ "console_error_panic_hook",
+ "ja-furigana",
+ "wasm-bindgen",
 ]
 
 [[package]]
