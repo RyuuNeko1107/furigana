@@ -1,0 +1,44 @@
+# cargo-about の許容ライセンス設定
+#
+# `cargo about generate` 時にここに無い license が依存に含まれていると弾く。
+# OSS で「商用利用 OK + attribution 程度の義務」のものを許容に入れている。
+# GPL / AGPL / LGPL のような copyleft 系は **意図的に除外** (依存に紛れ込んだら検知)。
+
+accepted = [
+    # 標準 (大半の Rust crate)
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+
+    # BSD 系
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "0BSD",
+    "MIT-0",
+
+    # Mozilla
+    "MPL-2.0",
+
+    # Boost (template heavy crate で時々出る)
+    "BSL-1.0",
+
+    # Public domain 相当
+    "CC0-1.0",
+    "Unlicense",
+
+    # Unicode (icu_* / unicode-* 系)
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+
+    # 圧縮系
+    "Zlib",
+
+    # CDLA (webpki-roots 系の root CA list 用、データ寄りのライセンス、商用 OK)
+    "CDLA-Permissive-2.0",
+]
+
+# IPADIC データの license は Cargo.toml の license フィールドだけでは追えない
+# (lindera-ipadic crate が embed しているデータは MeCab IPADIC = ICOT BSD-like)。
+# crate 自体の license は MIT なので accepted に入っているが、データの notice は
+# NOTICE.md / README で別途明示する。

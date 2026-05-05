@@ -57,3 +57,34 @@ jobs:
       - name: Clippy (deny warnings)
         run: cargo clippy --workspace --all-targets -- -D warnings
 
+  license:
+    name: License audit (cargo-about)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain (stable)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo / target
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: license
+
+      - name: Install cargo-about
+        run: cargo install --locked --features cli cargo-about
+
+      # about.toml の accepted リストに無い license を持つ依存が増えたら fail。
+      # OSS 化で copyleft (GPL/AGPL/LGPL) が混入してないかを CI で検知する。
+      - name: Check license compatibility
+        run: cargo about generate about.hbs -o /tmp/NOTICE.md
+
+      # commit 済みの NOTICE.md と CI で生成したものに差があれば、
+      # 開発者が cargo about generate を忘れた可能性 (drift 警告)。
+      - name: Detect NOTICE.md drift
+        run: |
+          if ! diff -q NOTICE.md /tmp/NOTICE.md >/dev/null; then
+            echo "::warning::NOTICE.md is out of sync with current dependencies."
+            echo "Run \`cargo about generate about.hbs -o NOTICE.md\` and commit."
+            diff NOTICE.md /tmp/NOTICE.md | head -50 || true
+          fi
