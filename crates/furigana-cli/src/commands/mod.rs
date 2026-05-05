@@ -25,7 +25,7 @@ pub fn build_furigana(paths: &Paths) -> Result<Furigana> {
     let mut b = Furigana::builder();
     let mut data_loaded = false;
 
-    let rules = paths.data_dir.join("rules");
+    let rules = paths.rules_dir();
     if rules.exists() {
         b = b.rules_dir(&rules);
         data_loaded = true;

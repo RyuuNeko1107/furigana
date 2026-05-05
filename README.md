@@ -162,23 +162,23 @@ tts> :quit
 ## 辞書の置き場所
 
 default は **実行ファイルと同じディレクトリ** (portable 構成)。
-zip を解凍したフォルダで `furigana.exe` を起動すると、そのフォルダに `dict/` `rules/` が展開される。
-フォルダごとコピーすれば持ち運び可能。
+zip を解凍したフォルダで `furigana.exe` を起動 → `:pull` すると、その横に `data/` が展開される。
+exe + `data/` の 2 つだけが見える状態でフォルダごとコピーすれば持ち運び可能。
 
 ```
 <furigana.exe と同じフォルダ>/
 ├── furigana.exe                   # 本体
 ├── config.toml                    # 設定 (任意)
 ├── repl_history                   # REPL の入力履歴 (自動)
-├── dict/
-│   ├── core/                      # `:pull` (or `furigana dict pull`) で取得
-│   │   ├── unihan.toml
-│   │   ├── compat.toml
-│   │   └── jukugo/*.toml
-│   ├── user/                      # ユーザーが自由に *.toml を置く
-│   │   └── cli-added.toml         # `furigana dict add` の保存先
-│   └── overrides.toml             # 強制上書き用 (最優先)
-└── rules/                         # 助数詞・文脈・スケール等のエンジンルール
+└── data/                          # :pull で展開 / ユーザー追加もここに集約
+    ├── core/                      # 配布版辞書 (`furigana-dict` のリリース)
+    │   ├── unihan.toml
+    │   ├── compat.toml
+    │   └── jukugo/*.toml
+    ├── user/                      # ユーザー追加
+    │   └── cli-added.toml         # `furigana dict add` の保存先
+    ├── rules/                     # 助数詞・文脈・スケール等のエンジンルール
+    └── overrides.toml             # 強制上書き用 (最優先、任意)
 ```
 
 `--data-dir <path>` または `FURIGANA_DATA_DIR` 環境変数で別の場所を指定できる

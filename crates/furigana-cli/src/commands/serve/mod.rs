@@ -89,7 +89,7 @@ pub fn run(args: Args, paths: &Paths, cfg: &Config) -> Result<()> {
         .merge(admin_routes)
         .route("/healthz", get(healthz))
         .layer(cors)
-        .with_state(state);
+        .with_state(state.clone());
 
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
