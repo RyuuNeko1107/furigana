@@ -6,11 +6,14 @@
 //! ```toml
 //! [entries]
 //! "km" = { kana = "キロメートル" }
-//! "L"  = { kana = "リットル", ci = true }
-//! "mL" = { kana = "ミリリットル", ci = true }
+//! "L"  = { kana = "リットル" }
+//! "mL" = { kana = "ミリリットル" }
 //! ```
 //!
-//! `ci = true` で case-insensitive lookup (大文字小文字を区別しない)。
+//! 単位は本質的に case-insensitive (km/KM/Km は全部「キロメートル」と読む)
+//! ため lookup はデフォルトで大文字小文字を区別しない。SI で厳密に区別したい
+//! 場合のみ `ci = false` で opt-out する (例: `mg` (ミリグラム) と `Mg`
+//! (メガグラム) の表記揺れを区別したい等)。
 
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -20,9 +23,13 @@ use std::collections::HashMap;
 pub struct UnitEntry {
     /// カタカナ読み (例: `"キロメートル"`)
     pub kana: String,
-    /// 大文字小文字を区別しないか (default false)
-    #[serde(default)]
+    /// 大文字小文字を区別しないか (default true。SI で厳密に区別したい場合のみ false)
+    #[serde(default = "default_ci")]
     pub ci: bool,
+}
+
+fn default_ci() -> bool {
+    true
 }
 
 /// units.toml 全体
@@ -35,7 +42,10 @@ pub struct UnitsData {
 
 impl UnitsData {
     /// シンボルに対応する読みを返す。
-    /// `ci = true` のエントリは大文字小文字を比較しない。
+    ///
+    /// 順序:
+    /// 1. 完全一致 (大小区別する `ci = false` エントリを優先するため)
+    /// 2. `ci = true` のエントリで lowercase 比較
     #[must_use]
     pub fn lookup(&self, symbol: &str) -> Option<&str> {
         if let Some(e) = self.entries.get(symbol) {
@@ -69,30 +79,33 @@ mod tests {
         let toml_str = r#"
             [entries]
             "km" = { kana = "キロメートル" }
-            "L"  = { kana = "リットル", ci = true }
-            "mL" = { kana = "ミリリットル", ci = true }
+            "L"  = { kana = "リットル" }
+            "mL" = { kana = "ミリリットル" }
+            "Mg" = { kana = "メガグラム", ci = false }
+            "mg" = { kana = "ミリグラム", ci = false }
         "#;
         toml::from_str(toml_str).unwrap()
     }
 
     #[test]
-    fn strict_match() {
+    fn ci_default_true_matches_any_case() {
         let d = sample();
+        // ci default true なので km/KM/Km/kM 全部 hit
         assert_eq!(d.lookup("km"), Some("キロメートル"));
-    }
-
-    #[test]
-    fn ci_match_when_flagged() {
-        let d = sample();
+        assert_eq!(d.lookup("KM"), Some("キロメートル"));
+        assert_eq!(d.lookup("Km"), Some("キロメートル"));
+        assert_eq!(d.lookup("kM"), Some("キロメートル"));
         assert_eq!(d.lookup("l"), Some("リットル"));
         assert_eq!(d.lookup("ml"), Some("ミリリットル"));
         assert_eq!(d.lookup("ML"), Some("ミリリットル"));
     }
 
     #[test]
-    fn ci_does_not_apply_when_not_flagged() {
+    fn ci_false_keeps_strict_match() {
         let d = sample();
-        assert_eq!(d.lookup("KM"), None); // km は ci なし
+        // SI 区別 (mg=ミリグラム / Mg=メガグラム) は完全一致で取れる
+        assert_eq!(d.lookup("mg"), Some("ミリグラム"));
+        assert_eq!(d.lookup("Mg"), Some("メガグラム"));
     }
 
     #[test]

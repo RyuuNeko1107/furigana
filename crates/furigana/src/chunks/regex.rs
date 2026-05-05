@@ -56,10 +56,21 @@ pub(super) fn build_scale_regex(scales: &ScalesData) -> Regex {
     build_alt_regex(&kanjis, "scale")
 }
 
-/// SI 単位 regex
+/// SI 単位 regex (case-insensitive: `1km` `1KM` `1Km` `1kM` 全て chunk 化)。
+///
+/// 個別 entry の case 区別は [`UnitsData::lookup`] 側で `ci = false` を尊重
+/// するため、ここでは regex 段で広めに拾って後段で絞る方針。
 pub(super) fn build_si_unit_regex(units: &UnitsData) -> Regex {
     let symbols: Vec<String> = units.entries.keys().cloned().collect();
-    build_alt_regex(&symbols, "si_unit")
+    let mut sorted = symbols;
+    sorted.sort_by_key(|s| std::cmp::Reverse(s.chars().count()));
+    let alts: Vec<String> = sorted.iter().map(|s| regex::escape(s)).collect();
+    let pat = if alts.is_empty() {
+        r"(?P<n>\A\B)(?P<x>\A\B)".to_string()
+    } else {
+        format!(r"(?i)({NUM_PAT})({})", alts.join("|"))
+    };
+    Regex::new(&pat).unwrap_or_else(|_| panic!("si_unit regex build failed"))
 }
 
 /// `(NUM_PAT)(alt1|alt2|...)` 形式の regex を構築する。
