@@ -36,7 +36,33 @@ admin_tokens = []  # 空 = /admin/* 機能 off (503)
 
 `tokens` と `admin_tokens` は **別系列**: 一般 `tokens` では `/admin/*` は通らない。これにより「読み取りはできるが reload はさせない」運用が可能。
 
-詳細な認証フローは [HTTP_API.md#認証](./HTTP_API.md#認証) / [HTTP_API.md#ホットリロード](./HTTP_API.md#ホットリロード) を参照。
+> **`admin_tokens` は必須ではない**: 個人 / 単一プロセス運用なら設定不要。
+> 外部 (別ホスト / 別 process) から HTTP 経由で reload を打ちたいときだけ必要。
+> 辞書更新の他の経路は [HTTP_API.md#ホットリロード](./HTTP_API.md#ホットリロード) を参照。
+
+### `[auto_update]` セクション (alpha.5+)
+
+`furigana serve` 起動中の **定期 polling で自動 dict pull + reload** を行う仕組み。
+**admin_tokens 不要** (内部呼び出しで HTTP 経由しないため)。
+
+| キー | 型 | default | 説明 |
+|---|---|---|---|
+| `enabled` | bool | `false` | true で background polling task を spawn (opt-in) |
+| `interval` | string | `"24h"` | polling 間隔。`"30m" / "1h" / "6h" / "1d" / "3600"` 等 |
+| `pin` | string | `""` | ピン留めする tag (`"v0.1.2"`)。空なら **最新追従** |
+
+```toml
+[auto_update]
+enabled  = true
+interval = "6h"
+# pin = "v0.1.2"   # コメントアウトで最新追従
+```
+
+GitHub API rate limit (60 req/h/IP) を考えて `interval` は **1h 以上推奨**。
+失敗時は warn を出して既存辞書で稼働継続 (network なし環境でも壊れない)。
+
+詳細な認証フローは [HTTP_API.md#認証](./HTTP_API.md#認証) / 辞書更新の全経路は
+[HTTP_API.md#ホットリロード--自動更新](./HTTP_API.md#ホットリロード--自動更新) を参照。
 
 ## 環境変数
 
@@ -67,6 +93,7 @@ furigana --data-dir /var/lib/furigana \
 | `-v, --verbose` | tracing log を info にする (グローバル) | (なし) |
 | `serve --bind <addr>` | listen address を上書き | (なし) |
 | `serve --token <t>` | 一般 token を 1 件追加 | `FURIGANA_TOKEN` |
+| `serve --auto-pull` | 起動時に GitHub Releases から最新辞書を取得 (alpha.5+) | (なし) |
 
 CLI flag → env → `config.toml` → default の優先順位で評価される。
 
