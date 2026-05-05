@@ -6,6 +6,20 @@
 
 ## [Unreleased]
 
+### Removed
+- **役目を終えた reproducer test ファイル** 4 件を削除:
+  - `crates/furigana/tests/lindera_minimal_repro.rs`
+  - `crates/furigana/tests/furigana_layer_repro.rs`
+  - `crates/furigana/tests/components_repro.rs`
+  - `crates/furigana/tests/static_regex_repro.rs`
+
+  これらは「`cargo test --release` 経由の 51 GB alloc 暴走」の原因切り分け用に
+  作った一時的なファイル。原因 (`build_alt_regex` の never-match pattern) が
+  特定されて修正済みなので、用途を終えた。詳細経緯は本 CHANGELOG の Fixed
+  セクションに残してあり、必要なら git history で復元可能 (`git log -- ...`)。
+  Rust 1.95 以降の clippy 新規 lint (`explicit_iter_loop` / `unused_imports`) で
+  繰り返し fail する原因にもなっていたため整理。
+
 ### Fixed
 - **`cargo test --release` / `cargo bench` harness で `NumberChunker::split` が
   巨大 alloc (51 GB 級) で `STATUS_STACK_BUFFER_OVERRUN` を起こしていた問題を修正**。
