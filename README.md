@@ -8,7 +8,7 @@
 
 日本語テキストに **フリガナ (読み仮名 / ルビ)** を付けるための Rust 製ライブラリ + ローカル HTTP サーバー。
 
-> ⚠️ **Status**: Pre-alpha — 開発中。API・データ形式は変更されます。
+> **Status**: v0.1.x (alpha) — Phase 1/2 機能はほぼ動作するが API・データ形式はまだ変更され得る。
 
 ---
 
@@ -38,7 +38,8 @@
 - **ライブラリ** (`furigana` crate): `cargo add furigana` で組み込める。DB 不要、async 不要、Pure Rust。
 - **CLI / ローカル サーバー** (`furigana-cli` → `furigana` バイナリ): ローカル HTTP API + 辞書管理コマンド。
 
-**ローカル利用 / 組み込み用途** を前提に設計。デフォルト bind は `127.0.0.1`、認証なし、レート制限なし。
+**ローカル利用 / 組み込み用途** を前提に設計。デフォルト bind は `127.0.0.1:8000`、
+`/furigana` 認証は無効 (token 設定で有効化)、レート制限なし、ホットリロード対応。
 
 ## OSS 化の動機
 
@@ -76,10 +77,14 @@ builder API で辞書ディレクトリを指定:
 ```rust
 use furigana::Furigana;
 
+// 推奨: furigana-dict の中身を `data/` 1 階層に展開した場合
+//       core_dict_dir と rules_dir を同じ path にして両方を読ませる
+//       (loader は内部で必要なファイルだけ拾う)
 let f = Furigana::builder()
-    .core_dict_dir("/path/to/dict/core")
-    .user_dict_dir("/path/to/dict/user")
-    .overrides_file("/path/to/overrides.toml")
+    .core_dict_dir("/path/to/data")
+    .rules_dir("/path/to/data")
+    .user_dict_dir("/path/to/data/user")
+    .overrides_file("/path/to/data/overrides.toml")
     .build()?;
 ```
 
@@ -123,10 +128,10 @@ $ furigana lookup '灰桜の散る道' --mode ruby
 $ furigana lookup '灰桜の散る道' --mode hiragana
 はいさくらのちるみち
 
-# 辞書追加
+# 辞書追加 (default は exe 横の data/user/、`--data-dir` で変更可)
 $ furigana dict add 灰桜 ハイザクラ
 追加: 灰桜 → ハイザクラ
-保存先: ~/.local/share/furigana/dict/user/cli-added.toml
+保存先: <exe と同じフォルダ>/data/user/cli-added.toml
 
 # 辞書反映後に再変換
 $ furigana lookup '灰桜の散る道'
@@ -135,28 +140,40 @@ $ furigana lookup '灰桜の散る道'
 # サーバー起動
 $ furigana serve
 INFO furigana serving on http://127.0.0.1:8000
-INFO Bearer 認証: 無効 (ローカル想定)
+INFO 認証 (/furigana): 無効 (ローカル想定)
+INFO admin (/admin/reload): 無効 ([auth].admin_tokens を設定すると有効化)
 
-# 対話モード (REPL) — 手動で試したいとき
-$ furigana repl
-furigana REPL
-  dict_size: 44354
-  type :help for commands, Ctrl-D to quit
+# 対話モード (REPL) — 引数なしで起動 (Windows なら exe ダブルクリック相当)
+$ furigana
+furigana REPL  (dict_size: 0)
+  Tab で補完 / ↑↓ で履歴 / `help` でコマンド / `quit` で終了 (`:` は optional)
+
+辞書が未配置です。furigana-dict (~226 KB) を取得して使えるようにしますか？
+[Y/n] > y
+最新リリースを確認中...
+取得対象: v0.1.1
+…
+pull + reload 完了。dict_size: 44354
+
 all> 灰桜の散る道
   ruby:     {灰桜|はいざくら}の{散る|ちる}{道|みち}
   hiragana: はいざくらのちるみち
-all> :mode tts
-mode -> tts
+
+all> mode tts
+  mode -> tts
+
 tts> 今日は良い天気ですね、いかがですか？
-きょうはよいてんきですね、 いかがですか?
-tts> :tokens 灰桜の散る道
+  きょうはよいてんきですね、   いかがですか?
+
+tts> tokens 灰桜の散る道
   surface  reading
   -------  -------
   灰桜       ハイザクラ
   の        (none)
   散る       チル
   道        みち
-tts> :quit
+
+tts> quit
 ```
 
 ## 辞書の置き場所
@@ -195,10 +212,10 @@ exe + `data/` の 2 つだけが見える状態でフォルダごとコピーす
 
 優先順位 (高→低):
 
-1. `overrides.toml` (FuriganaBuilder の `overrides_file()`)
-2. `user/*.toml` (FuriganaBuilder の `user_dict_dir()`)
-3. `core/*.toml` (FuriganaBuilder の `core_dict_dir()`)
-4. 文脈ルール (`furigana-dict/rules/context/*.toml`)
+1. `data/overrides.toml` (`FuriganaBuilder::overrides_file()`)
+2. `data/user/*.toml` (`FuriganaBuilder::user_dict_dir()`)
+3. `data/*.toml` + `data/jukugo/*.toml` (`FuriganaBuilder::core_dict_dir()`)
+4. 文脈ルール (`data/context/*.toml`、`FuriganaBuilder::rules_dir()`)
 5. Lindera (形態素解析) の読み
 6. 何もなければ読みなし (`None`) — 出力では surface のまま
 
@@ -224,27 +241,29 @@ exe + `data/` の 2 つだけが見える状態でフォルダごとコピーす
 
 ## HTTP API
 
+本番 [ryuuneko.com のフリガナ API](https://ryuuneko.com/?slug=furigana-api) と互換のインターフェース。
+
 ### `GET /healthz`
 ```json
-{"status": "ok", "dict_size": 0}
+{"status": "ok", "dict_size": 44354}
 ```
 
-### `GET /furigana?text=灰桜の道&format=ruby`
+### `GET /furigana?text=灰桜の道&mode=ruby`
 ```json
 {
-  "text": "灰桜の道",
-  "reading": "{灰桜|はいざくら}の{道|みち}",
-  "format": "ruby"
+  "result": "{灰桜|はいざくら}の{道|みち}",
+  "mode": "ruby"
 }
 ```
 
-`format` は `ruby` (default) または `hiragana`。
+`mode` は `tts` (default) | `hiragana` | `ruby` | `kanji` の 4 つ。
+`text` の代わりに `text_b64` (URL-safe base64) でも受ける。
 
 ### `POST /furigana`
 ```sh
 curl -X POST http://127.0.0.1:8000/furigana \
   -H 'Content-Type: application/json' \
-  -d '{"text":"灰桜の道","format":"ruby"}'
+  -d '{"text":"灰桜の道","mode":"ruby"}'
 ```
 
 ### Bearer 認証
@@ -309,16 +328,18 @@ crates/
 │       └── output.rs         #   tokens_to_hiragana / tokens_to_ruby
 └── furigana-cli/             # bin crate (`furigana` バイナリ)
     └── src/
-        ├── main.rs           # clap dispatch
-        ├── paths.rs          # XDG / %LOCALAPPDATA% 解決
-        ├── config.rs         # config.toml ロード
+        ├── main.rs           # clap dispatch (引数なしは repl にフォールバック)
+        ├── paths.rs          # 実行ファイル横を default、--data-dir / FURIGANA_DATA_DIR で上書き
+        ├── config.rs         # config.toml ロード ([server] / [auth].tokens / .admin_tokens)
         └── commands/
             ├── lookup.rs     # furigana lookup
+            ├── repl.rs       # furigana repl (rustyline + Tab 補完 + 履歴)
             ├── dict.rs       # furigana dict {add,list,remove,import,pull}
+            ├── dict_pull.rs  #   pull 実装 (GitHub Releases + SHA-256 検証 + tar 展開)
             └── serve/        # furigana serve (Axum HTTP)
-                ├── mod.rs    #   run() + Args + shutdown_signal
-                ├── handlers.rs #  /furigana / /healthz ハンドラ + 変換
-                ├── auth.rs   #   X-API-Key / Bearer middleware + CORS
+                ├── mod.rs    #   run() + Args + shutdown_signal + SIGHUP reload
+                ├── handlers.rs # /furigana / /healthz / /admin/reload + do_reload
+                ├── auth.rs   #   X-API-Key / Bearer middleware (一般 + admin) + CORS
                 └── types.rs  #   FuriganaParams / FuriganaResponse / AppState
 ```
 
@@ -332,17 +353,22 @@ crates/
 - ✅ 数値テキスト全体オーケストレーション (NumberChunker)
 - ✅ [`furigana-dict`](https://github.com/RyuuNeko1107/furigana-dict) リポジトリ開設
 
-**Phase 2 — 進行中**:
+**Phase 2 — ほぼ完了**:
 - ✅ 本番 ryuuneko.com から `furigana-dict` への辞書 seed 投入 (unihan 43,749 / jukugo 605 / compat 436)
 - ✅ `furigana dict pull` の実装 (GitHub Releases から tarball を fetch + SHA-256 検証 + 展開)
 - ✅ 単漢字フォールバック (Unihan の取り込みは `furigana-dict` 側 seed で達成)
 - ✅ 辞書のホットリロード (`SIGHUP` / `POST /admin/reload`)
-- crates.io 公開 (`furigana` lib + `furigana-cli` bin)
+- ✅ portable 配置 (`furigana.exe` 横に `data/` 1 階層集約)
+- ✅ 対話 REPL (`furigana repl` / 引数なし起動 / Tab 補完 / 履歴 / `:` optional)
+- ✅ SI 単位の case-insensitive lookup (`1km` / `1KM` / `1Km` 全部 hit)
+- ✅ 四字熟語の分離 (`furigana-dict/core/jukugo/four_char.toml`)
+- 🚧 crates.io 公開 (`furigana` lib + `furigana-cli` bin)
 
 **Phase 3 (検討)**:
 - ローマ字出力モード
 - 速度最適化 (regex pre-compile pool 等)
 - Web Assembly ビルド
+- 人名・固有名詞の手動振り分け (機械分類が困難なため、PR で順次)
 
 ## ライセンス
 

@@ -8,11 +8,12 @@
 
 | 変更したいもの | PR 先 |
 |---|---|
-| 一般語の読み | **`furigana-dict`** [`core/jukugo/general.toml`](https://github.com/RyuuNeko1107/furigana-dict/tree/master/core/jukugo) |
+| 二字 / 三字熟語 (灰桜→ハイザクラ等) | **`furigana-dict`** [`core/jukugo/general.toml`](https://github.com/RyuuNeko1107/furigana-dict/blob/master/core/jukugo/general.toml) |
+| 四字熟語 (一期一会→イチゴイチエ等) | 同上 [`core/jukugo/four_char.toml`](https://github.com/RyuuNeko1107/furigana-dict/blob/master/core/jukugo/four_char.toml) |
 | 固有名詞・地名・人名の読み | 同上 `core/jukugo/{proper_nouns,place_names,personal_names}.toml` |
-| 単漢字フォールバック | 同上 `core/unihan.toml` |
-| 異体字 → 標準字 | 同上 `core/compat.toml` |
-| 慣用読み (例: 浮世絵→ウキヨエ) | 同上 `rules/numeric_phrases.toml` |
+| 単漢字フォールバック | 同上 `core/unihan.toml` (43k+ 字) |
+| 異体字 → 標準字 (髙→高 等) | 同上 `core/compat.toml` |
+| 数字を含む例外語句 (二十歳→ハタチ 等) | 同上 `rules/numeric_phrases.toml` |
 | 助数詞 / 連濁ルール | 同上 [`rules/counters/`](https://github.com/RyuuNeko1107/furigana-dict/tree/master/rules/counters) (simple / time / objects 等) |
 | 大数スケール / 単位 / 記号 / 文字 | 同上 `rules/{scales,units,symbols,latin}.toml` |
 | 文脈依存読み (一日→ツイタチ/イチニチ) | 同上 [`rules/context/`](https://github.com/RyuuNeko1107/furigana-dict/tree/master/rules/context) (numbers / homonyms / special) |
