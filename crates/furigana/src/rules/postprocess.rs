@@ -98,7 +98,9 @@ impl PostProcessData {
         let mut current = text.to_string();
         for r in &self.rules {
             if r.modes.is_empty() || r.modes.iter().any(|m| m == mode) {
-                current = r.re.replace_all(&current, r.replacement.as_str()).into_owned();
+                current =
+                    r.re.replace_all(&current, r.replacement.as_str())
+                        .into_owned();
             }
         }
         current
@@ -137,7 +139,10 @@ mod tests {
             }],
         };
         let p = PostProcessData::from_spec(spec).unwrap();
-        assert_eq!(p.apply("ゴジュウパーセント", "hiragana"), "ゴジュッパーセント");
+        assert_eq!(
+            p.apply("ゴジュウパーセント", "hiragana"),
+            "ゴジュッパーセント"
+        );
     }
 
     #[test]

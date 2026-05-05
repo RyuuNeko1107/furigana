@@ -54,9 +54,31 @@ pub struct Args {
     /// 指定すると `/furigana` で `X-API-Key` または Bearer 必須化。
     #[arg(long, env = "FURIGANA_TOKEN")]
     pub token: Option<String>,
+
+    /// 起動時に GitHub Releases から最新の `ja-furigana-dict` を自動取得してから
+    /// listen を開始する。trip 失敗時は warn を出して既存辞書で起動を続行
+    /// (network なし環境でも壊れない)。`config.toml [auto_update].pin` で版を固定可。
+    #[arg(long)]
+    pub auto_pull: bool,
 }
 
 pub fn run(args: Args, paths: &Paths, cfg: &Config) -> Result<()> {
+    // ─── 起動時 auto-pull (admin token 不要、公開 GitHub Release から取得) ────
+    if args.auto_pull {
+        let pin = if cfg.auto_update.pin.is_empty() {
+            None
+        } else {
+            Some(cfg.auto_update.pin.as_str())
+        };
+        tracing::info!(
+            "--auto-pull: {} を取得します",
+            pin.unwrap_or("最新 release")
+        );
+        if let Err(e) = super::dict_pull::run(paths, pin) {
+            tracing::warn!("起動時 dict pull に失敗 ({e})。既存辞書で起動を続行します。");
+        }
+    }
+
     let furigana_inner = super::build_furigana(paths)?;
     // server は最初のリクエストレイテンシを下げるため、Lindera analyzer を eager init。
     // build_furigana 自体は lazy なので listen 前にここで明示的に init して
@@ -131,6 +153,15 @@ pub fn run(args: Args, paths: &Paths, cfg: &Config) -> Result<()> {
         #[cfg(unix)]
         spawn_sighup_reload(state.clone());
 
+        // 定期 auto-update: 公開 GitHub Releases を polling して新 tag があれば自動 reload
+        if cfg.auto_update.enabled {
+            spawn_auto_update(state.clone(), cfg.auto_update.clone());
+        } else {
+            tracing::info!(
+                "auto_update: 無効 ([auto_update].enabled = true で起動時に polling task を生やす)"
+            );
+        }
+
         axum::serve(listener, app)
             .with_graceful_shutdown(shutdown_signal())
             .await
@@ -141,6 +172,129 @@ pub fn run(args: Args, paths: &Paths, cfg: &Config) -> Result<()> {
 
     tracing::info!("シャットダウン完了");
     Ok(())
+}
+
+/// `[auto_update]` の polling task を spawn する。
+///
+/// 動作:
+/// 1. `interval` を待つ (起動直後の polling は省略、急いで叩かない設計)
+/// 2. GitHub API で `ja-furigana-dict` の最新 tag を取得
+///    (`pin` が空なら latest、空でなければそれを期待値として比較)
+/// 3. 反映済 tag (memory 上に保持) と違えば `dict_pull` + 再 build + state swap
+/// 4. ループ
+///
+/// admin_tokens 設定不要 (内部呼び出しで HTTP 経由しない)。失敗時は warn を出し
+/// 既存辞書で稼働を継続。
+fn spawn_auto_update(state: AppState, cfg: crate::config::AutoUpdateConfig) {
+    let interval = parse_duration(&cfg.interval).unwrap_or_else(|| {
+        tracing::warn!(
+            "auto_update.interval='{}' を解釈できませんでした (例: 1h / 30m / 1d)。 24h にフォールバック。",
+            cfg.interval
+        );
+        std::time::Duration::from_secs(24 * 3600)
+    });
+    tracing::info!(
+        "auto_update: 有効 (interval={:?}, pin={})",
+        interval,
+        if cfg.pin.is_empty() {
+            "(latest)"
+        } else {
+            &cfg.pin
+        }
+    );
+
+    tokio::spawn(async move {
+        let mut ticker = tokio::time::interval(interval);
+        // 初回 tick は即時消費して、次の interval 経過後に最初の polling
+        ticker.tick().await;
+
+        // memory 上に「最後に反映した tag」を保持。process 再起動で初期化される
+        // (pin 指定時はそのまま、未指定時は latest を 1 回引いてから比較開始)
+        let mut last_applied: Option<String> = if cfg.pin.is_empty() {
+            None
+        } else {
+            Some(cfg.pin.clone())
+        };
+
+        loop {
+            ticker.tick().await;
+
+            let target_tag = if cfg.pin.is_empty() {
+                match crate::commands::dict_pull::resolve_latest_tag_async().await {
+                    Ok(t) => t,
+                    Err(e) => {
+                        tracing::warn!("auto_update: latest tag 取得失敗: {e}");
+                        continue;
+                    }
+                }
+            } else {
+                cfg.pin.clone()
+            };
+
+            if last_applied.as_deref() == Some(target_tag.as_str()) {
+                tracing::debug!("auto_update: 既に {} 反映済、skip", target_tag);
+                continue;
+            }
+
+            tracing::info!("auto_update: {} を取得 + reload します", target_tag);
+
+            let paths = state.paths.clone();
+            let target_owned = target_tag.clone();
+            let result = tokio::task::spawn_blocking(move || {
+                crate::commands::dict_pull::run(&paths, Some(&target_owned))
+            })
+            .await;
+
+            match result {
+                Ok(Ok(())) => {
+                    // pull 成功 → state を swap
+                    match handlers::do_reload(&state).await {
+                        Ok(size) => {
+                            tracing::info!(
+                                "auto_update: {} 反映完了 (dict_size={})",
+                                target_tag,
+                                size
+                            );
+                            last_applied = Some(target_tag);
+                        }
+                        Err(e) => {
+                            tracing::warn!("auto_update: reload 失敗: {e}");
+                        }
+                    }
+                }
+                Ok(Err(e)) => {
+                    tracing::warn!("auto_update: dict pull 失敗: {e}");
+                }
+                Err(e) => {
+                    tracing::warn!("auto_update: spawn_blocking join error: {e}");
+                }
+            }
+        }
+    });
+}
+
+/// シンプルな期間 parser: `"30m" / "1h" / "6h" / "1d" / "3600"` 等を受ける
+fn parse_duration(s: &str) -> Option<std::time::Duration> {
+    let s = s.trim();
+    if s.is_empty() {
+        return None;
+    }
+    let (num_part, mult) = if let Some(n) = s.strip_suffix('h') {
+        (n, 3600)
+    } else if let Some(n) = s.strip_suffix('m') {
+        (n, 60)
+    } else if let Some(n) = s.strip_suffix('d') {
+        (n, 86400)
+    } else if let Some(n) = s.strip_suffix('s') {
+        (n, 1)
+    } else {
+        (s, 1) // 純粋な数字なら秒
+    };
+    num_part
+        .trim()
+        .parse::<u64>()
+        .ok()
+        .map(|n| std::time::Duration::from_secs(n * mult))
 }
 
 /// SIGHUP を listen して `do_reload` を呼ぶバックグラウンドタスクを起動。
