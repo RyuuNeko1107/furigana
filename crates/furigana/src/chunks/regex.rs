@@ -39,53 +39,55 @@ pub(super) static DIGIT_RE: Lazy<Regex> = Lazy::new(|| Regex::new(NUM_PAT).unwra
 
 // ─── 動的 builders (data 依存) ─────────────────────────────────────────────
 
-/// 助数詞リストから regex を構築 (長い順でソート、prefix 衝突回避)
-pub(super) fn build_counter_regex(counters: &CountersData) -> Regex {
+/// 助数詞リストから regex を構築 (長い順でソート、prefix 衝突回避)。
+/// 入力が空なら `None` を返す (split 側で if let Some で skip 可能に)。
+pub(super) fn build_counter_regex(counters: &CountersData) -> Option<Regex> {
     let keys: Vec<String> = counters
         .simple
         .keys()
         .chain(counters.counter.keys())
         .cloned()
         .collect();
-    build_alt_regex(&keys, "counter")
+    build_alt_regex_opt(&keys, "counter")
 }
 
-/// 大数スケール regex
-pub(super) fn build_scale_regex(scales: &ScalesData) -> Regex {
+/// 大数スケール regex (空なら `None`)
+pub(super) fn build_scale_regex(scales: &ScalesData) -> Option<Regex> {
     let kanjis: Vec<String> = scales.entries.iter().map(|e| e.kanji.clone()).collect();
-    build_alt_regex(&kanjis, "scale")
+    build_alt_regex_opt(&kanjis, "scale")
 }
 
 /// SI 単位 regex (case-insensitive: `1km` `1KM` `1Km` `1kM` 全て chunk 化)。
+/// 空なら `None`。
 ///
 /// 個別 entry の case 区別は [`UnitsData::lookup`] 側で `ci = false` を尊重
 /// するため、ここでは regex 段で広めに拾って後段で絞る方針。
-pub(super) fn build_si_unit_regex(units: &UnitsData) -> Regex {
+pub(super) fn build_si_unit_regex(units: &UnitsData) -> Option<Regex> {
     let symbols: Vec<String> = units.entries.keys().cloned().collect();
+    if symbols.is_empty() {
+        return None;
+    }
     let mut sorted = symbols;
     sorted.sort_by_key(|s| std::cmp::Reverse(s.chars().count()));
     let alts: Vec<String> = sorted.iter().map(|s| regex::escape(s)).collect();
-    let pat = if alts.is_empty() {
-        r"(?P<n>\A\B)(?P<x>\A\B)".to_string()
-    } else {
-        format!(r"(?i)({NUM_PAT})({})", alts.join("|"))
-    };
-    Regex::new(&pat).unwrap_or_else(|_| panic!("si_unit regex build failed"))
+    let pat = format!(r"(?i)({NUM_PAT})({})", alts.join("|"));
+    Some(Regex::new(&pat).unwrap_or_else(|_| panic!("si_unit regex build failed")))
 }
 
-/// `(NUM_PAT)(alt1|alt2|...)` 形式の regex を構築する。
-/// 空 list の場合は意図的にマッチしないパターンを返す (空 alternation は invalid)。
-fn build_alt_regex(items: &[String], label: &str) -> Regex {
+/// `(NUM_PAT)(alt1|alt2|...)` 形式の regex を構築する。空 list なら `None` (split で skip)。
+///
+/// 旧実装は `r"(?P<n>\A\B)(?P<x>\A\B)"` という never-match pattern を返していたが、
+/// release ビルドの `cargo test` harness で巨大 alloc 暴走を引き起こす shadowy bug
+/// を伴ったため、空時は Option で表現することで根本回避する。
+fn build_alt_regex_opt(items: &[String], label: &str) -> Option<Regex> {
+    if items.is_empty() {
+        return None;
+    }
     let mut sorted = items.to_vec();
     sorted.sort_by_key(|s| std::cmp::Reverse(s.chars().count()));
     let alts: Vec<String> = sorted.iter().map(|s| regex::escape(s)).collect();
-    let pat = if alts.is_empty() {
-        // 絶対マッチしない (空 alternation 回避)
-        r"(?P<n>\A\B)(?P<x>\A\B)".to_string()
-    } else {
-        format!(r"({NUM_PAT})({})", alts.join("|"))
-    };
-    Regex::new(&pat).unwrap_or_else(|_| panic!("{label} regex build failed"))
+    let pat = format!(r"({NUM_PAT})({})", alts.join("|"));
+    Some(Regex::new(&pat).unwrap_or_else(|_| panic!("{label} regex build failed")))
 }
 
 // ─── 共通ヘルパ ───────────────────────────────────────────────────────────

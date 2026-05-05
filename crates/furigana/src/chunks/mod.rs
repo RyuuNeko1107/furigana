@@ -40,12 +40,13 @@ pub struct NumberChunker {
     symbols: SymbolsData,
     days: DaysData,
 
-    /// 助数詞末尾を含むパターン (`(NUM)(月|日|時|分|...|本|匹|...)`)
-    counter_re: ::regex::Regex,
-    /// 大数スケール (`(NUM)(万|億|兆|...)`)
-    scale_re: ::regex::Regex,
-    /// SI 単位 (`(NUM)(km|kg|...)`)
-    si_unit_re: ::regex::Regex,
+    /// 助数詞末尾を含むパターン (`(NUM)(月|日|時|分|...|本|匹|...)`)。
+    /// `RulesData` が空 (counter エントリゼロ) なら `None`。
+    counter_re: Option<::regex::Regex>,
+    /// 大数スケール (`(NUM)(万|億|兆|...)`)。空なら `None`。
+    scale_re: Option<::regex::Regex>,
+    /// SI 単位 (`(NUM)(km|kg|...)`)。空なら `None`。
+    si_unit_re: Option<::regex::Regex>,
 }
 
 impl NumberChunker {
@@ -166,39 +167,45 @@ impl NumberChunker {
             }
 
             // ─── 5. 数値 + 大数スケール (+ 末尾助数詞) ─────────────────────
-            if let Some(caps) = at_start(&self.scale_re, rest) {
-                let m_end = caps.get(0).unwrap().end();
-                let num = caps.get(1).unwrap().as_str();
-                let scale = caps.get(2).unwrap().as_str();
-                let surface = rest[..m_end].to_string();
-                let reading = scale_reading(num, scale, &self.scales);
-                parts.push((surface, Some(reading)));
-                i += m_end;
-                continue;
+            if let Some(re) = &self.scale_re {
+                if let Some(caps) = at_start(re, rest) {
+                    let m_end = caps.get(0).unwrap().end();
+                    let num = caps.get(1).unwrap().as_str();
+                    let scale = caps.get(2).unwrap().as_str();
+                    let surface = rest[..m_end].to_string();
+                    let reading = scale_reading(num, scale, &self.scales);
+                    parts.push((surface, Some(reading)));
+                    i += m_end;
+                    continue;
+                }
             }
 
             // ─── 6. SI 単位 ─────────────────────────────────────────────────
-            if let Some(caps) = at_start(&self.si_unit_re, rest) {
-                let m_end = caps.get(0).unwrap().end();
-                let num = caps.get(1).unwrap().as_str();
-                let unit = caps.get(2).unwrap().as_str();
-                let surface = rest[..m_end].to_string();
-                let reading = si_unit_reading(num, unit, &self.units);
-                parts.push((surface, Some(reading)));
-                i += m_end;
-                continue;
+            if let Some(re) = &self.si_unit_re {
+                if let Some(caps) = at_start(re, rest) {
+                    let m_end = caps.get(0).unwrap().end();
+                    let num = caps.get(1).unwrap().as_str();
+                    let unit = caps.get(2).unwrap().as_str();
+                    let surface = rest[..m_end].to_string();
+                    let reading = si_unit_reading(num, unit, &self.units);
+                    parts.push((surface, Some(reading)));
+                    i += m_end;
+                    continue;
+                }
             }
 
             // ─── 7. 単一助数詞 (3本, 5匹, 12月, 1日…) ─────────────────────
-            if let Some(caps) = at_start(&self.counter_re, rest) {
-                let m_end = caps.get(0).unwrap().end();
-                let num = caps.get(1).unwrap().as_str();
-                let counter = caps.get(2).unwrap().as_str();
-                let surface = rest[..m_end].to_string();
-                let reading = self.read_counter(num, counter);
-                parts.push((surface, Some(reading)));
-                i += m_end;
-                continue;
+            if let Some(re) = &self.counter_re {
+                if let Some(caps) = at_start(re, rest) {
+                    let m_end = caps.get(0).unwrap().end();
+                    let num = caps.get(1).unwrap().as_str();
+                    let counter = caps.get(2).unwrap().as_str();
+                    let surface = rest[..m_end].to_string();
+                    let reading = self.read_counter(num, counter);
+                    parts.push((surface, Some(reading)));
+                    i += m_end;
+                    continue;
+                }
             }
 
             // ─── 8. 記号 1 文字 ─────────────────────────────────────────────
