@@ -13,6 +13,7 @@ use crate::reading::{tokenize_text, tokens_to_hiragana, tokens_to_ruby, ReadingT
 use crate::rules::RulesData;
 use crate::tts::{self, TtsOptions};
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 // ============================================================================
 // Furigana 本体
@@ -22,8 +23,14 @@ use std::path::{Path, PathBuf};
 ///
 /// 内部で形態素解析器・ルール・辞書を保持する。
 /// 通常は [`Furigana::minimal`] か [`Furigana::builder`] で構築する。
+///
+/// **lazy init**: Lindera 形態素解析器は構築時には初期化されず、最初の
+/// `tokenize` / `to_*` 呼び出し時に [`OnceLock`] で 1 度だけ init される。
+/// `Furigana::minimal()` の呼び出し自体は ~µs 級で済むため、引数 parse や
+/// help 表示など analyze に至らない経路を高速化できる。サーバー起動時に
+/// 先に init したい場合は [`Furigana::preload`] を呼ぶ。
 pub struct Furigana {
-    analyzer: Analyzer,
+    analyzer: OnceLock<Analyzer>,
     rules: RulesData,
     dict: Dict,
     phrase_matcher: NumericPhraseMatcher,
@@ -51,12 +58,43 @@ impl Furigana {
         FuriganaBuilder::new()
     }
 
+    /// 内部 [`Analyzer`] を取得 (必要なら初期化する)
+    ///
+    /// init は最初の呼び出しで 1 度だけ実行 ([`OnceLock`] 経由)。
+    /// embed 済みの IPADIC を使うため init はほぼ失敗しないが、リソース不足等で
+    /// 失敗した場合は panic する。事前に [`Self::preload`] で eager 初期化して
+    /// 失敗を Result で受け取れる。
+    fn analyzer(&self) -> &Analyzer {
+        self.analyzer
+            .get_or_init(|| Analyzer::new().expect("lindera analyzer init failed"))
+    }
+
+    /// 形態素解析器を eager に初期化する (server 起動時の preload 用)
+    ///
+    /// 通常は最初の `tokenize` / `to_*` 呼び出し時に lazy init されるが、
+    /// 起動直後の最初のリクエストレイテンシを下げたい場合は build 直後に
+    /// 呼んでおく。失敗時は [`crate::FuriganaError::AnalyzerInit`]。
+    /// 既に init 済みの場合は no-op。
+    ///
+    /// # Errors
+    /// 形態素解析器の初期化に失敗した場合。
+    pub fn preload(&self) -> Result<()> {
+        if self.analyzer.get().is_some() {
+            return Ok(());
+        }
+        let analyzer = Analyzer::new()?;
+        // set は既に init 済みだと Err を返すが、その場合は他スレッドが先に
+        // 入れただけなので無視して良い。
+        let _ = self.analyzer.set(analyzer);
+        Ok(())
+    }
+
     /// テキストをトークン化 (生 [`ReadingToken`] 列)
     #[must_use]
     pub fn tokenize(&self, text: &str) -> Vec<ReadingToken> {
         tokenize_text(
             text,
-            &self.analyzer,
+            self.analyzer(),
             &self.rules,
             &self.dict,
             &self.phrase_matcher,
@@ -213,13 +251,14 @@ impl FuriganaBuilder {
 
     /// [`Furigana`] を構築
     ///
+    /// 形態素解析器 (Lindera + IPADIC) は **lazy init** — 構築時には初期化せず、
+    /// 最初の `tokenize` / `to_*` 呼び出し時に 1 度だけ初期化される。サーバー
+    /// 起動時に init コストを払いたい場合は [`Furigana::preload`] を呼ぶ。
+    ///
     /// # Errors
     /// - ルールファイルパース失敗 ([`crate::FuriganaError::Toml`])
     /// - 辞書ファイル/ディレクトリ I/O 失敗
-    /// - 形態素解析器初期化失敗 ([`crate::FuriganaError::AnalyzerInit`])
     pub fn build(self) -> Result<Furigana> {
-        let analyzer = Analyzer::new()?;
-
         let rules = match self.rules_dir.as_ref() {
             Some(dir) => crate::loader::load_rules_dir(dir)?,
             None => crate::embedded::rules()?,
@@ -243,7 +282,7 @@ impl FuriganaBuilder {
         let chunker = NumberChunker::new(&rules);
 
         Ok(Furigana {
-            analyzer,
+            analyzer: OnceLock::new(),
             rules,
             dict,
             phrase_matcher,
