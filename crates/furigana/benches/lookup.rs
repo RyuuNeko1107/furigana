@@ -11,8 +11,8 @@
 // `criterion::black_box` は 0.8 で deprecated になったため、std の方を使う
 // (MSRV 1.66+ で利用可、本 crate は 1.88+)。これで criterion 0.5 / 0.8 両対応。
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
-use std::hint::black_box;
 use furigana::{Furigana, TtsOptions};
+use std::hint::black_box;
 
 fn build_furigana_with_seed_dict() -> Furigana {
     let mut f = Furigana::minimal().expect("minimal init");
@@ -48,16 +48,21 @@ fn bench_init(c: &mut Criterion) {
 }
 
 fn bench_lookup_mode(c: &mut Criterion) {
-    // 注意: medium / long のテキスト (句点を含む長文) を `to_ruby` 等で iter する
-    // と、Lindera v3.0.7 + bench harness の組み合わせで巨大 alloc 暴走 (12 GB 級)
-    // が起きて STATUS_STACK_BUFFER_OVERRUN で死ぬ既知問題がある。CLI / serve
-    // 経由では正常動作するので harness 特有 (詳細は別 issue で upstream 調査)。
-    // このため bench は「short テキスト」のみに限定。スループット測定用に
-    // 入力サイズも記録。
     let f = build_furigana_with_seed_dict();
     let inputs: &[(&str, &str)] = &[
         ("short", "灰桜の散る道"),
         ("short_phrase", "一期一会と四面楚歌"),
+        (
+            "medium",
+            "今日は北海道の鹿児島と秋葉原で一期一会の出会いがあった。明日は仲人の家に行く。",
+        ),
+        (
+            "long",
+            "今日は北海道の鹿児島と秋葉原で一期一会の出会いがあった。明日は仲人の家に行く。\
+             灰桜の散る道を歩きながら、四面楚歌の状況をどう乗り越えるか考えた。\
+             3冊の本と猫5匹を抱えて、5KMの距離を30分で走破した。\
+             一日中、黎明から曙光が射すまで、テキストにふりがなを付けるという地味な作業を続けた。",
+        ),
     ];
 
     let opts = TtsOptions::default();
@@ -78,12 +83,14 @@ fn bench_lookup_mode(c: &mut Criterion) {
 }
 
 fn bench_tokenize(c: &mut Criterion) {
-    // 同様に「句点を含む長文」は Lindera 暴走で測れないので短文のみ
     let f = build_furigana_with_seed_dict();
     let mut g = c.benchmark_group("tokenize");
     let short = "灰桜の散る道";
+    let medium = "今日は5KMを30分で走った。一期一会の機会だった。";
     g.throughput(Throughput::Bytes(short.len() as u64));
     g.bench_function("short", |b| b.iter(|| black_box(f.tokenize(short))));
+    g.throughput(Throughput::Bytes(medium.len() as u64));
+    g.bench_function("medium", |b| b.iter(|| black_box(f.tokenize(medium))));
     g.finish();
 }
 
