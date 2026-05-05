@@ -58,7 +58,7 @@
 [dependencies]
 # crates.io 上の crate 名は `ja-furigana` (`furigana` は別 crate で取られているため)。
 # 本リポジトリのライブラリを使うには:
-ja-furigana = "0.1.0-alpha.1"
+ja-furigana = "0.1.0-alpha.2"
 ```
 
 ```rust
