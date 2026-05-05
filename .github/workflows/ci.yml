@@ -144,6 +144,10 @@ jobs:
     # 走らせる。Lindera + IPADIC の build が重いので毎回はやらず、push のみ。
     runs-on: ubuntu-latest
     needs: [test, lint]
+    # corpus は ja-furigana-dict のスナップショット依存で fragile (片方の repo の
+    # commit タイミングで一時的に壊れる)。master が壊れる原因にしないため、
+    # 失敗しても blocking しない (情報通知のみ)。Dependabot PR の merge も妨げない。
+    continue-on-error: true
     steps:
       - name: Checkout ja-furigana
         uses: actions/checkout@v6
