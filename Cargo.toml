@@ -3,7 +3,6 @@ resolver = "2"
 members = [
     "crates/furigana",
     "crates/furigana-cli",
-    "crates/furigana-wasm",
 ]
 
 [workspace.package]
