@@ -21,7 +21,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        # GitHub の macOS runner queue が常に混雑して 10+ 分待ちになる問題の対策で
+        # push / PR では Linux + Windows だけ走らせる。macOS 互換は週次 schedule の
+        # `test-macos` job (下) でカバー。
+        os: [ubuntu-latest, windows-latest]
     steps:
       - uses: actions/checkout@v6
 
@@ -38,6 +41,22 @@ jobs:
 
       - name: Test (workspace)
         run: cargo test --workspace
+
+  test-macos:
+    name: Test (macos-latest, weekly)
+    runs-on: macos-latest
+    # 毎週月曜 schedule trigger でだけ走らせる (audit と同タイミング)。
+    # push / PR では走らせず、macOS runner の queue 詰まりを避ける。
+    if: github.event_name == 'schedule'
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: macos
+      - run: cargo build --workspace --all-targets
+      - run: cargo test --workspace
 
   lint:
     name: Lint (fmt + clippy)
