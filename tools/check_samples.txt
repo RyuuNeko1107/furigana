@@ -1,3 +1,18 @@
+# 検証ループ用「探索」例文集
+#
+# 使い方:
+#   1. 新しい例文をここに足す (or 既存を書き換える)
+#   2. `python3 tools/check_samples.py --binary <release-binary> --data-dir <staging>`
+#      で出力を取得
+#   3. 誤読を見つけたら lib (ja-furigana) または dict (ja-furigana-dict) を直す
+#   4. 全部 OK になったら、その case を **ja-furigana-dict/tests/corpus/should_read.toml**
+#      に `(input, mode, expected)` で **プロモート (アーカイブ)** する
+#   5. ここのファイルは **次のラウンド用にリセット / 上書き** してよい
+#      (回帰防止は CI の corpus job + should_read.toml が担う)
+#
+# つまり: ここは「探索の場」、保存場所は corpus 側。
+# 過去ラウンドの 100 件は should_read.toml に追って promote 予定 (ROADMAP 参照)。
+
 # A. 同形異音語が混ざる (context rule で本来解決すべき)
 今日は雨が降る
 今日の社会では情報が重要だ
