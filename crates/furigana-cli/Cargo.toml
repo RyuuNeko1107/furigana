@@ -35,7 +35,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 thiserror = { workspace = true }
 anyhow = "1"
 directories = "6"
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream", "blocking"] }
+reqwest = { version = "0.13", default-features = false, features = ["rustls", "json", "stream", "blocking"] }
 flate2 = "1"
 tar = "0.4"
 base64 = "0.22"
