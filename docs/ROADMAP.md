@@ -74,11 +74,11 @@ ja-furigana の中長期計画。**完了履歴は [CHANGELOG.md](../CHANGELOG.m
   - `cargo install ja-furigana-cli --features dict-v0.1.2` のような切り口
 - [ ] **postprocess ルールの拡充** — 0.1.0-alpha.3 で土台はできたが、現状の rule は
   「ジュウパー → ジュッパー」1 件のみ。汎用的に使える rule を蓄積する
-- [ ] **検証ループ corpus への promote** — `tools/check_samples.txt` で 0.1.0-alpha.3〜.5
-  にかけて 100 件の誤読を直したが、回帰防止のためにそれらを `(input, mode, expected)`
-  で `ja-furigana-dict/tests/corpus/should_read.toml` に蓄積する作業がまだ未完。
-  約 40 件の heteronym + 単漢字音読み正規化系を優先してプロモートする想定。
-  CI 側の corpus job (`tools/run_corpus.py`) は既に組み込み済なので、入れ次第回帰検知が効く
+- [x] **検証ループ corpus への promote** (2026-05-06 完了) —
+  `tools/check_samples.txt` で 0.1.0-alpha.3〜.5 にかけて直した誤読を
+  `ja-furigana-dict/tests/corpus/should_read.toml` に 40 件追加で promote。
+  単漢字音読み正規化系 / NumberChunker 改修系 / 後処理 / heteronym 全部含めて、
+  全 61 件が `tools/run_corpus.py` で pass。CI の corpus job で常時回帰検知が効く状態に
 
 ## 廃止された候補
 
