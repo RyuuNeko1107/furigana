@@ -54,6 +54,7 @@ pub fn tokenize_text(
     dict: &Dict,
     phrase_matcher: &NumericPhraseMatcher,
     chunker: &NumberChunker,
+    single_overrides: &crate::single_overrides::SingleOverrides,
 ) -> Vec<ReadingToken> {
     if text.is_empty() {
         return Vec::new();
@@ -87,7 +88,13 @@ pub fn tokenize_text(
                 });
             } else {
                 // 数値でも無い → 形態素解析
-                let chunk_tokens = pipeline::tokenize_chunk(&s, analyzer, &rules.context, dict);
+                let chunk_tokens = pipeline::tokenize_chunk(
+                    &s,
+                    analyzer,
+                    &rules.context,
+                    dict,
+                    single_overrides,
+                );
                 result.extend(chunk_tokens);
             }
         }
@@ -175,6 +182,10 @@ mod tests {
         NumericPhraseMatcher::empty()
     }
 
+    fn empty_overrides() -> crate::single_overrides::SingleOverrides {
+        crate::single_overrides::SingleOverrides::new()
+    }
+
     fn empty_dict() -> Dict {
         Dict::new()
     }
@@ -188,7 +199,7 @@ mod tests {
         let r = rules();
         let a = analyzer();
         let c = make_chunker(&r);
-        let result = tokenize_text("", &a, &r, &empty_dict(), &empty_phrase_matcher(), &c);
+        let result = tokenize_text("", &a, &r, &empty_dict(), &empty_phrase_matcher(), &c, &empty_overrides());
         assert!(result.is_empty());
     }
 
@@ -201,7 +212,7 @@ mod tests {
         let m = empty_phrase_matcher();
         let c = make_chunker(&r);
 
-        let tokens = tokenize_text("灰桜", &a, &r, &d, &m, &c);
+        let tokens = tokenize_text("灰桜", &a, &r, &d, &m, &c, &empty_overrides());
         assert!(tokens
             .iter()
             .any(|t| t.reading.as_deref() == Some("ハイザクラ")));
@@ -214,7 +225,7 @@ mod tests {
         let phrases = NumericPhraseMatcher::new(&r.numeric_phrases);
         let c = make_chunker(&r);
 
-        let tokens = tokenize_text("二十歳", &a, &r, &empty_dict(), &phrases, &c);
+        let tokens = tokenize_text("二十歳", &a, &r, &empty_dict(), &phrases, &c, &empty_overrides());
         assert!(
             tokens
                 .iter()
@@ -232,7 +243,7 @@ mod tests {
         let m = empty_phrase_matcher();
         let c = make_chunker(&r);
 
-        let tokens = tokenize_text("灰桜の道", &a, &r, &d, &m, &c);
+        let tokens = tokenize_text("灰桜の道", &a, &r, &d, &m, &c, &empty_overrides());
         let ruby = tokens_to_ruby(&tokens);
         assert!(ruby.contains("{灰桜|はいざくら}"), "ruby: {ruby}");
     }
@@ -248,7 +259,7 @@ mod tests {
         d.insert("高崎", "タカサキ");
         let c = make_chunker(&r);
 
-        let tokens = tokenize_text("髙崎", &a, &r, &d, &empty_phrase_matcher(), &c);
+        let tokens = tokenize_text("髙崎", &a, &r, &d, &empty_phrase_matcher(), &c, &empty_overrides());
         assert!(
             tokens
                 .iter()
@@ -263,7 +274,7 @@ mod tests {
         let a = analyzer();
         let m = empty_phrase_matcher();
         let c = make_chunker(&r);
-        let tokens = tokenize_text("3本のバナナ", &a, &r, &empty_dict(), &m, &c);
+        let tokens = tokenize_text("3本のバナナ", &a, &r, &empty_dict(), &m, &c, &empty_overrides());
         // 3本 → サンボン がチャンク段階で確定する
         assert!(
             tokens

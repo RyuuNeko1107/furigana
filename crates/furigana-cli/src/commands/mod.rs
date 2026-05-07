@@ -48,6 +48,10 @@ pub fn build_furigana(paths: &Paths) -> Result<Furigana> {
     if loanwords.exists() {
         b = b.core_loanwords_dir(&loanwords);
     }
+    let single_ov = paths.single_overrides_file();
+    if single_ov.exists() {
+        b = b.single_overrides_file(&single_ov);
+    }
 
     if !data_loaded {
         tracing::warn!(
