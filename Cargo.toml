@@ -25,6 +25,7 @@ regex = "1"
 thiserror = "2"
 tracing = "0.1"
 unicode-normalization = "0.1"
+aho-corasick = "1"
 
 [profile.release]
 opt-level = 3

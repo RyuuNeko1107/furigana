@@ -5,15 +5,24 @@
 //! 切り出す。
 
 use crate::rules::NumericPhrasesData;
+use aho_corasick::AhoCorasick;
 use regex::Regex;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 /// `apply` でテキストを (表層, Option<読み>) のチャンク列に分割する。
 /// マッチした表層は読み確定 (`Some`)、間の文字列は読み未確定 (`None`)。
+///
+/// `jukugo_ac` / `jukugo_map` を [`Self::set_jukugo`] で注入すると、
+/// phrase が match した範囲を真に含む jukugo entry がある場合に jukugo を
+/// 優先採用する (例: numeric_phrases の「千本=センボン」 が match しても、
+/// jukugo に「千本桜=センボンザクラ」 があれば後者を採用)。
 #[derive(Debug, Clone)]
 pub struct NumericPhraseMatcher {
     regex: Option<Regex>,
     table: HashMap<String, String>,
+    jukugo_ac: Option<Arc<AhoCorasick>>,
+    jukugo_map: Option<Arc<HashMap<String, String>>>,
 }
 
 impl NumericPhraseMatcher {
@@ -33,7 +42,12 @@ impl NumericPhraseMatcher {
             Regex::new(&pattern).ok()
         };
 
-        Self { regex, table }
+        Self {
+            regex,
+            table,
+            jukugo_ac: None,
+            jukugo_map: None,
+        }
     }
 
     /// 空マッチャー (テスト・default 用)
@@ -42,7 +56,23 @@ impl NumericPhraseMatcher {
         Self {
             regex: None,
             table: HashMap::new(),
+            jukugo_ac: None,
+            jukugo_map: None,
         }
+    }
+
+    /// jukugo の Aho-Corasick automaton を注入する (起動時 1 回、 chunker と Arc 共有想定)
+    ///
+    /// phrase match を真に含む jukugo entry がある場合に jukugo を優先するため。
+    /// homonyms (context rule を持つ surface) は予め exclude された AC を渡す前提
+    /// (`Furigana::build()` 側で集約する)。
+    pub fn set_jukugo(
+        &mut self,
+        ac: Arc<AhoCorasick>,
+        map: Arc<HashMap<String, String>>,
+    ) {
+        self.jukugo_ac = Some(ac);
+        self.jukugo_map = Some(map);
     }
 
     /// テキストを慣用句で分割し、(表層, Option<読み>) 列を返す
@@ -56,13 +86,36 @@ impl NumericPhraseMatcher {
         let mut last_end = 0;
 
         for m in regex.find_iter(text) {
+            // jukugo super-set check: phrase match を真に含む jukugo entry が
+            // あれば jukugo を採用 (例: phrase「千本」 を jukugo「千本桜」 が override)
+            let (surf_str, reading_opt, end_pos) = {
+                let phrase_surf = m.as_str();
+                let phrase_reading = self.table.get(phrase_surf).cloned();
+                let mut chosen_surf = phrase_surf.to_string();
+                let mut chosen_reading = phrase_reading;
+                let mut chosen_end = m.end();
+                if let (Some(ac), Some(map)) = (&self.jukugo_ac, &self.jukugo_map) {
+                    let rest = &text[m.start()..];
+                    if let Some(j_mat) = ac.find(rest) {
+                        let phrase_len = m.end() - m.start();
+                        if j_mat.start() == 0 && j_mat.end() > phrase_len {
+                            let j_surface = &rest[..j_mat.end()];
+                            if let Some(j_reading) = map.get(j_surface) {
+                                chosen_surf = j_surface.to_string();
+                                chosen_reading = Some(j_reading.clone());
+                                chosen_end = m.start() + j_mat.end();
+                            }
+                        }
+                    }
+                }
+                (chosen_surf, chosen_reading, chosen_end)
+            };
+
             if m.start() > last_end {
                 parts.push((text[last_end..m.start()].to_string(), None));
             }
-            let surf = m.as_str();
-            let reading = self.table.get(surf).cloned();
-            parts.push((surf.to_string(), reading));
-            last_end = m.end();
+            parts.push((surf_str, reading_opt));
+            last_end = end_pos;
         }
 
         if last_end < text.len() {
@@ -144,5 +197,51 @@ mod tests {
         assert!(result
             .iter()
             .any(|(s, r)| s == "一人前" && r.as_deref() == Some("イチニンマエ")));
+    }
+
+    /// jukugo super-set check: phrase「千本」 を jukugo「千本桜」 で override
+    #[test]
+    fn jukugo_super_overrides_phrase() {
+        // テスト用の最小 phrases (千本 = センボン)
+        let phrases_toml = r#"
+[entries]
+"千本" = "センボン"
+"#;
+        let p: NumericPhrasesData = crate::loader::parse_toml(phrases_toml, "test").unwrap();
+        let mut m = NumericPhraseMatcher::new(&p);
+        let map: HashMap<String, String> = [("千本桜".to_string(), "センボンザクラ".to_string())]
+            .into_iter()
+            .collect();
+        let ac = AhoCorasick::builder()
+            .match_kind(aho_corasick::MatchKind::LeftmostLongest)
+            .build(map.keys())
+            .unwrap();
+        m.set_jukugo(Arc::new(ac), Arc::new(map));
+        let result = m.apply("千本桜のテーマ");
+        // 「千本桜」 全体が 1 chunk として読み確定される
+        assert!(
+            result
+                .iter()
+                .any(|(s, r)| s == "千本桜" && r.as_deref() == Some("センボンザクラ")),
+            "expected 千本桜 chunk in {result:?}"
+        );
+    }
+
+    /// jukugo super-set check が無ければ既存挙動 (phrase「千本」 を確定): 副作用ゼロ
+    #[test]
+    fn no_jukugo_keeps_phrase_behavior() {
+        let phrases_toml = r#"
+[entries]
+"千本" = "センボン"
+"#;
+        let p: NumericPhrasesData = crate::loader::parse_toml(phrases_toml, "test").unwrap();
+        let m = NumericPhraseMatcher::new(&p); // jukugo 未注入
+        let result = m.apply("千本桜のテーマ");
+        assert!(
+            result
+                .iter()
+                .any(|(s, r)| s == "千本" && r.as_deref() == Some("センボン")),
+            "expected 千本 chunk in {result:?}"
+        );
     }
 }
