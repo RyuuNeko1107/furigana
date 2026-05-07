@@ -122,3 +122,4 @@ ja-furigana の中長期計画。**完了履歴は [CHANGELOG.md](../CHANGELOG.m
 - 完了したものは [CHANGELOG.md](../CHANGELOG.md) `[Unreleased]` に移し、本書からは消す
 - Phase 4 以降を書き始める時は本書を分割せず追記する (規模次第で再考)
 - 大きい設計判断は本書ではなく [ARCHITECTURE.md](./ARCHITECTURE.md) に書く
+
