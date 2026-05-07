@@ -1,6 +1,7 @@
 # HTTP API
 
-`furigana serve` は本番 [ryuuneko.com のフリガナ API](https://ryuuneko.com/?slug=furigana-api) と互換のローカル HTTP サーバーです。default bind は `127.0.0.1:8000`。
+`furigana serve` は本番 API 互換のローカル HTTP サーバーです。default bind は `127.0.0.1:8000`。
+インターフェース (`mode` / `text_b64` / `segmented` / `X-API-Key` 等) は本番と揃えてあるので、既存クライアントから差し替えが可能です。
 
 > 戻る: [README](../README.md) / 関連: [CONFIG.md](./CONFIG.md) (auth / cors)
 
@@ -78,7 +79,7 @@ curl -X POST http://127.0.0.1:8000/furigana \
 | `romaji` | ヘボン式ローマ字 |
 | `romaji-kunrei` | 訓令式ローマ字 |
 
-未知の `mode` 値は **silently `tts` (default) にフォールバック** (本番 ryuuneko.com API と同挙動、エラーにはならない)。
+未知の `mode` 値は **silently `tts` (default) にフォールバック** (本番 API と同挙動、エラーにはならない)。
 
 ## エラー応答
 

@@ -21,14 +21,14 @@ ja-furigana の中長期計画。**完了履歴は [CHANGELOG.md](../CHANGELOG.m
 
 ### Phase 1 (~2026-05-04)
 - workspace + lib + CLI + データ駆動ルール (全 TOML)
-- HTTP server (Axum、本番 ryuuneko.com API 互換)
+- HTTP server (Axum、本番 API 互換)
 - 辞書管理コマンド
 - GitHub Release ワークフロー (5 platform binary + Docker image)
 - 数値テキスト全体オーケストレーション (NumberChunker)
 - [`furigana-dict`](https://github.com/RyuuNeko1107/ja-furigana-dict) リポジトリ開設
 
 ### Phase 2 (~2026-05-05)
-- 本番 ryuuneko.com から `furigana-dict` への辞書 seed 投入 (unihan 43,749 / jukugo 605 / compat 436)
+- 本番 dump から `furigana-dict` への辞書 seed 投入 (unihan 43,749 / jukugo 605 / compat 436)
 - `furigana dict pull` (GitHub Releases + SHA-256 検証 + 展開)
 - 辞書のホットリロード (`SIGHUP` / `POST /admin/reload`)
 - portable 配置 (`furigana.exe` 横に `data/` 1 階層集約)
@@ -40,7 +40,7 @@ ja-furigana の中長期計画。**完了履歴は [CHANGELOG.md](../CHANGELOG.m
 - Lindera analyzer の lazy init (`Furigana::minimal()` で 5.97 ms → 27.3 µs)
 
 ### Phase 3 (~2026-05-06、0.1.0-alpha.3 で完了)
-- **本番 ryuuneko.com の公開フリガナ API パイプライン互換** に揃えた読み解決優先順位
+- **本番のフリガナ API パイプライン互換** に揃えた読み解決優先順位
   (`context rule → jukugo → Lindera → unihan` の 5 段階、`resolve_reading`)
 - **`Dict` を `jukugo` (≥2 文字) / `unihan` (1 文字) に内部分離** + 専用 lookup API
 - **NumberChunker** の改修:

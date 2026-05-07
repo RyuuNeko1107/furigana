@@ -63,7 +63,7 @@
 //! - [`rules`]    : ルールデータ型 (counters / context / scales / units / **postprocess** / etc)
 //! - [`loader`]   : TOML 汎用パーサ
 //!
-//! ### 読み解決の優先順位 (本番 ryuuneko.com 互換、0.1.0-alpha.3 以降)
+//! ### 読み解決の優先順位 (本番互換、0.1.0-alpha.3 以降)
 //!
 //! [`reading::pipeline::resolve_reading`] (private) で各 token に対して以下の順で評価:
 //!
