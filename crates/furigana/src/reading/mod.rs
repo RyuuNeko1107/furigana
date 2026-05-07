@@ -93,7 +93,60 @@ pub fn tokenize_text(
         }
     }
 
+    // 踊り字「々」 後処理: Lindera が「神々」 を「神」 + 「々」 で分解した場合に
+    // 「々」 token の reading が None になる問題への対応 (issue #16)。
+    // token 列を走査し、 surface = "々" / reading = None の token を見つけたら、
+    // 直前 token の reading を複製する (連濁判定はせず、 連濁が必要な語句は
+    // rules/postprocess.toml に個別 regex rule で蓄積する方針)。
+    expand_odoriji_inplace(&mut result);
+
     result
+}
+
+/// 踊り字「々」 を直前 token の reading + 連濁判定で展開する (in-place)
+///
+/// 「神々」 → tokens=[(「神」, カミ), (「々」, None)] → tokens=[(「神」, カミ), (「々」, ガミ)]
+/// （連濁あり → カミガミ）
+///
+/// 連濁判定 (簡易版):
+/// - 直前 reading の **第 1 音がカ/サ/タ/ハ 行** → 濁音化して「々」 reading に採用
+///   (神→ガミ、 人→ビト、 時→ドキ、 様→ザマ、 国→グニ)
+/// - **ナ/マ/ヤ/ラ/ワ/ア 行など** → 連濁対象外 → そのまま複製
+///   (我→レ、 山→マ、 年→ン 等は連濁ルールが無いので清音のままコピー =
+///    我々=ワレワレ、 山々=ヤマヤマ、 年々=ネンネン)
+///
+/// 例外語 (個々=ココ、 我々=ワレワレ など) で誤連濁が出る場合は
+/// `core/jukugo/*.toml` に固有 entry を登録すれば 5 段階優先順位で先に hit する。
+fn expand_odoriji_inplace(tokens: &mut [ReadingToken]) {
+    for i in 1..tokens.len() {
+        if tokens[i].surface == "々" && tokens[i].reading.is_none() {
+            if let Some(prev_reading) = tokens[i - 1].reading.clone() {
+                let voiced = voice_first_kana(&prev_reading).unwrap_or(prev_reading);
+                tokens[i].reading = Some(voiced);
+            }
+        }
+    }
+}
+
+/// 全角カタカナ reading の **第 1 音を連濁化** する。
+///
+/// カ/サ/タ/ハ 行の清音 → 対応する濁音 / 半濁音前の濁音に変換。
+/// 連濁対象外 (ア/ナ/マ/ヤ/ラ/ワ 行 + 既に濁音 + ハ 行半濁音) は `None` を返し、
+/// 呼び出し側で「清音のまま複製」 にフォールバックする。
+fn voice_first_kana(reading: &str) -> Option<String> {
+    let mut chars = reading.chars();
+    let first = chars.next()?;
+    let voiced = match first {
+        'カ' => 'ガ', 'キ' => 'ギ', 'ク' => 'グ', 'ケ' => 'ゲ', 'コ' => 'ゴ',
+        'サ' => 'ザ', 'シ' => 'ジ', 'ス' => 'ズ', 'セ' => 'ゼ', 'ソ' => 'ゾ',
+        'タ' => 'ダ', 'チ' => 'ヂ', 'ツ' => 'ヅ', 'テ' => 'デ', 'ト' => 'ド',
+        'ハ' => 'バ', 'ヒ' => 'ビ', 'フ' => 'ブ', 'ヘ' => 'ベ', 'ホ' => 'ボ',
+        _ => return None,
+    };
+    let mut out = String::new();
+    out.push(voiced);
+    out.push_str(chars.as_str());
+    Some(out)
 }
 
 #[cfg(test)]
@@ -218,5 +271,69 @@ mod tests {
                 .any(|t| t.surface == "3本" && t.reading.as_deref() == Some("サンボン")),
             "tokens: {tokens:?}"
         );
+    }
+
+    /// 踊り字「々」 展開 + 連濁: 「神々」 → カミ + ガミ (カ → ガ 連濁) (issue #16)
+    #[test]
+    fn expand_odoriji_with_rendaku() {
+        let mut tokens = vec![
+            ReadingToken {
+                surface: "神".to_string(),
+                reading: Some("カミ".to_string()),
+            },
+            ReadingToken {
+                surface: "々".to_string(),
+                reading: None,
+            },
+        ];
+        expand_odoriji_inplace(&mut tokens);
+        assert_eq!(tokens[1].reading.as_deref(), Some("ガミ"));
+    }
+
+    /// 連濁対象外 (ナ/マ/ヤ/ラ/ワ/ア 行始まり) は清音のまま複製
+    /// 我々 = ワレワレ、 山々 = ヤマヤマ、 年々 = ネンネン
+    #[test]
+    fn expand_odoriji_no_rendaku_for_non_voiceable() {
+        for (surface_first, reading_first) in [
+            ("我", "ワレ"),
+            ("山", "ヤマ"),
+            ("年", "ネン"),
+            ("代", "ダイ"),  // 既に濁音 → 連濁不可
+            ("色", "イロ"),
+        ] {
+            let mut tokens = vec![
+                ReadingToken {
+                    surface: surface_first.to_string(),
+                    reading: Some(reading_first.to_string()),
+                },
+                ReadingToken {
+                    surface: "々".to_string(),
+                    reading: None,
+                },
+            ];
+            expand_odoriji_inplace(&mut tokens);
+            assert_eq!(
+                tokens[1].reading.as_deref(),
+                Some(reading_first),
+                "{surface_first}々: 連濁対象外なのでそのままコピーされるはず"
+            );
+        }
+    }
+
+    /// 「々」 token に既に reading がある場合は上書きしない (idempotent)
+    #[test]
+    fn expand_odoriji_skips_when_reading_exists() {
+        let mut tokens = vec![
+            ReadingToken {
+                surface: "時々".to_string(),
+                reading: Some("トキドキ".to_string()),
+            },
+            ReadingToken {
+                surface: "々".to_string(),
+                reading: Some("ドキ".to_string()), // すでに何か入ってる仮定
+            },
+        ];
+        expand_odoriji_inplace(&mut tokens);
+        assert_eq!(tokens[1].reading.as_deref(), Some("ドキ")); // 上書きされない
     }
 }
