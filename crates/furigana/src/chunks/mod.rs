@@ -26,12 +26,12 @@ use self::regex::{
     DATE_KANJI_FULL_RE, DATE_KANJI_MD_RE, DIGIT_RE, EMAIL_RE, TIME_COLON_RE, TIME_JP_FULL_RE,
     URL_RE,
 };
+use crate::loanwords::Loanwords;
 use crate::numbers::{
     euphonic_counter_read, kansuji_to_arabic, number_to_katakana, scale_reading, si_unit_reading,
     symbol_char_reading,
 };
 use crate::rules::{CountersData, DaysData, RulesData, ScalesData, SymbolsData, UnitsData};
-use crate::loanwords::Loanwords;
 use aho_corasick::AhoCorasick;
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
@@ -125,11 +125,7 @@ impl NumberChunker {
     ///
     /// `Furigana::build()` 側で 1 回 build した AC を chunker と phrase_matcher の両方に
     /// Arc で渡す。 homonyms (context rule を持つ surface) は呼び出し側で予め除外済み。
-    pub fn set_jukugo(
-        &mut self,
-        ac: Arc<AhoCorasick>,
-        map: Arc<HashMap<String, String>>,
-    ) {
+    pub fn set_jukugo(&mut self, ac: Arc<AhoCorasick>, map: Arc<HashMap<String, String>>) {
         self.jukugo_ac = Some(ac);
         self.jukugo_map = Some(map);
     }
@@ -154,7 +150,11 @@ impl NumberChunker {
     /// counter / scale が確定した範囲を真に含む (= longer end) jukugo entry がある場合に
     /// jukugo を優先採用するための super-set 判定。 「3千本のバラ」 のような scale 確定 case で
     /// jukugo に「千本」 entry があっても (短いから) 誤って override しないよう strict check。
-    fn match_jukugo_strict_super(&self, rest: &str, min_end_bytes: usize) -> Option<(usize, String)> {
+    fn match_jukugo_strict_super(
+        &self,
+        rest: &str,
+        min_end_bytes: usize,
+    ) -> Option<(usize, String)> {
         let (end, reading) = self.match_jukugo_at_start(rest)?;
         if end <= min_end_bytes {
             return None;

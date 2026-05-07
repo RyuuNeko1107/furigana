@@ -51,7 +51,10 @@ fn collect_toml_files_recursive(dir: &Path, out: &mut Vec<PathBuf>) -> std::io::
         let path = entry?.path();
         if path.is_file() && path.extension().is_some_and(|e| e == "toml") {
             // single_overrides.toml は SingleOverrides 側で別 load
-            if path.file_name().is_some_and(|n| n == "single_overrides.toml") {
+            if path
+                .file_name()
+                .is_some_and(|n| n == "single_overrides.toml")
+            {
                 continue;
             }
             out.push(path);
@@ -237,9 +240,7 @@ impl Dict {
     /// build するために使う (counter chunk が jukugo entry の真部分集合になって
     /// いる場合に jukugo を優先するため)。
     pub fn jukugo_iter(&self) -> impl Iterator<Item = (&str, &str)> {
-        self.jukugo
-            .iter()
-            .map(|(k, v)| (k.as_str(), v.as_str()))
+        self.jukugo.iter().map(|(k, v)| (k.as_str(), v.as_str()))
     }
 }
 

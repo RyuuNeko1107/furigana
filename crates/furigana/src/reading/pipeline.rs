@@ -47,17 +47,17 @@ pub(super) fn tokenize_chunk(
 ///    動的読み分け
 /// 3. **熟語辞書** ([`Dict::lookup_jukugo`]) — surface 2 文字以上の固定読み
 ///    (灰桜 / 円周率 / 駆逐艦 等)
-/// 3.5 **単漢字 default override** ([`SingleOverrides::lookup`]) — 1 字 surface に
+/// 4. **単漢字 default override** ([`SingleOverrides::lookup`]) — 1 字 surface に
 ///    対する明示的 default 上書き (例: 「土 = ツチ」、 unihan 「ど」 と Lindera
 ///    「ド」 の両方より先に評価)。 全 unihan を Lindera より先にすると副作用
 ///    大 ([issue #15](https://github.com/RyuuNeko1107/ja-furigana/issues/15) の
 ///    R20 で 6 件 corpus regression 確認済み) のため、 明示的に override
 ///    したい単漢字だけを別 data file (`core/single_overrides.toml`) で管理する。
-/// 4. **形態素解析 (lindera) の reading** — 動詞活用形などで Lindera が自然に
-///    返してくる読み (これを 5 より優先することで、unihan の保守的な単漢字
+/// 5. **形態素解析 (lindera) の reading** — 動詞活用形などで Lindera が自然に
+///    返してくる読み (これを 6 より優先することで、unihan の保守的な単漢字
 ///    読みが Lindera の文脈考慮を遮断するのを防ぐ)
-/// 5. **単漢字辞書** ([`Dict::lookup_unihan`]) — 1 文字の最終 fallback
-/// 6. fallback `None`
+/// 6. **単漢字辞書** ([`Dict::lookup_unihan`]) — 1 文字の最終 fallback
+/// 7. fallback `None`
 fn resolve_reading(
     token: &MorphToken,
     all_tokens: &[MorphToken],
@@ -82,9 +82,9 @@ fn resolve_reading(
         return Some(reading.to_string());
     }
 
-    // 3.5. 単漢字 default override (issue #15 の限定解): 明示的に 1 字 surface
-    //      に対する override があれば Lindera より先に採用。
-    //      lookup() は内部で「surface が 1 字」 制約を課すので、 ≥2 字 surface には影響しない。
+    // 4. 単漢字 default override (issue #15 の限定解): 明示的に 1 字 surface
+    //    に対する override があれば Lindera より先に採用。
+    //    lookup() は内部で「surface が 1 字」 制約を課すので、 ≥2 字 surface には影響しない。
     if let Some(reading) = single_overrides.lookup(surface) {
         return Some(reading.to_string());
     }
