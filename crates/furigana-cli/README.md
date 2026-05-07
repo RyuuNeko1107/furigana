@@ -31,7 +31,7 @@ furigana repl --mode hiragana
 
 # 辞書管理
 furigana dict pull                       # GitHub Release から最新 furigana-dict を取得
-furigana dict pull --version v0.1.1      # version pin
+furigana dict pull --version v2026.05.08      # version pin
 furigana dict add 灰桜 ハイザクラ        # ユーザー辞書に追加
 furigana dict list                       # 現状サマリ
 furigana dict remove 灰桜

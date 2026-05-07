@@ -78,7 +78,7 @@ pub struct AutoUpdateConfig {
     #[serde(default = "default_interval")]
     pub interval: String,
 
-    /// ピン留めする tag (例: `"v0.1.2"`)。空 or 未指定で **最新追従**。
+    /// ピン留めする tag (例: `"v2026.05.08"`)。空 or 未指定で **最新追従**。
     /// `--auto-pull` 起動時 pull もこのピンを尊重する。
     #[serde(default)]
     pub pin: String,
