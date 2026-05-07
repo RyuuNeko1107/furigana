@@ -351,17 +351,16 @@ impl FuriganaBuilder {
             .filter(|(k, _)| k.chars().count() >= 3)
             .map(|(k, v)| (k.to_string(), v.to_string()))
             .collect();
-        let jukugo_ac_arc: Option<std::sync::Arc<aho_corasick::AhoCorasick>> = if jukugo_filtered
-            .is_empty()
-        {
-            None
-        } else {
-            aho_corasick::AhoCorasick::builder()
-                .match_kind(aho_corasick::MatchKind::LeftmostLongest)
-                .build(jukugo_filtered.keys())
-                .ok()
-                .map(std::sync::Arc::new)
-        };
+        let jukugo_ac_arc: Option<std::sync::Arc<aho_corasick::AhoCorasick>> =
+            if jukugo_filtered.is_empty() {
+                None
+            } else {
+                aho_corasick::AhoCorasick::builder()
+                    .match_kind(aho_corasick::MatchKind::LeftmostLongest)
+                    .build(jukugo_filtered.keys())
+                    .ok()
+                    .map(std::sync::Arc::new)
+            };
         let jukugo_map_arc = std::sync::Arc::new(jukugo_filtered);
 
         let mut phrase_matcher = NumericPhraseMatcher::new(&rules.numeric_phrases);

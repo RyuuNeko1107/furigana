@@ -66,11 +66,7 @@ impl NumericPhraseMatcher {
     /// phrase match を真に含む jukugo entry がある場合に jukugo を優先するため。
     /// homonyms (context rule を持つ surface) は予め exclude された AC を渡す前提
     /// (`Furigana::build()` 側で集約する)。
-    pub fn set_jukugo(
-        &mut self,
-        ac: Arc<AhoCorasick>,
-        map: Arc<HashMap<String, String>>,
-    ) {
+    pub fn set_jukugo(&mut self, ac: Arc<AhoCorasick>, map: Arc<HashMap<String, String>>) {
         self.jukugo_ac = Some(ac);
         self.jukugo_map = Some(map);
     }
