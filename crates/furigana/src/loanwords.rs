@@ -200,7 +200,10 @@ mod tests {
         assert_eq!(Loanwords::normalize("C++"), "c++");
         assert_eq!(Loanwords::normalize(".NET"), ".net");
         assert_eq!(Loanwords::normalize("node_modules"), "node_modules");
-        assert_eq!(Loanwords::normalize("TypeScript-config"), "typescript-config");
+        assert_eq!(
+            Loanwords::normalize("TypeScript-config"),
+            "typescript-config"
+        );
     }
 
     #[test]

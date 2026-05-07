@@ -11,6 +11,7 @@ use crate::error::Result;
 use crate::numbers::NumericPhraseMatcher;
 use crate::reading::{tokenize_text, tokens_to_hiragana, tokens_to_ruby, ReadingToken};
 use crate::rules::RulesData;
+use crate::single_overrides::SingleOverrides;
 use crate::tts::{self, TtsOptions};
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
@@ -35,6 +36,8 @@ pub struct Furigana {
     dict: Dict,
     phrase_matcher: NumericPhraseMatcher,
     chunker: NumberChunker,
+    /// 単漢字 default override (issue #15 の限定解、 jukugo / Lindera より先に評価)
+    single_overrides: SingleOverrides,
 }
 
 impl Furigana {
@@ -99,6 +102,7 @@ impl Furigana {
             &self.dict,
             &self.phrase_matcher,
             &self.chunker,
+            &self.single_overrides,
         )
     }
 
@@ -229,6 +233,8 @@ pub struct FuriganaBuilder {
     extra_entries: Vec<(String, String)>,
     /// 外来語辞書ディレクトリ (複数指定可、 後勝ち merge)
     loanwords_dirs: Vec<PathBuf>,
+    /// 単漢字 default override file (複数指定可、 後勝ち merge)
+    single_overrides_files: Vec<PathBuf>,
 }
 
 impl FuriganaBuilder {
@@ -283,6 +289,18 @@ impl FuriganaBuilder {
         self
     }
 
+    /// 単漢字 default override ファイル (`core/single_overrides.toml`) を追加
+    ///
+    /// 1 字 surface に対する明示的な default 上書き。 `resolve_reading` の
+    /// Step 3.5 で評価され、 jukugo lookup の後、 Lindera reading の前。
+    /// `[entries]` 形式で `"土" = "ツチ"` のように書く。
+    /// 関連: [issue #15](https://github.com/RyuuNeko1107/ja-furigana/issues/15)
+    #[must_use]
+    pub fn single_overrides_file(mut self, p: impl AsRef<Path>) -> Self {
+        self.single_overrides_files.push(p.as_ref().to_path_buf());
+        self
+    }
+
     /// [`Furigana`] を構築
     ///
     /// 形態素解析器 (Lindera + IPADIC) は **lazy init** — 構築時には初期化せず、
@@ -333,17 +351,16 @@ impl FuriganaBuilder {
             .filter(|(k, _)| k.chars().count() >= 3)
             .map(|(k, v)| (k.to_string(), v.to_string()))
             .collect();
-        let jukugo_ac_arc: Option<std::sync::Arc<aho_corasick::AhoCorasick>> = if jukugo_filtered
-            .is_empty()
-        {
-            None
-        } else {
-            aho_corasick::AhoCorasick::builder()
-                .match_kind(aho_corasick::MatchKind::LeftmostLongest)
-                .build(jukugo_filtered.keys())
-                .ok()
-                .map(std::sync::Arc::new)
-        };
+        let jukugo_ac_arc: Option<std::sync::Arc<aho_corasick::AhoCorasick>> =
+            if jukugo_filtered.is_empty() {
+                None
+            } else {
+                aho_corasick::AhoCorasick::builder()
+                    .match_kind(aho_corasick::MatchKind::LeftmostLongest)
+                    .build(jukugo_filtered.keys())
+                    .ok()
+                    .map(std::sync::Arc::new)
+            };
         let jukugo_map_arc = std::sync::Arc::new(jukugo_filtered);
 
         let mut phrase_matcher = NumericPhraseMatcher::new(&rules.numeric_phrases);
@@ -363,12 +380,24 @@ impl FuriganaBuilder {
             chunker.set_loanwords(std::sync::Arc::new(loanwords));
         }
 
+        // 単漢字 default override (issue #15 の限定解): resolve_reading の Step 3.5
+        // で評価される。 file 単位で merge (後勝ち)。
+        let mut single_overrides = SingleOverrides::new();
+        for f in &self.single_overrides_files {
+            let s = SingleOverrides::from_toml_file(f)?;
+            // SingleOverrides に merge メソッドはないので map を直接統合
+            for (k, v) in s.iter() {
+                single_overrides.insert(k.to_string(), v.to_string());
+            }
+        }
+
         Ok(Furigana {
             analyzer: OnceLock::new(),
             rules,
             dict,
             phrase_matcher,
             chunker,
+            single_overrides,
         })
     }
 }

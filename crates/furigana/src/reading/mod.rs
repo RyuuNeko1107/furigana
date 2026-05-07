@@ -54,6 +54,7 @@ pub fn tokenize_text(
     dict: &Dict,
     phrase_matcher: &NumericPhraseMatcher,
     chunker: &NumberChunker,
+    single_overrides: &crate::single_overrides::SingleOverrides,
 ) -> Vec<ReadingToken> {
     if text.is_empty() {
         return Vec::new();
@@ -87,7 +88,8 @@ pub fn tokenize_text(
                 });
             } else {
                 // 数値でも無い → 形態素解析
-                let chunk_tokens = pipeline::tokenize_chunk(&s, analyzer, &rules.context, dict);
+                let chunk_tokens =
+                    pipeline::tokenize_chunk(&s, analyzer, &rules.context, dict, single_overrides);
                 result.extend(chunk_tokens);
             }
         }
@@ -113,7 +115,7 @@ pub fn tokenize_text(
 ///   (神→ガミ、 人→ビト、 時→ドキ、 様→ザマ、 国→グニ)
 /// - **ナ/マ/ヤ/ラ/ワ/ア 行など** → 連濁対象外 → そのまま複製
 ///   (我→レ、 山→マ、 年→ン 等は連濁ルールが無いので清音のままコピー =
-///    我々=ワレワレ、 山々=ヤマヤマ、 年々=ネンネン)
+///   我々=ワレワレ、 山々=ヤマヤマ、 年々=ネンネン)
 ///
 /// 例外語 (個々=ココ、 我々=ワレワレ など) で誤連濁が出る場合は
 /// `core/jukugo/*.toml` に固有 entry を登録すれば 5 段階優先順位で先に hit する。
@@ -137,10 +139,26 @@ fn voice_first_kana(reading: &str) -> Option<String> {
     let mut chars = reading.chars();
     let first = chars.next()?;
     let voiced = match first {
-        'カ' => 'ガ', 'キ' => 'ギ', 'ク' => 'グ', 'ケ' => 'ゲ', 'コ' => 'ゴ',
-        'サ' => 'ザ', 'シ' => 'ジ', 'ス' => 'ズ', 'セ' => 'ゼ', 'ソ' => 'ゾ',
-        'タ' => 'ダ', 'チ' => 'ヂ', 'ツ' => 'ヅ', 'テ' => 'デ', 'ト' => 'ド',
-        'ハ' => 'バ', 'ヒ' => 'ビ', 'フ' => 'ブ', 'ヘ' => 'ベ', 'ホ' => 'ボ',
+        'カ' => 'ガ',
+        'キ' => 'ギ',
+        'ク' => 'グ',
+        'ケ' => 'ゲ',
+        'コ' => 'ゴ',
+        'サ' => 'ザ',
+        'シ' => 'ジ',
+        'ス' => 'ズ',
+        'セ' => 'ゼ',
+        'ソ' => 'ゾ',
+        'タ' => 'ダ',
+        'チ' => 'ヂ',
+        'ツ' => 'ヅ',
+        'テ' => 'デ',
+        'ト' => 'ド',
+        'ハ' => 'バ',
+        'ヒ' => 'ビ',
+        'フ' => 'ブ',
+        'ヘ' => 'ベ',
+        'ホ' => 'ボ',
         _ => return None,
     };
     let mut out = String::new();
@@ -175,6 +193,10 @@ mod tests {
         NumericPhraseMatcher::empty()
     }
 
+    fn empty_overrides() -> crate::single_overrides::SingleOverrides {
+        crate::single_overrides::SingleOverrides::new()
+    }
+
     fn empty_dict() -> Dict {
         Dict::new()
     }
@@ -188,7 +210,15 @@ mod tests {
         let r = rules();
         let a = analyzer();
         let c = make_chunker(&r);
-        let result = tokenize_text("", &a, &r, &empty_dict(), &empty_phrase_matcher(), &c);
+        let result = tokenize_text(
+            "",
+            &a,
+            &r,
+            &empty_dict(),
+            &empty_phrase_matcher(),
+            &c,
+            &empty_overrides(),
+        );
         assert!(result.is_empty());
     }
 
@@ -201,7 +231,7 @@ mod tests {
         let m = empty_phrase_matcher();
         let c = make_chunker(&r);
 
-        let tokens = tokenize_text("灰桜", &a, &r, &d, &m, &c);
+        let tokens = tokenize_text("灰桜", &a, &r, &d, &m, &c, &empty_overrides());
         assert!(tokens
             .iter()
             .any(|t| t.reading.as_deref() == Some("ハイザクラ")));
@@ -214,7 +244,15 @@ mod tests {
         let phrases = NumericPhraseMatcher::new(&r.numeric_phrases);
         let c = make_chunker(&r);
 
-        let tokens = tokenize_text("二十歳", &a, &r, &empty_dict(), &phrases, &c);
+        let tokens = tokenize_text(
+            "二十歳",
+            &a,
+            &r,
+            &empty_dict(),
+            &phrases,
+            &c,
+            &empty_overrides(),
+        );
         assert!(
             tokens
                 .iter()
@@ -232,7 +270,7 @@ mod tests {
         let m = empty_phrase_matcher();
         let c = make_chunker(&r);
 
-        let tokens = tokenize_text("灰桜の道", &a, &r, &d, &m, &c);
+        let tokens = tokenize_text("灰桜の道", &a, &r, &d, &m, &c, &empty_overrides());
         let ruby = tokens_to_ruby(&tokens);
         assert!(ruby.contains("{灰桜|はいざくら}"), "ruby: {ruby}");
     }
@@ -248,7 +286,15 @@ mod tests {
         d.insert("高崎", "タカサキ");
         let c = make_chunker(&r);
 
-        let tokens = tokenize_text("髙崎", &a, &r, &d, &empty_phrase_matcher(), &c);
+        let tokens = tokenize_text(
+            "髙崎",
+            &a,
+            &r,
+            &d,
+            &empty_phrase_matcher(),
+            &c,
+            &empty_overrides(),
+        );
         assert!(
             tokens
                 .iter()
@@ -263,7 +309,15 @@ mod tests {
         let a = analyzer();
         let m = empty_phrase_matcher();
         let c = make_chunker(&r);
-        let tokens = tokenize_text("3本のバナナ", &a, &r, &empty_dict(), &m, &c);
+        let tokens = tokenize_text(
+            "3本のバナナ",
+            &a,
+            &r,
+            &empty_dict(),
+            &m,
+            &c,
+            &empty_overrides(),
+        );
         // 3本 → サンボン がチャンク段階で確定する
         assert!(
             tokens
@@ -298,7 +352,7 @@ mod tests {
             ("我", "ワレ"),
             ("山", "ヤマ"),
             ("年", "ネン"),
-            ("代", "ダイ"),  // 既に濁音 → 連濁不可
+            ("代", "ダイ"), // 既に濁音 → 連濁不可
             ("色", "イロ"),
         ] {
             let mut tokens = vec![

@@ -40,13 +40,23 @@ use std::path::{Path, PathBuf};
 /// 配布 tar.gz の展開結果を想定するため、symlink ループや権限なしディレクトリは
 /// std::fs のエラーが上に伝播する (caller 側で `?` で素直に返る)。
 ///
-/// **`loanwords/` サブディレクトリは skip** する。 これは ASCII surface 専用で
-/// `Loanwords::from_toml_dir` 経由で別管理されるため、 jukugo / unihan 側に
-/// 混入させると jukugo prefix-match で「TypeScript」 等が誤って hit する。
+/// 以下は **意図的に skip** する (Dict::from_toml_dir の対象外):
+/// - `loanwords/` サブディレクトリ: ASCII surface 専用、 `Loanwords::from_toml_dir`
+///   経由で別管理 (jukugo prefix-match で「TypeScript」 等が誤って hit するのを防ぐ)
+/// - `single_overrides.toml`: 単漢字 surface の default reading override 専用、
+///   `SingleOverrides::from_toml_file` 経由で別管理 (Dict に取り込むと既存 unihan を
+///   silent merge で上書きしてしまうため別経路で持つ)
 fn collect_toml_files_recursive(dir: &Path, out: &mut Vec<PathBuf>) -> std::io::Result<()> {
     for entry in std::fs::read_dir(dir)? {
         let path = entry?.path();
         if path.is_file() && path.extension().is_some_and(|e| e == "toml") {
+            // single_overrides.toml は SingleOverrides 側で別 load
+            if path
+                .file_name()
+                .is_some_and(|n| n == "single_overrides.toml")
+            {
+                continue;
+            }
             out.push(path);
         } else if path.is_dir() {
             // loanwords/ は ASCII surface 専用 (Loanwords 側で別 load)
@@ -230,9 +240,7 @@ impl Dict {
     /// build するために使う (counter chunk が jukugo entry の真部分集合になって
     /// いる場合に jukugo を優先するため)。
     pub fn jukugo_iter(&self) -> impl Iterator<Item = (&str, &str)> {
-        self.jukugo
-            .iter()
-            .map(|(k, v)| (k.as_str(), v.as_str()))
+        self.jukugo.iter().map(|(k, v)| (k.as_str(), v.as_str()))
     }
 }
 
