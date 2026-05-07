@@ -6,6 +6,18 @@
 
 ## [Unreleased]
 
+### Changed (MSRV)
+
+- **MSRV を 1.88 → 1.89 に bump**: rustyline 18 (alpha.4 で取り込み) が
+  std::fs::File::lock に依存するようになり、これが 1.89 で安定化した機能のため。
+  alpha.6 release の Docker build (rust:1.88-slim ベース) が `file_lock` 不安定
+  エラーで失敗していた問題への対応。
+  - `Cargo.toml` workspace `rust-version`: 1.88 → 1.89
+  - `Dockerfile` builder image: `rust:1.88-slim` → `rust:1.89-slim`
+  - `README.md` MSRV badge: 1.88+ → 1.89+
+- alpha.6 GitHub release は binary upload (5 platform) は完了済、Docker image のみ
+  欠けた状態で残置。Docker image は次の release で復旧予定。
+
 ### Added
 - (次の release で入れる変更をここに追記)
 
