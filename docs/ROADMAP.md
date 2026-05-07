@@ -13,7 +13,7 @@ ja-furigana の中長期計画。**完了履歴は [CHANGELOG.md](../CHANGELOG.m
 - CLI 引数の名前 / デフォルト値
 - HTTP レスポンスの JSON フィールド名 / 構造
 
-安定版 (0.1.0 正式) 以降は SemVer で互換を守る。Rust toolchain は **1.89+** が必要 (0.1.0-alpha.6 で 1.88 → 1.89 に bump、`std::fs::File::lock` 安定化要求のため)。
+安定版 (0.1.0 正式) 以降は SemVer で互換を守る。Rust toolchain は **1.89+** が必要 (`std::fs::File::lock` 安定化要求のため、依存 rustyline 18 経由)。
 
 ## 完了済み
 
@@ -53,23 +53,20 @@ ja-furigana の中長期計画。**完了履歴は [CHANGELOG.md](../CHANGELOG.m
   75/75 (100%) 達成
 - CI: macOS test を週次 schedule に移動、cargo-audit + corpus regression job 追加
 
-### Phase 4 (~2026-05-06〜07、0.1.0-alpha.4〜.6 で完了)
-- **辞書自動更新 (admin_tokens 不要)** — alpha.5 で `furigana serve --auto-pull` フラグと
-  `[auto_update]` config による background polling を追加。`/admin/reload` HTTP は
+### Phase 4 (運用基盤の整備)
+- **辞書自動更新 (admin_tokens 不要)** — `furigana serve --auto-pull` フラグと
+  `[auto_update]` config による background polling。`/admin/reload` HTTP は
   外部から同期トリガーしたい運用者向けに残置
-- **辞書ディレクトリの全階層再帰スキャン** — alpha.6 で `Dict::from_toml_dir` を
-  無制限階層対応に。`core/works/<medium>/<title>.toml` のような作品単位 1 ファイル
+- **辞書ディレクトリの全階層再帰スキャン** — `Dict::from_toml_dir` が
+  無制限階層対応。`core/works/<medium>/<title>.toml` のような作品単位 1 ファイル
   の細分化構造を許容
-- **作品単位辞書 `core/works/`** — ja-furigana-dict v0.1.3 で新設、東方Project (72 件) を
-  seed として収録。サブポリシーは `core/works/README.md` (公式読みのみ採録、出典コメント必須)
-- **辞書大規模拡充** (jukugo 605 → 4,351、+618%、24 ファイル) — 既存ファイルを継続拡充 +
-  11 新規ファイル (vehicles / clothes / architecture / literature / science / emotions /
-  idioms / politics / religions / music / sports)
+- **作品単位辞書 `core/works/`** — ja-furigana-dict 側で新設、東方Project を seed として
+  収録。サブポリシー: 公式読みのみ採録、出典コメント必須、二次創作読み禁止
+- **辞書大規模拡充** (jukugo 24 カテゴリ、4k 件超) — vehicles / clothes / architecture /
+  literature / science / emotions / idioms / politics / religions / music / sports を含む
 - **STATS.md 自動生成基盤** — `tools/regen_stats.py` で件数 / サイズ table を再生成、
   TOML 編集後 master push されると GitHub Actions が auto-commit で STATS.md を更新。
   各 TOML ファイル先頭の `[meta] description` を引いて用途列を自動生成
-- **MSRV 1.88 → 1.89** (alpha.6) — rustyline 18 (alpha.4 で導入) が `std::fs::File::lock`
-  に依存、これが 1.89 で安定化したため
 
 ## 進行中 / 候補
 
@@ -79,20 +76,16 @@ ja-furigana の中長期計画。**完了履歴は [CHANGELOG.md](../CHANGELOG.m
   - 公開 Rust API のシグネチャ最終確認 (rename したくないものは fix)
   - HTTP レスポンスの JSON フィールド名 fix
   - CHANGELOG の Migration ガイド
-- [ ] **alpha.6 Docker image の復旧** — alpha.6 release で binary 5 platform は
-  upload 完了したが、Docker (ghcr.io) build が rustyline 18 の `file_lock` 依存で
-  fail。master では MSRV 1.89 + Dockerfile rust:1.89-slim に修正済、次 release で復旧
-- [ ] **作品単位辞書の継続拡充** — alpha.6 で `core/works/` 構造ができ、東方Project
-  (72 件) を seed 投入済。他作品の追加は PR ベース、サブポリシー (公式読み + 出典 comment
-  必須) を満たすもののみ
+- [ ] **作品単位辞書の継続拡充** — `core/works/` 構造に他作品を PR ベースで追加、
+  サブポリシー (公式読みのみ採録 + 出典 comment 必須) を満たすもの
 - [ ] **`lindera-neologd` opt-in feature flag** — [Issue #9](https://github.com/RyuuNeko1107/ja-furigana/issues/9)
   - 新語 / 商標 / アニメ作品名等が default で読めるようになる
   - 一方で binary 肥大化 (~50 MB → 数百 MB)、NEologd は upstream 凍結中、過剰な複合語化の懸念
   - feature flag で choice にする案
 - [ ] **辞書ピンの依存表記** — `Cargo.toml` 経由で辞書 version を declare できるように?
-  - `cargo install ja-furigana-cli --features dict-v0.1.3` のような切り口
-- [ ] **postprocess ルールの拡充** — 0.1.0-alpha.3 で土台はできたが、現状の rule は
-  「ジュウパー → ジュッパー」1 件のみ。汎用的に使える rule を蓄積する
+  - `cargo install ja-furigana-cli --features dict-pinned` のような切り口
+- [ ] **postprocess ルールの拡充** — 土台 (mode 別 regex) はあるが具体ルールは少数のみ。
+  汎用的に使える rule を蓄積する
 - [ ] **検証バッチからの corpus promote** — `tools/verify_batch.txt` で見つけた
   empirical な誤読修正を `ja-furigana-dict/tests/corpus/should_read.toml` に
   promote して回帰検証に組み込む

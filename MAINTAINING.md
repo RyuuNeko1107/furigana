@@ -87,15 +87,15 @@ Dockerfile の `FROM rust:X.Y-slim` の Rust version が依存ライブラリの
 新 MSRV を満たさない時に発生。binary build は CI runner の最新 stable で走るため
 通る一方、Docker は固定 version で fail する。
 
-実例: 0.1.0-alpha.6 で rustyline 18 (alpha.4 で導入) が `std::fs::File::lock`
-(Rust 1.89 で安定化) を要求し、`rust:1.88-slim` で fail した。
+過去には rustyline major bump で `std::fs::File::lock` が要求され、Dockerfile の
+固定 Rust version との乖離で fail した事例がある。
 
 対処:
-1. ローカルで rustyline / 他依存の release notes を確認、要求 Rust version を特定
+1. ローカルで該当依存の release notes を確認、要求 Rust version を特定
 2. `Cargo.toml` workspace `rust-version` と `Dockerfile` の `FROM rust:X.Y-slim` を揃える
 3. README の MSRV badge も更新
-4. master に commit → 次 release で Docker image 復旧 (alpha.6 のように binary-only
-   で release 済の場合、Docker 部分は次バージョンに持ち越して問題ない)
+4. master に commit → 次 release のサイクルで Docker image も自動復旧
+   (binary-only で release 済の場合、Docker 部分は次バージョンに持ち越して問題ない)
 
 ---
 
