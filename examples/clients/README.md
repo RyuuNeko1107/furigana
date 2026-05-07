@@ -29,7 +29,12 @@ furigana serve              # → http://127.0.0.1:8000
 `mode` は `tts` (default) | `hiragana` | `ruby` | `kanji` | `romaji` | `romaji-kunrei` の 6 つ。
 レスポンスは `{"result":"...","mode":"ruby"}`。
 
-詳細は [プロジェクト README](../../README.md) を参照。
+`hiragana` / `tts` 出力では surface 文字種で reading 表記が切替わります
+(漢字 → ひらがな化、 アルファベット / 数字 / 記号 → カタカナ統一)。 IT 用語は
+`core/loanwords/it.toml` の seed が hit するので「Anthropic の Claude」 →
+「アンソロピックのクロード」 のようにアルファベットがカタカナで残ります。
+
+詳細は [プロジェクト README](../../README.md) / [HTTP API ガイド](../../docs/HTTP_API.md#出力ルール-tts--hiragana-mode-の-reading-表記) を参照。
 
 ## C++ / C# / その他で使いたい人へ
 
