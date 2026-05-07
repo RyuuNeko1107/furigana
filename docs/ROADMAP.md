@@ -62,12 +62,12 @@ ja-furigana の中長期計画。**完了履歴は [CHANGELOG.md](../CHANGELOG.m
   の細分化構造を許容
 - **作品単位辞書 `core/works/`** — ja-furigana-dict v0.1.3 で新設、東方Project (72 件) を
   seed として収録。サブポリシーは `core/works/README.md` (公式読みのみ採録、出典コメント必須)
-- **辞書大規模拡充** (jukugo 605 → 4,351、+618%、24 ファイル) — ラウンド 7-10 で
-  既存ファイルを継続拡充 + 11 新規ファイル (vehicles / clothes / architecture /
-  literature / science / emotions / idioms / politics / religions / music / sports)
+- **辞書大規模拡充** (jukugo 605 → 4,351、+618%、24 ファイル) — 既存ファイルを継続拡充 +
+  11 新規ファイル (vehicles / clothes / architecture / literature / science / emotions /
+  idioms / politics / religions / music / sports)
 - **STATS.md 自動生成基盤** — `tools/regen_stats.py` で件数 / サイズ table を再生成、
-  CI に drift 検知ジョブ。各 TOML ファイル先頭の `[meta] description` を引いて
-  用途列を自動生成
+  TOML 編集後 master push されると GitHub Actions が auto-commit で STATS.md を更新。
+  各 TOML ファイル先頭の `[meta] description` を引いて用途列を自動生成
 - **MSRV 1.88 → 1.89** (alpha.6) — rustyline 18 (alpha.4 で導入) が `std::fs::File::lock`
   に依存、これが 1.89 で安定化したため
 
@@ -93,8 +93,9 @@ ja-furigana の中長期計画。**完了履歴は [CHANGELOG.md](../CHANGELOG.m
   - `cargo install ja-furigana-cli --features dict-v0.1.3` のような切り口
 - [ ] **postprocess ルールの拡充** — 0.1.0-alpha.3 で土台はできたが、現状の rule は
   「ジュウパー → ジュッパー」1 件のみ。汎用的に使える rule を蓄積する
-- [ ] **検証ループの追加 round** — `tools/check_samples.txt` の例文を増やして、
-  ラウンド 7-10 拡充後の dict での誤読を回帰 should_read.toml に promote
+- [ ] **検証バッチからの corpus promote** — `tools/verify_batch.txt` で見つけた
+  empirical な誤読修正を `ja-furigana-dict/tests/corpus/should_read.toml` に
+  promote して回帰検証に組み込む
 
 ## 廃止された候補
 
