@@ -9,6 +9,31 @@
 ### Added
 - (次の release で入れる変更をここに追記)
 
+## [0.1.0-alpha.6] - 2026-05-07
+
+辞書ディレクトリの再帰スキャンを **無制限階層** に拡張。これにより
+ja-furigana-dict 側で `core/works/game/touhou.toml`、`core/works/anime/<title>.toml`
+のような作品単位 1 ファイルの細分化構造が利用可能になる。
+
+### Changed (`Dict::from_toml_dir`)
+
+- 旧: 直下 + サブディレクトリ 1 階層のみスキャン (`core/jukugo/general.toml` は OK、
+  `core/jukugo/works/X.toml` は読まれなかった)
+- 新: `collect_toml_files_recursive` で **任意の深さ** を再帰、絶対パス順に sort、
+  後勝ちで merge。配布 tar.gz の展開結果を想定するため symlink ループ対策は持たない
+  (静的データ + 配布側で混入し得ない前提)
+
+### Added (test)
+
+- `from_toml_dir_recurses_arbitrary_depth`: `works/game/series/touhou.toml` および
+  `works/anime/placeholder.toml` の 3 階層構造でロード成功と lookup ヒットを確認
+
+### Verification
+
+171 lib unit test + 4 doctest + 1 integration (`load_real_data`) + 2 CLI unit
+全 pass、clippy clean、fmt clean。ja-furigana-dict 側 v0.1.2 (24 ファイル /
+`core/jukugo/*.toml` 1 階層構造) は新 loader でも完全互換 (旧 1 階層構造は新 loader の subset)。
+
 ## [0.1.0-alpha.5] - 2026-05-06
 
 辞書の自動取得 / 自動更新を **admin_tokens 設定不要** で使えるようにした。
