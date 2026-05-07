@@ -98,6 +98,7 @@ pub mod numbers;
 pub mod reading;
 pub mod romaji;
 pub mod rules;
+pub mod single_overrides;
 pub mod tts;
 
 mod api;

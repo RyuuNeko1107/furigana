@@ -73,6 +73,15 @@ impl Paths {
         self.data_root().join("loanwords")
     }
 
+    /// 単漢字 default override ファイル (`<data_root>/single_overrides.toml`)
+    ///
+    /// 1 字 surface に対する明示的 default 上書き (issue #15 限定解)。
+    /// 存在しなければ呼び出し側で skip。
+    #[must_use]
+    pub fn single_overrides_file(&self) -> PathBuf {
+        self.data_root().join("single_overrides.toml")
+    }
+
     /// user 辞書: `<data_dir>/data/user/`
     #[must_use]
     pub fn dict_user_dir(&self) -> PathBuf {
