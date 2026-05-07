@@ -39,12 +39,20 @@ use std::path::{Path, PathBuf};
 ///
 /// 配布 tar.gz の展開結果を想定するため、symlink ループや権限なしディレクトリは
 /// std::fs のエラーが上に伝播する (caller 側で `?` で素直に返る)。
+///
+/// **`loanwords/` サブディレクトリは skip** する。 これは ASCII surface 専用で
+/// `Loanwords::from_toml_dir` 経由で別管理されるため、 jukugo / unihan 側に
+/// 混入させると jukugo prefix-match で「TypeScript」 等が誤って hit する。
 fn collect_toml_files_recursive(dir: &Path, out: &mut Vec<PathBuf>) -> std::io::Result<()> {
     for entry in std::fs::read_dir(dir)? {
         let path = entry?.path();
         if path.is_file() && path.extension().is_some_and(|e| e == "toml") {
             out.push(path);
         } else if path.is_dir() {
+            // loanwords/ は ASCII surface 専用 (Loanwords 側で別 load)
+            if path.file_name().is_some_and(|n| n == "loanwords") {
+                continue;
+            }
             collect_toml_files_recursive(&path, out)?;
         }
     }
