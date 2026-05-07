@@ -15,6 +15,8 @@ crates/
 │   ├── kana.rs               # ひら⇄カタ + Unicode 正規化
 │   ├── dict.rs               # surface→reading 辞書 (jukugo ≥2 文字 / unihan 1 文字 を内部分離、 loanwords/ subdir は再帰 walk から除外)
 │   ├── loanwords.rs          # 外来語 (IT 用語等の英単語) 辞書、 case-fold + 全角→半角 + 完全一致 lookup
+│   ├── single_overrides.rs   # 1 字 surface に対する明示的 default 上書き (issue #15 限定解、 Step 4)
+│   ├── sanitize.rs           # 辞書 load 経路の sanitize layer (任意コード埋め込み防御 — 制御文字 / bidi override / zero-width / 過大長 reject)
 │   ├── tts.rs                # TTS 整形 (normalize_for_tts) + segment_for_tts
 │   ├── romaji.rs             # ひらがな → ローマ字 (ヘボン式 / 訓令式)
 │   ├── error.rs              # FuriganaError / Result
@@ -145,17 +147,18 @@ let f = Furigana::builder()
     イカスミ、 「金平糖」 → コンペイトウ) を 2 字 jukugo (烏賊 / 金平) で先取りして
     分断する regression を回避
 
-### Step 5 の詳細: `resolve_reading` の 5 段階優先順位
+### Step 5 の詳細: `resolve_reading` の 6 段階優先順位
 
 各 token に対して以下の順序で読みを決定:
 
 1. **漢字を含まない** → `None` (surface のまま)
 2. **context rule** ([`reading::context::apply_context_rules`]) — 同形異音語 (一日 / 上手 / 市場 等) の動的読み分け
 3. **熟語辞書** (`Dict::lookup_jukugo`) — surface ≥ 2 文字の固定読み (灰桜=ハイザクラ 等)
-4. **Lindera reading** — `details[7]` のカタカナ読み (動詞活用形などの自然な読み)
-5. **単漢字辞書** (`Dict::lookup_unihan`) — surface = 1 文字の最終 fallback
+4. **単漢字 default override** (`SingleOverrides::lookup`) — 1 字 surface に対する明示的 default 上書き (例: 「土 = ツチ」)。 全 unihan を Lindera より先にすると副作用大 ([issue #15](https://github.com/RyuuNeko1107/ja-furigana/issues/15) の R20 で 6 件 corpus regression 確認済み) のため、 明示的に override したい単漢字だけ別 data file で管理する限定解
+5. **Lindera reading** — `details[7]` のカタカナ読み (動詞活用形などの自然な読み)
+6. **単漢字辞書** (`Dict::lookup_unihan`) — surface = 1 文字の最終 fallback (5 水準別 file `core/unihan/joyo.toml` 等を再帰 walk で merge)
 
-**過去の落とし穴 (現在は解決)**: 旧 0.1.0-alpha.2 までは「dict.lookup → context rule → Lindera」の順だった結果、`unihan` に登録された単漢字読み (能=あたう、本=もと等の動詞活用形 / 訓読み) が `context rule` の `default` を遮断していた。0.1.0-alpha.3 で `Dict` を `jukugo` (≥2 文字) と `unihan` (1 文字) に分離 + 上記の優先順位に変更して根本解決。
+**過去の落とし穴 (現在は解決)**: 旧 0.1.0-alpha.2 までは「dict.lookup → context rule → Lindera」の順だった結果、`unihan` に登録された単漢字読み (能=あたう、本=もと等の動詞活用形 / 訓読み) が `context rule` の `default` を遮断していた。0.1.0-alpha.3 で `Dict` を `jukugo` (≥2 文字) と `unihan` (1 文字) に分離 + Step 4 (Lindera) を Step 5 (unihan) より先に評価する形に変更して根本解決。 alpha.8 で SingleOverrides を Step 4 に挟み、 unihan 一律優先化の副作用を避けつつ個別 override を可能に。
 
 ### Step 6 の詳細: `tokens_to_hiragana` の出力ルール (surface 文字種で分岐)
 

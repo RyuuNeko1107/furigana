@@ -34,7 +34,7 @@ ja-furigana の中長期計画。**完了履歴は [CHANGELOG.md](../CHANGELOG.m
 - portable 配置 (`furigana.exe` 横に `data/` 1 階層集約)
 - 対話 REPL (`furigana repl` / 引数なし起動 / Tab 補完 / 履歴 / `:` optional)
 - SI 単位の case-insensitive lookup
-- 四字熟語の分離 (`core/jukugo/four_char.toml`)
+- 四字熟語の分離 (`core/jukugo/basic/four_char.toml`)
 - crates.io 公開 (`ja-furigana` lib + `ja-furigana-cli` bin)
 - ローマ字出力モード (ヘボン式 / 訓令式)
 - Lindera analyzer の lazy init (`Furigana::minimal()` で 5.97 ms → 27.3 µs)

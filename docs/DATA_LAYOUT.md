@@ -128,16 +128,22 @@ furigana dict pull --version v0.1.3      # version pin
 archive 側 (`ja-furigana-dict` repo) は `core/` `rules/` の 2 階層で PR レビュー上の分類のために維持されている。配布物だけ flat に変換される (展開後は `data/` 1 階層、ただし jukugo / works / counters / context のサブディレクトリは保持)。
 
 ```
-archive 内 (PR レビュー用)        →   利用者の <data_dir>/data/ (flat-ish)
-core/jukugo/general.toml         →   data/jukugo/general.toml
-core/works/game/touhou.toml      →   data/works/game/touhou.toml
-core/unihan.toml                 →   data/unihan.toml
-rules/days.toml                  →   data/days.toml
-rules/counters/objects.toml      →   data/counters/objects.toml
-rules/context/numbers.toml       →   data/context/numbers.toml
+archive 内 (PR レビュー用)              →   利用者の <data_dir>/data/ (flat-ish)
+core/jukugo/basic/general.toml         →   data/jukugo/basic/general.toml
+core/jukugo/nature/animals.toml        →   data/jukugo/nature/animals.toml
+core/works/game/touhou.toml            →   data/works/game/touhou.toml
+core/unihan/joyo.toml                  →   data/unihan/joyo.toml
+core/unihan/extension.toml             →   data/unihan/extension.toml
+core/loanwords/it.toml                 →   data/loanwords/it.toml
+core/single_overrides.toml             →   data/single_overrides.toml
+core/compat.toml                       →   data/compat.toml
+rules/days.toml                        →   data/days.toml
+rules/counters/objects.toml            →   data/counters/objects.toml
+rules/context/numbers.toml             →   data/context/numbers.toml
 ```
 
-> 0.1.0-alpha.6 以降の lib loader (`Dict::from_toml_dir`) は **無制限階層を再帰** で走査する。`data/jukugo/` (1 階層) と `data/works/<medium>/<title>.toml` (任意深度) が同じ loader で処理され、後者は作品単位 1 ファイルの細分化を許容する (公式読みのみ採録、出典コメント必須のサブポリシーは [`ja-furigana-dict/core/works/README.md`](https://github.com/RyuuNeko1107/ja-furigana-dict/blob/master/core/works/README.md) を参照)。
+> 0.1.0-alpha.6 以降の lib loader (`Dict::from_toml_dir`) は **無制限階層を再帰** で走査する。`data/jukugo/<genre>/` (genre dir 階層) と `data/works/<medium>/<title>.toml` (任意深度) と `data/unihan/<水準>.toml` (水準別 5 ファイル) が同じ loader で処理される。
+> `_genre.toml` (各 genre dir の sub-section description) は lib では silent skip + release tar からも `--exclude='_genre.toml'` で除外されるため、 利用者の `data/` 配下には届かない。
 
 path traversal 防御として、archive entry の展開先が `<data_dir>/data/` 配下に収まることを canonicalize で確認している。
 
