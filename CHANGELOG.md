@@ -25,6 +25,17 @@
 - **ReDoS audit**: lib 内 regex (loanword / 数値 / 日付 等) を audit、
   `regex` crate の linear-time 保証 (NFA-based、 catastrophic backtracking
   起きない) で OK と確認、 修正不要。
+- **任意コード実行 audit** (辞書 + 入力経由):
+  - lib + cli に `unsafe` block **0 件** → memory unsafety 経由 RCE 不可
+  - shell exec **無し** → command injection 不可
+  - DB / SQL **無し** → SQL injection 不可
+  - eval / dynamic exec **無し** (rust に存在しない)
+  - TOML deserialize は serde の `HashMap<String, String>` のみ → gadget 攻撃不可
+  - 入力 text は data として扱われ regex pattern に流入する経路 **無し**
+  - HTTP handler panic は axum default で 500 catch、 process は落ちない
+  - 唯一の懸念: **regex bomb** (postprocess.toml / numeric_phrases.toml の
+    pattern が巨大 regex として compile されると memory 消費)
+    → `RegexBuilder::size_limit(10 MB)` で compile 拒否を追加
 - 既存対策 (path traversal canonicalize、 SHA-256 sidecar 検証、 admin
   token 認証、 CORS layer、 `set_preserve_permissions(false)`、 server
   text 文字数 `MAX_TEXT_LEN`) は維持。

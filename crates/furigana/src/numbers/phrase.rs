@@ -39,7 +39,13 @@ impl NumericPhraseMatcher {
             surfaces.sort_by_key(|s| std::cmp::Reverse(s.chars().count()));
             let alts: Vec<String> = surfaces.iter().map(|s| regex::escape(s)).collect();
             let pattern = format!("(?:{})", alts.join("|"));
-            Regex::new(&pattern).ok()
+            // size_limit で巨大 regex (compile 後の DFA / NFA size) を拒否。
+            // 攻撃者制御の data (numeric_phrases.toml に大量 entry) で memory を食わせる
+            // regex bomb 防御。 10 MB は通常使用 (~100 entries) を十分カバー。
+            ::regex::RegexBuilder::new(&pattern)
+                .size_limit(10 * 1024 * 1024)
+                .build()
+                .ok()
         };
 
         Self {

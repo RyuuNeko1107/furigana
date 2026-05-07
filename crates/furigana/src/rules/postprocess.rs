@@ -74,7 +74,13 @@ impl PostProcessData {
             .rules
             .into_iter()
             .map(|r| {
-                let re = regex::Regex::new(&r.pattern)?;
+                // size_limit で巨大 regex (compile 後 DFA / NFA size) を拒否。
+                // postprocess.toml の pattern は dist (or user) 制御の data なので、
+                // 攻撃者が regex bomb を仕込んで memory を食わせるのを防御。
+                // 10 MB は通常 pattern (数百 byte) を十分カバー。
+                let re = regex::RegexBuilder::new(&r.pattern)
+                    .size_limit(10 * 1024 * 1024)
+                    .build()?;
                 Ok(CompiledRule {
                     re,
                     replacement: r.replacement,
