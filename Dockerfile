@@ -2,10 +2,10 @@
 #
 # Multi-stage build for furigana-cli
 #
-# Build stage: rust:1.88-slim (matches Cargo.toml MSRV)
+# Build stage: rust:1.89-slim (matches Cargo.toml MSRV、std::fs::File::lock が 1.89 で安定化)
 # Runtime stage: distroless/cc-debian12 (small, no shell, libgcc あり)
 
-FROM rust:1.88-slim AS builder
+FROM rust:1.89-slim AS builder
 
 WORKDIR /build
 

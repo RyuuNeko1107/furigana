@@ -3,7 +3,7 @@
 [![CI](https://github.com/RyuuNeko1107/ja-furigana/actions/workflows/ci.yml/badge.svg)](https://github.com/RyuuNeko1107/ja-furigana/actions/workflows/ci.yml)
 [![Crates.io](https://img.shields.io/crates/v/ja-furigana.svg)](https://crates.io/crates/ja-furigana)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![MSRV](https://img.shields.io/badge/rust-1.88+-orange.svg)](https://www.rust-lang.org)
+[![MSRV](https://img.shields.io/badge/rust-1.89+-orange.svg)](https://www.rust-lang.org)
 
 > A **data-driven local furigana / TTS-prep engine** for Japanese, in Rust.
 > Not a complete reading-inference engine — see [立ち位置と精度の限界](#立ち位置と精度の限界).
