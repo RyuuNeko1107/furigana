@@ -61,7 +61,7 @@ furigana lookup '灰桜'
 - Windows: `%LOCALAPPDATA%\furigana\furigana\`
 - macOS: `~/Library/Application Support/com.furigana.furigana/`
 
-## 優先順位 (本番 ryuuneko.com 互換、0.1.0-alpha.3 で整備)
+## 優先順位 (本番互換、0.1.0-alpha.3 で整備)
 
 辞書ソースの **merge 順** (後勝ち、`Furigana::builder` で組立):
 

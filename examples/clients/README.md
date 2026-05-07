@@ -1,6 +1,6 @@
 # Other-language clients
 
-`furigana serve` (HTTP API) は本番 [ryuuneko.com のフリガナ API](https://ryuuneko.com/?slug=furigana-api) と同じインターフェースなので、HTTP が話せる言語ならどこからでも使えます。
+`furigana serve` (HTTP API) は本番フリガナ API と同じインターフェースなので、HTTP が話せる言語ならどこからでも使えます。
 
 各言語の最小サンプルをここに置いてあります:
 
