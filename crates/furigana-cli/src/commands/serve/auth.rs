@@ -6,7 +6,26 @@ use axum::extract::{Request, State};
 use axum::http::{HeaderValue, Method, StatusCode};
 use axum::middleware::Next;
 use axum::response::Response;
+use subtle::ConstantTimeEq;
 use tower_http::cors::{Any, CorsLayer};
+
+/// **timing-safe** な token 比較。
+///
+/// 単純 `==` で比較すると secret length / 一致 prefix 長 が処理時間差に漏れて
+/// 攻撃者が char-by-char で token を推測できる。 `subtle::ConstantTimeEq` で
+/// 全 byte を見比べた結果に縮約して時間差を消す。 length 不一致は早期 false。
+fn tokens_match(allowed: &[String], presented: &str) -> bool {
+    let presented_bytes = presented.as_bytes();
+    let mut found = subtle::Choice::from(0u8);
+    for t in allowed {
+        let t_bytes = t.as_bytes();
+        if t_bytes.len() != presented_bytes.len() {
+            continue;
+        }
+        found |= t_bytes.ct_eq(presented_bytes);
+    }
+    bool::from(found)
+}
 
 /// `state.tokens` が空でない時、`/furigana` へのリクエストに認証を要求する
 ///
@@ -20,7 +39,7 @@ pub(super) async fn require_token(
         return Ok(next.run(req).await);
     }
     let presented = extract_token(&req).ok_or(StatusCode::UNAUTHORIZED)?;
-    if state.tokens.iter().any(|t| t == &presented) {
+    if tokens_match(&state.tokens, &presented) {
         Ok(next.run(req).await)
     } else {
         Err(StatusCode::UNAUTHORIZED)
@@ -41,7 +60,7 @@ pub(super) async fn require_admin_token(
         return Err(StatusCode::SERVICE_UNAVAILABLE);
     }
     let presented = extract_token(&req).ok_or(StatusCode::UNAUTHORIZED)?;
-    if state.admin_tokens.iter().any(|t| t == &presented) {
+    if tokens_match(&state.admin_tokens, &presented) {
         Ok(next.run(req).await)
     } else {
         Err(StatusCode::UNAUTHORIZED)

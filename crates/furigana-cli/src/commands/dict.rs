@@ -78,6 +78,11 @@ fn add(paths: &Paths, surface: &str, reading: &str) -> Result<()> {
     if surface.is_empty() || reading.is_empty() {
         bail!("surface と reading は必須です");
     }
+    // TOML basic string に格納できない制御文字 (NULL や U+0001..U+0008、 U+000B
+    // 等) を reject。 toml_escape は `"` `\` `\n` `\r` `\t` のみ escape するので、
+    // 他の制御文字が混入すると parse 時に file 全体壊れる (self-DoS)。
+    validate_user_input("surface", surface)?;
+    validate_user_input("reading", reading)?;
     let user_dir = paths.dict_user_dir();
     fs::create_dir_all(&user_dir)
         .with_context(|| format!("user dict ディレクトリ作成失敗: {}", user_dir.display()))?;
@@ -236,6 +241,19 @@ fn write_cli_dict(path: &Path, entries: &BTreeMap<String, String>) -> Result<()>
         out.push_str("\"\n");
     }
     fs::write(path, out)?;
+    Ok(())
+}
+
+/// 制御文字 (`\t` `\n` `\r` 以外の C0 / DEL) を含む入力を reject。
+fn validate_user_input(label: &str, s: &str) -> Result<()> {
+    if let Some(c) = s.chars().find(|c| {
+        let code = *c as u32;
+        // 0x09 (\t), 0x0A (\n), 0x0D (\r) は escape 可なので許容、
+        // それ以外の C0 (0x00..0x1F) と DEL (0x7F) は reject。
+        (code < 0x20 && code != 0x09 && code != 0x0A && code != 0x0D) || code == 0x7F
+    }) {
+        bail!("{label} に制御文字 U+{:04X} を含む: {s:?}", c as u32);
+    }
     Ok(())
 }
 

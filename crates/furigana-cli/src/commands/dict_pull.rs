@@ -49,6 +49,12 @@ pub fn run(paths: &Paths, version: Option<&str>) -> Result<()> {
         resolve_latest_tag(&client)
             .context("最新リリースの解決に失敗 (network or GitHub API エラー)")?
     };
+    // tag は archive name と URL に直接埋め込まれるため、 path traversal や
+    // 別 host 注入を防ぐべく **strict format validation** を行う。
+    // 想定: `v<digit>.<digit>.<digit>` (任意で `-pre.<digit>` or CalVer
+    // `vYYYY.MM.DD`)、 `[A-Za-z0-9.-]` のみ、 `..` `/` `:` 等は禁止。
+    validate_tag_format(&tag)
+        .with_context(|| format!("不正な tag format (URL injection 防御のため拒否): {tag:?}"))?;
     println!("取得対象: {tag}");
 
     let archive_name = format!("furigana-dict-{tag}.tar.gz");
@@ -173,6 +179,27 @@ fn parse_sha256_sidecar(text: &str) -> Result<String> {
         bail!("sha256 hex の長さ/文字種が不正: {hex:?}");
     }
     Ok(hex.to_string())
+}
+
+/// tag format を strict に validate する。 URL / path 文脈に注入される値なので、
+/// 既知の安全文字 `[A-Za-z0-9.\-]` のみ許可、 連続 `..` 禁止、 1〜64 文字。
+///
+/// 通常 release tag (`v0.1.0-alpha.8`、 `v2026.05.07` 等) はすべて通る。
+/// `..` / `/` / `:` / null byte / control char などは reject。
+fn validate_tag_format(tag: &str) -> Result<()> {
+    if tag.is_empty() || tag.len() > 64 {
+        bail!("tag 長が範囲外: {} 文字 (許容 1..=64)", tag.len());
+    }
+    if tag.contains("..") {
+        bail!("tag に連続 `..` を含む (path traversal 経路): {tag:?}");
+    }
+    if !tag
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-'))
+    {
+        bail!("tag に許容外文字を含む (許容: A-Za-z0-9.-): {tag:?}");
+    }
+    Ok(())
 }
 
 fn sha256_hex(data: &[u8]) -> String {
@@ -320,6 +347,22 @@ fn extract_to(tarball: &[u8], paths: &Paths) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn validates_tag_format() {
+        // 通常の release tag
+        assert!(validate_tag_format("v0.1.0").is_ok());
+        assert!(validate_tag_format("v0.1.0-alpha.8").is_ok());
+        assert!(validate_tag_format("v2026.05.07").is_ok());
+        // attack pattern
+        assert!(validate_tag_format("").is_err());
+        assert!(validate_tag_format("../../etc/passwd").is_err());
+        assert!(validate_tag_format("v0.1.0/extra").is_err());
+        assert!(validate_tag_format("v0..1.0").is_err());
+        assert!(validate_tag_format("v0.1.0\0evil").is_err());
+        assert!(validate_tag_format("v0.1.0:9000").is_err());
+        assert!(validate_tag_format(&"v".repeat(65)).is_err());
+    }
 
     #[test]
     fn parses_sha256_sidecar() {

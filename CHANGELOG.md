@@ -39,6 +39,22 @@
 - 既存対策 (path traversal canonicalize、 SHA-256 sidecar 検証、 admin
   token 認証、 CORS layer、 `set_preserve_permissions(false)`、 server
   text 文字数 `MAX_TEXT_LEN`) は維持。
+- **固定フォーマット以外の入力 audit + 追加対策**:
+  - HTTP `mode` パラメータ: 既存の `normalize_mode` whitelist
+    (`tts`/`hiragana`/`ruby`/`kanji`/`romaji`/`romaji-kunrei`) で OK
+  - **HTTP auth token (X-API-Key / Bearer): timing-safe 比較に変更** —
+    `subtle::ConstantTimeEq` で全 byte を見比べた結果に縮約。 単純 `==`
+    だと一致 prefix 長が処理時間差に漏れて char-by-char 推測される
+  - **GitHub API `tag_name` の strict format validate** — `[A-Za-z0-9.\-]`
+    のみ・ 連続 `..` 禁止 ・1〜64 文字に限定。 `..` や `/` `:` 注入で
+    別 release / 別 host を pull する攻撃を構造的に防御。 `dict pull`
+    の URL 組立て前に `validate_tag_format` を必ず通す
+  - **CLI `dict add` の制御文字 reject** — surface / reading に C0 制御文字
+    (NULL や U+0001..U+0008 等、 `\t` `\n` `\r` 以外) を含む入力を reject。
+    既存 `toml_escape` (`"` `\` `\n` `\r` `\t`) で TOML breaking char は
+    既に escape 済み、 残る self-DoS 経路を構造的に塞ぐ
+  - HTTP CORS Origin / GitHub JSON parse / 環境変数 path 等の他経路は
+    現行 default で安全 (axum / serde / std::path の既存防御で吸収)
 
 ## [0.1.0-alpha.8] - 2026-05-07
 
