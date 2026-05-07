@@ -25,6 +25,8 @@ default では **実行ファイルと同じディレクトリ**:
     │   └── religions.toml / music.toml / sports.toml
     ├── works/                     # 作品単位辞書 (0.1.0-alpha.6+、無制限階層)
     │   └── game/touhou.toml       #   例: 東方Project (公式読みのみ採録、出典コメント必須)
+    ├── loanwords/                 # 外来語 (IT 用語等の英字 surface 専用、 別 lookup 経路)
+    │   └── it.toml                #   例: Kubernetes / Docker / TypeScript / PostgreSQL …
     ├── days.toml                  # 1〜31 日特殊読み
     ├── scales.toml                # 万 / 億 / 兆 / 京 / 垓 ...
     ├── units.toml                 # SI 単位 + 「円」「%」(N+漢字単位 連結用、0.1.2)
@@ -70,7 +72,20 @@ furigana lookup '灰桜'
 3. **`overrides_file`** ← `data/overrides.toml`
 4. **`add_entry`** ← API で直接追加 (最強)
 
-その上で **token 単位での読み解決優先順位** は (`reading::pipeline::resolve_reading`):
+その上で、 **chunks/split() の階層** で先に確定するものは形態素解析パイプラインに
+渡らずそのまま採用される (`docs/ARCHITECTURE.md#step-2-の詳細-numberchunkersplit-の階層的優先確定` 参照)。
+代表的な確定経路:
+
+- **階層 4.5 jukugo prefix-match** — `core/jukugo/**/*.toml` の ≥3 字 entry を Aho-Corasick
+  で 1 chunk に固定 (例: 「千本桜」 → センボンザクラ、 「義経千本桜」 → ヨシツネセンボンザクラ)。
+  homonyms 除外 + ≥3 字制約で副作用ゼロ
+- **階層 4.7 loanwords** — `core/loanwords/**/*.toml` を **完全一致 lookup** (case-fold +
+  全角→半角)。 「Kubernetes」「PostgreSQL」「TypeScript-config」 を 1 chunk として丸ごと
+  切り出し、 hit / miss どちらでも Lindera 経路に渡らない (substring 切断ゼロ + 推測誤読
+  ゼロ)
+
+形態素解析に到達した token については **token 単位での読み解決優先順位** が適用される
+(`reading::pipeline::resolve_reading`):
 
 1. 漢字なし → `None`
 2. **context rule** (`data/context/*.toml`) — 同形異音語 (一日 / 上手 / 市場) の動的読み分け
@@ -80,6 +95,10 @@ furigana lookup '灰桜'
 6. fallback `None`
 
 context rule が **辞書より先** に評価されるため、`一日` を `general.toml` に登録していても、context rule の `prev_ends_with_month` で「6月一日」が「ロクガツツイタチ」になる。逆に `一日` を登録しないと Lindera が「一」+「日」に分解した結果がそのまま使われるため、登録は依然必要。
+
+**`Dict::from_toml_dir` の `loanwords/` skip**: 上記階層 4.7 で別管理されるため、
+`core/loanwords/` 配下の TOML は jukugo / unihan には混入しない (Dict 側で再帰 walk 時に
+スキップ)。 ASCII surface が jukugo prefix-match で誤って hit する事故を回避。
 
 詳しい設計は [`docs/ARCHITECTURE.md`](./ARCHITECTURE.md#step-5-の詳細-resolve_reading-の-5-段階優先順位) を参照。
 

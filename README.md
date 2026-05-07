@@ -21,6 +21,8 @@
   - Web / ブログ記事の `<ruby>` タグ自動生成
   - 配信テロップ用の難読語チェック
   - DB の人名・地名フィールドに読みフリガナを付与
+  - **IT 用語の英単語にも対応** (Kubernetes / Docker / TypeScript / PostgreSQL 等を
+    `core/loanwords/*.toml` で登録 → chunk 全体を完全一致 lookup、 substring 切断ゼロ)
 - ❌ 苦手なこと:
   - **超高精度な文脈読み分け**: 機械学習ベース (BERT 等) のニューラル推論はしません
   - **辞書にない人名・固有名詞**: `furigana-dict` の手動 PR で語彙拡充が前提
@@ -30,8 +32,11 @@
 「不確かなときは形態素解析の素朴な結果に fall back」「辞書 hit したものは確実に固定」という **保守的な決定論**。コミュニティ PR で精度が上がる設計。
 
 > **Status**: alpha (0.1.x)。`context rule → jukugo → Lindera → unihan` の 5 段階優先順位で読み解決パイプラインを実装。
+> `chunks/split()` 段階で **jukugo prefix-match** (千本桜 等の固有複合語を先取り) と
+> **loanwords 完全一致** (Kubernetes / Docker 等の英単語) を独立階層で持つので、
+> 助数詞 / 形態素解析より優先される。
 > `furigana serve --auto-pull` および `[auto_update]` config による admin_tokens 不要の辞書自動更新、`core/works/<medium>/<title>.toml` のような作品単位細分化辞書 (loader 全階層再帰) もサポート。
-> 辞書 (`ja-furigana-dict`) は jukugo を 24 カテゴリに分類して継続拡充中、件数の最新値は dict repo の [STATS.md](https://github.com/RyuuNeko1107/ja-furigana-dict/blob/master/STATS.md) を参照。
+> 辞書 (`ja-furigana-dict`) は jukugo を 24 カテゴリに分類 + `loanwords/` で IT 用語等の英単語を別管理、件数の最新値は dict repo の [STATS.md](https://github.com/RyuuNeko1107/ja-furigana-dict/blob/master/STATS.md) を参照。
 > `0.1.x` の間は公開 API / TOML スキーマ / CLI 引数 / HTTP レスポンス構造が予告なく変わりえます。詳細とロードマップは [docs/ROADMAP.md](./docs/ROADMAP.md)、変更履歴は [CHANGELOG.md](./CHANGELOG.md)。
 
 ## 名前の対応 (混乱しやすい点)
@@ -80,6 +85,12 @@ cargo install ja-furigana-cli
 # 1 ショット変換
 furigana lookup '灰桜の散る道'                   # → tts (default)
 furigana lookup '灰桜の散る道' --mode ruby       # → {灰桜|はいざくら}...
+
+# 出力ルール: 漢字 → ひらがな、 アルファベット / 数字 / 記号 → カタカナ統一
+furigana lookup 'Anthropic の Claude を使う' --mode hiragana
+# → アンソロピックのクロードをつかう
+furigana lookup 'PostgreSQL 16 で動かす' --mode hiragana
+# → ポストグレスキューエルジュウロクでうごかす
 
 # 対話モード (引数なしで起動 = REPL)
 furigana

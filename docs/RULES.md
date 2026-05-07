@@ -32,6 +32,7 @@ ja-furigana のルールはすべて [`ja-furigana-dict`](https://github.com/Ryu
 | ラテン文字 | [`rules/latin.toml`](https://github.com/RyuuNeko1107/ja-furigana-dict/blob/master/rules/latin.toml) | `data/latin.toml` | A→エー / B→ビー ... |
 | 例外語句 | [`rules/numeric_phrases.toml`](https://github.com/RyuuNeko1107/ja-furigana-dict/blob/master/rules/numeric_phrases.toml) | `data/numeric_phrases.toml` | 二十歳→ハタチ + 百個 / 千個 等 |
 | **後処理** | [`rules/postprocess.toml`](https://github.com/RyuuNeko1107/ja-furigana-dict/blob/master/rules/postprocess.toml) | `data/postprocess.toml` | **mode 別 regex 置換** (Step 7、0.1.2 新設) |
+| **外来語** | [`core/loanwords/it.toml`](https://github.com/RyuuNeko1107/ja-furigana-dict/blob/master/core/loanwords/it.toml) (拡張可) | `data/loanwords/it.toml` | **IT 用語等の英字 surface** (Kubernetes / Docker / TypeScript 等)、 chunks 階層 4.7 で完全一致 lookup |
 
 `furigana dict pull` で取得 → builder の `core_dict_dir(path)` / `rules_dir(path)` で mount される。詳細は [DATA_LAYOUT.md](./DATA_LAYOUT.md) を参照。
 

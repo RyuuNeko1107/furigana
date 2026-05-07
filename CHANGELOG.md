@@ -18,8 +18,67 @@
 - alpha.6 GitHub release は binary upload (5 platform) は完了済、Docker image のみ
   欠けた状態で残置。Docker image は次の release で復旧予定。
 
-### Added
-- (次の release で入れる変更をここに追記)
+### Added (loanwords / IT 用語の英単語対応)
+
+- **`Loanwords` data type** (`crates/furigana/src/loanwords.rs`):
+  - `[entries]` 形式の TOML を recursive load (`core/loanwords/**/*.toml`)
+  - **case-fold + 全角→半角 正規化** + **完全一致 lookup** (substring 切断ゼロ)
+  - 「Kubernetes」「kubernetes」「Ｋｕｂｅｒｎｅｔｅｓ」 すべて同じ entry に hit
+- **`chunks/split()` 階層 4.7** (jukugo prefix-match の後、 scale より前):
+  - regex `[A-Za-zＡ-Ｚａ-ｚ][A-Za-z0-9...+#._\-]*` で英単語 chunk を **1 unit
+    として丸ごと切り出し** (Lindera/IPADIC が token 単位でぶった切るのを防ぐ)
+  - chunk 全体に対して loanwords lookup
+    - hit → reading 確定 chunk
+    - miss → ASCII surface のまま読みなしで残す (Lindera 経路に渡らないので
+      IPADIC 推測誤読も発生しない)
+- **`Furigana::builder().core_loanwords_dir(p)`** API 追加
+- **`<data_dir>/data/loanwords/`** を CLI auto-load (`furigana lookup` /
+  `furigana serve` 等で透過的に使える)
+- **`Dict::from_toml_dir` の再帰 walk から `loanwords/` を除外**:
+  - これは ASCII surface 専用で `Loanwords` 側で別管理されるため、 jukugo / unihan に
+    混入させると jukugo prefix-match で「TypeScript」 等が誤って hit する問題があった
+- 関連 GitHub issue: [#19 (closed)](https://github.com/RyuuNeko1107/ja-furigana/issues/19)
+
+### Changed (出力ルール仕様変更: surface 文字種で reading 表記を切替)
+
+`reading::output::tokens_to_hiragana` の出力ルールを surface 文字種で分岐:
+
+- **漢字を含む surface** → reading をひらがな化 (既存挙動)
+  - 「灰桜」 + ハイザクラ → 「はいざくら」
+- **漢字を含まない surface** (ASCII / 全角英字 / カタカナ / ひらがな / 数字 / 記号) →
+  reading を **カタカナに統一** (`hira_to_kata` 適用)
+  - 「Kubernetes」 + クバネティス → 「クバネティス」 (ASCII カタカナ維持)
+  - 「3」 + サン → 「サン」 (数字 chunk もカタカナ)
+  - 「〜」 + から → 「カラ」 (symbols.toml の ひらがな登録もカタカナに揃える)
+  - 「3本」 (漢字「本」 含む) → 「さんぼん」 (既存通りひらがな化)
+
+これにより 「Anthropic の Claude を使う」 → 「アンソロピックのクロードをつかう」 の
+ような自然な日本語混在表記が出るようになった。 ja-furigana-dict 側 corpus でも
+ASCII / 数字 / 記号 を含む 4 件の expected を追従更新。
+
+### Added (本体側 issue 起票 — 検証ループ R12-R17 で副産物として発見)
+
+- [#13](https://github.com/RyuuNeko1107/ja-furigana/issues/13) bug: 「淹れる」 → 「いれるれる」 (送り仮名二重出力)
+- [#14](https://github.com/RyuuNeko1107/ja-furigana/issues/14) bug: 「点ける」 → 「てんける」 (単漢字 unihan default が動詞活用を上書き)
+- [#15](https://github.com/RyuuNeko1107/ja-furigana/issues/15) bug: unihan default が Lindera reading に override される (鋸 / 土 等)
+- [#16](https://github.com/RyuuNeko1107/ja-furigana/issues/16) feat: 踊り字 「々」 の自動展開 (神々 → かみがみ)
+- [#17](https://github.com/RyuuNeko1107/ja-furigana/issues/17) bug: 動詞 default reading 選択ズレ (摘む → つまむ)
+- [#18](https://github.com/RyuuNeko1107/ja-furigana/issues/18) (closed) perf/lookup priority: 助数詞 / numeric_phrases が jukugo 最大マッチングを阻害 — 修正済み
+
+### Changed (lookup priority — issue #18 解決)
+
+- **`NumericPhraseMatcher` と `NumberChunker` に jukugo Aho-Corasick automaton を Arc 共有**:
+  - phrase / counter / scale が jukugo entry の真部分集合を切り出してしまう問題を解決
+  - 例: 「千本桜」 で「千本」 を numeric_phrases (千本=センボン) が先取りしていた
+    → jukugo「千本桜」 を super-set check で優先採用 → 「センボンザクラ」 (連濁ザ) で出力
+  - 副作用ゼロを担保:
+    - **homonyms (`rules/context/*.toml` の `[[rule]] surface` 51 件) を AC patterns
+      から除外** → reading pipeline の context rule (例: 「翡翠+が+水辺」 → カワセミ)
+      は無傷
+    - **≥3 字 jukugo のみ AC に登録** → IPADIC が一語で返す長い複合語
+      (「烏賊墨」 → イカスミ、 「金平糖」 → コンペイトウ) を 2 字 jukugo
+      (烏賊 / 金平) で先取り regression が出ない
+- aho-corasick 1.x を依存に追加 (workspace 共有)
 
 ## [0.1.0-alpha.6] - 2026-05-07
 

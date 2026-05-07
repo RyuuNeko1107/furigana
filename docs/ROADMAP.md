@@ -62,15 +62,35 @@ ja-furigana の中長期計画。**完了履歴は [CHANGELOG.md](../CHANGELOG.m
   の細分化構造を許容
 - **作品単位辞書 `core/works/`** — ja-furigana-dict 側で新設、東方Project を seed として
   収録。サブポリシー: 公式読みのみ採録、出典コメント必須、二次創作読み禁止
-- **辞書大規模拡充** (jukugo 24 カテゴリ、4k 件超) — vehicles / clothes / architecture /
+- **辞書大規模拡充** (jukugo 24 カテゴリ、4.5k 件超) — vehicles / clothes / architecture /
   literature / science / emotions / idioms / politics / religions / music / sports を含む
 - **STATS.md 自動生成基盤** — `tools/regen_stats.py` で件数 / サイズ table を再生成、
   TOML 編集後 master push されると GitHub Actions が auto-commit で STATS.md を更新。
   各 TOML ファイル先頭の `[meta] description` を引いて用途列を自動生成
 
+### Phase 5 (lookup priority 強化 + 外来語サポート + 出力ルール仕様)
+- **jukugo Aho-Corasick prefix-match** — `chunks::NumberChunker::split` 階層 4.5
+  で文頭から最長 match で固有複合語を 1 chunk に固定。 `numeric_phrases` の「千本」 が
+  「千本桜」 を分断する問題 ([issue #18](https://github.com/RyuuNeko1107/ja-furigana/issues/18)) を解決。
+  homonyms 除外 + ≥3 字制約で副作用ゼロ
+- **外来語 (loanwords) 辞書サポート** ([issue #19](https://github.com/RyuuNeko1107/ja-furigana/issues/19)) —
+  `Loanwords` data type 新設、 `chunks/split()` 階層 4.7 で英単語 chunk を 1 unit
+  として丸ごと切り出し + 完全一致 lookup (case-fold + 全角→半角)。 IT 用語の
+  Kubernetes / Docker / TypeScript / PostgreSQL 等を seed
+- **出力ルール仕様変更** — surface の文字種で reading 表記を切替:
+  漢字含む → ひらがな化 (既存) / 漢字含まない (ASCII / カタカナ / 数字 / 記号) →
+  カタカナに統一。 「Anthropic の Claude を使う」 → 「アンソロピックのクロードをつかう」
+  のような自然な混在表記が可能に
+- **cross-file 重複検出の自動化** — `validate.py` に divergent reading 検出 (CI fail 化) +
+  `tools/list_dups.py` で `STATS_DUPS.md` を auto-generate。 「一蓮托生
+  イチレント vs イチレンタ」 のような事故を構造的に防止
+- **本体側 issue 起票** ([#13](https://github.com/RyuuNeko1107/ja-furigana/issues/13)
+  〜 [#17](https://github.com/RyuuNeko1107/ja-furigana/issues/17)): 検証ループで
+  発見した動詞活用 / unihan lookup / 踊り字「々」 / 動詞 default 系の bug を分離記録
+
 ## 進行中 / 候補
 
-### Phase 5 候補
+### Phase 6 候補
 
 - [ ] **0.1.0 正式版へ昇格** — alpha → 安定版。リリース前に確認するもの:
   - 公開 Rust API のシグネチャ最終確認 (rename したくないものは fix)
