@@ -2130,7 +2130,7 @@ DEALINGS IN THE SOFTWARE.
 
 Used by:
 
-- [`redox_syscall` v0.7.4](https://gitlab.redox-os.org/redox-os/syscall)
+- [`redox_syscall` v0.7.5](https://gitlab.redox-os.org/redox-os/syscall)
 
 <details>
 <summary>License text</summary>
@@ -4451,8 +4451,8 @@ SOFTWARE.
 
 Used by:
 
-- [`ja-furigana` v0.1.0-alpha.5](https://github.com/RyuuNeko1107/ja-furigana)
-- [`ja-furigana-cli` v0.1.0-alpha.5](https://github.com/RyuuNeko1107/ja-furigana)
+- [`ja-furigana` v0.1.0-alpha.6](https://github.com/RyuuNeko1107/ja-furigana)
+- [`ja-furigana-cli` v0.1.0-alpha.6](https://github.com/RyuuNeko1107/ja-furigana)
 - [`anes` v0.1.6](https://github.com/zrzka/anes-rs)
 - [`jni-macros` v0.22.4](https://github.com/jni-rs/jni-rs)
 - [`jni-sys-macros` v0.4.1](https://github.com/jni-rs/jni-sys)

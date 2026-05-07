@@ -81,6 +81,39 @@ curl -X POST http://127.0.0.1:8000/furigana \
 
 未知の `mode` 値は **silently `tts` (default) にフォールバック** (エラーにはならない)。
 
+### 出力ルール (`tts` / `hiragana` mode の reading 表記)
+
+surface の文字種で reading 表記を切替えます (詳細は
+[ARCHITECTURE.md#step-6-の詳細](./ARCHITECTURE.md#step-6-の詳細-tokens_to_hiragana-の出力ルール-surface-文字種で分岐)):
+
+- **漢字を含む surface** → reading をひらがな化
+- **漢字を含まない surface** (ASCII / 全角英字 / カタカナ / ひらがな / 数字 / 記号) →
+  reading を **カタカナに統一**
+
+出力例:
+
+```sh
+curl 'http://127.0.0.1:8000/furigana?text=灰桜の散る道&mode=hiragana'
+# → {"result":"はいざくらのちるみち","mode":"hiragana"}
+
+curl 'http://127.0.0.1:8000/furigana?text=Anthropic%20の%20Claude%20を使う&mode=hiragana'
+# → {"result":"アンソロピックのクロードをつかう","mode":"hiragana"}
+
+curl 'http://127.0.0.1:8000/furigana?text=PostgreSQL%2016%20で動かす&mode=hiragana'
+# → {"result":"ポストグレスキューエルジュウロクでうごかす","mode":"hiragana"}
+
+curl 'http://127.0.0.1:8000/furigana?text=Kubernetesが安定&mode=ruby'
+# → {"result":"{Kubernetes|クバネティス}{が|が}{安定|あんてい}","mode":"ruby"}
+```
+
+dict にない英単語は **ASCII surface のまま読みなし** (Lindera 経路に渡らないので
+誤読しない):
+
+```sh
+curl 'http://127.0.0.1:8000/furigana?text=UnknownTechName%20が良い&mode=hiragana'
+# → {"result":"UnknownTechNameがよい","mode":"hiragana"}
+```
+
 ## エラー応答
 
 ```jsonc

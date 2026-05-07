@@ -11,6 +11,7 @@
 | 二字 / 三字熟語 (灰桜→ハイザクラ等) | **`furigana-dict`** [`core/jukugo/general.toml`](https://github.com/RyuuNeko1107/ja-furigana-dict/blob/master/core/jukugo/general.toml) |
 | 四字熟語 (一期一会→イチゴイチエ等) | 同上 [`core/jukugo/four_char.toml`](https://github.com/RyuuNeko1107/ja-furigana-dict/blob/master/core/jukugo/four_char.toml) |
 | 固有名詞・地名・人名の読み | 同上 `core/jukugo/{proper_nouns,place_names,personal_names}.toml` |
+| **IT 用語等の英単語の読み** (Kubernetes / Docker / TypeScript 等) | 同上 [`core/loanwords/it.toml`](https://github.com/RyuuNeko1107/ja-furigana-dict/blob/master/core/loanwords/it.toml) (将来 company.toml 等にサブ分類予定) |
 | 単漢字フォールバック | 同上 `core/unihan.toml` (43k+ 字) |
 | 異体字 → 標準字 (髙→高 等) | 同上 `core/compat.toml` |
 | 数字を含む例外語句 (二十歳→ハタチ 等) | 同上 `rules/numeric_phrases.toml` |
@@ -60,10 +61,11 @@ cargo run -p ja-furigana --example basic
 | `src/lib.rs` + `api.rs` | 公開 API (`Furigana` / `FuriganaBuilder`) |
 | `src/analyzer.rs` | Lindera ラッパ |
 | `src/kana.rs` | ひら⇄カタ + Unicode 正規化 |
-| `src/numbers/` | 数値処理 (digit / counter / phrase / extras / helpers) |
-| `src/chunks/` | テキスト全体の数値チャンク分割 |
-| `src/reading/` | 読み解決パイプライン (pipeline / merge / context / output) |
-| `src/dict.rs` | 単純 surface→reading 辞書 |
+| `src/numbers/` | 数値処理 (digit / counter / phrase / extras / helpers)、 `phrase.rs` は jukugo Aho-Corasick super-set check 付き |
+| `src/chunks/` | テキスト全体の数値・固有語チャンク分割 (URL/日付/jukugo/loanword/scale/SI/counter/symbols/digit の階層的優先確定) |
+| `src/reading/` | 読み解決パイプライン (pipeline / merge / context / output)、 `output.rs` で surface 文字種ごとの reading 表記切替 |
+| `src/dict.rs` | 単純 surface→reading 辞書 (jukugo / unihan 内部分離、 再帰 walk から `loanwords/` skip) |
+| `src/loanwords.rs` | 外来語 (IT 用語等の英単語) 辞書 (case-fold + 全角→半角 + 完全一致 lookup) |
 | `src/tts.rs` | TTS 整形 + segment |
 | `src/loader.rs` | TOML 汎用パーサ |
 | `src/rules/` | ルールデータ schema |
