@@ -29,10 +29,10 @@
 
 「不確かなときは形態素解析の素朴な結果に fall back」「辞書 hit したものは確実に固定」という **保守的な決定論**。コミュニティ PR で精度が上がる設計。
 
-> **Status**: **v0.1.0-alpha.6** (2026-05-07)。本番 ryuuneko.com の公開フリガナ API パイプラインに揃えた `context rule → jukugo → Lindera → unihan` の 5 段階優先順位を実装、内部例文 75 件回帰で **75/75 (100%)** 達成。
-> alpha.5 で `furigana serve --auto-pull` と `[auto_update]` config による **admin_tokens 不要の辞書自動更新**、alpha.6 で **辞書ディレクトリ全階層再帰スキャン** (作品単位 1 ファイル等の細分化構造に対応) を追加。
-> 辞書 (`ja-furigana-dict`) は jukugo を **24 ファイル / 約 4,300 件** に拡充済。
-> `0.1.x` の間は公開 API / TOML スキーマ / CLI 引数 / HTTP レスポンス構造が予告なく変わりえます。詳細とロードマップは [docs/ROADMAP.md](./docs/ROADMAP.md)。
+> **Status**: alpha (0.1.x)。本番 ryuuneko.com の公開フリガナ API パイプラインに揃えた `context rule → jukugo → Lindera → unihan` の 5 段階優先順位を実装。
+> `furigana serve --auto-pull` および `[auto_update]` config による admin_tokens 不要の辞書自動更新、`core/works/<medium>/<title>.toml` のような作品単位細分化辞書 (loader 全階層再帰) もサポート。
+> 辞書 (`ja-furigana-dict`) は jukugo を 24 カテゴリに分類して継続拡充中、件数の最新値は dict repo の [STATS.md](https://github.com/RyuuNeko1107/ja-furigana-dict/blob/master/STATS.md) を参照。
+> `0.1.x` の間は公開 API / TOML スキーマ / CLI 引数 / HTTP レスポンス構造が予告なく変わりえます。詳細とロードマップは [docs/ROADMAP.md](./docs/ROADMAP.md)、変更履歴は [CHANGELOG.md](./CHANGELOG.md)。
 
 ## 名前の対応 (混乱しやすい点)
 

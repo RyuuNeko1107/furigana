@@ -157,7 +157,7 @@ client                                    server (Arc<RwLock<Arc<Furigana>>>)
 - **データ駆動 (TOML)**: ルール変更で再ビルド不要、PR が contributors からも入りやすい
 - **Lindera + IPADIC 固定**: `embed-ipadic` で配布物に同梱。NEologd は opt-in feature flag で対応する案 (Phase 3 候補、[Issue #9](https://github.com/RyuuNeko1107/ja-furigana/issues/9))
 - **`Dict` の jukugo / unihan 分離**: 内部 HashMap を 2 つに分けて `lookup_jukugo` / `lookup_unihan` で別 lookup。本番 ryuuneko.com の Step 5 「辞書 → 形態素 → unihan」の 3 段階優先順位に揃えるため (0.1.0-alpha.3 で導入)。
-- **`Dict::from_toml_dir` 全階層再帰**: 0.1.0-alpha.6 で `core/works/<medium>/<title>.toml` のような任意深度のサブディレクトリを許容。配布 tar.gz の展開結果を想定するため symlink ループ対策は持たない (静的データ前提)。jukugo の 1 階層構造は新 loader の subset として完全互換。works/ の運用ルールは [`ja-furigana-dict/core/works/README.md`](https://github.com/RyuuNeko1107/ja-furigana-dict/blob/master/core/works/README.md) (公式読みのみ採録、出典コメント必須)。
+- **`Dict::from_toml_dir` 全階層再帰**: `core/works/<medium>/<title>.toml` のような任意深度のサブディレクトリを許容。配布 tar.gz の展開結果を想定するため symlink ループ対策は持たない (静的データ前提)。works/ の運用ルールは [`ja-furigana-dict/core/works/README.md`](https://github.com/RyuuNeko1107/ja-furigana-dict/blob/master/core/works/README.md) (公式読みのみ採録、出典コメント必須)。
 - **`postprocess.toml` (Step 7)**: 辞書 / context rule で表現しづらい文字列レベルの最終調整 (例: 「ジュウパー → ジュッパー」の促音化補正)。mode 別 (`hiragana` / `ruby` / `tts` / `romaji`) フィルタ + regex pattern + capture group 参照可。
 - **`NumberChunker` の漢数字対応**: `kansuji_to_arabic` (`numbers::helpers`) で「一」「二十一」等を Arabic に変換し、`DATE_KANJI_MD_RE` 等の日付 regex でマッチ。「6月一日」が正しく日付 chunk として認識される。
 - **counter「日」の単独 = 期間扱い**: `chunks::NumberChunker` で `read_counter` (単独) と `read_counter_in_date` (日付内) を分離。`days.toml` の特殊読み (1=ツイタチ等) は日付 chunk 内でのみ採用。「1日に 2〜3回」は単独経由で「イチニチに」、「6月1日に」は日付経由で「ツイタチに」になる。
