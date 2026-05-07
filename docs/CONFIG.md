@@ -49,13 +49,13 @@ admin_tokens = []  # 空 = /admin/* 機能 off (503)
 |---|---|---|---|
 | `enabled` | bool | `false` | true で background polling task を spawn (opt-in) |
 | `interval` | string | `"24h"` | polling 間隔。`"30m" / "1h" / "6h" / "1d" / "3600"` 等 |
-| `pin` | string | `""` | ピン留めする tag (`"v0.1.2"`)。空なら **最新追従** |
+| `pin` | string | `""` | ピン留めする tag (`"v2026.05.08"`)。空なら **最新追従** |
 
 ```toml
 [auto_update]
 enabled  = true
 interval = "6h"
-# pin = "v0.1.2"   # コメントアウトで最新追従
+# pin = "v2026.05.08"   # コメントアウトで最新追従
 ```
 
 GitHub API rate limit (60 req/h/IP) を考えて `interval` は **1h 以上推奨**。

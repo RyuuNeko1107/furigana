@@ -91,7 +91,7 @@ GitHub Releases から `ja-furigana-dict` の tarball を取得 + SHA-256 検証
 
 ```sh
 furigana dict pull                       # 最新 release
-furigana dict pull --version v0.1.1      # version pin
+furigana dict pull --version v2026.05.08      # version pin
 ```
 
 サーバ運用 (alpha.5+) では、これを **起動時に自動実行** する `--auto-pull` フラグや、
@@ -126,7 +126,7 @@ path traversal 防御として、archive entry の展開先が `<data_dir>/data/
 
 ```
 all> :pull              # 同名コマンド (`furigana dict pull` 相当)
-all> :pull v0.1.1       # version pin
+all> :pull v2026.05.08       # version pin
 all> :reload            # data_dir から in-memory 辞書を再 build
 all> :size              # dict_size 表示
 ```
