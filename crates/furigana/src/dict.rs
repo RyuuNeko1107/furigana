@@ -8,8 +8,9 @@
 //! "黎明" = "レイメイ"
 //! ```
 //!
-//! 起動時に user/core dict ディレクトリ配下の `*.toml` を全 scan し、
-//! `HashMap<String, String>` にマージする。
+//! 起動時に user/core dict ディレクトリ配下の `*.toml` を **全階層再帰** で scan し、
+//! `HashMap<String, String>` にマージする (`core/jukugo/general.toml` も
+//! `core/works/game/series/touhou.toml` も同じく拾われる)。
 //!
 //! 優先度の制御は呼び出し側 (Furigana 構造体) で行う想定。
 //! Dict 自体は単一階層 — 後に挿入したエントリが先のエントリを上書きする。
@@ -33,7 +34,23 @@
 use crate::error::{FuriganaError, Result};
 use serde::Deserialize;
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+
+/// ディレクトリを再帰的に walk して `*.toml` のフルパスを収集する。
+///
+/// 配布 tar.gz の展開結果を想定するため、symlink ループや権限なしディレクトリは
+/// std::fs のエラーが上に伝播する (caller 側で `?` で素直に返る)。
+fn collect_toml_files_recursive(dir: &Path, out: &mut Vec<PathBuf>) -> std::io::Result<()> {
+    for entry in std::fs::read_dir(dir)? {
+        let path = entry?.path();
+        if path.is_file() && path.extension().is_some_and(|e| e == "toml") {
+            out.push(path);
+        } else if path.is_dir() {
+            collect_toml_files_recursive(&path, out)?;
+        }
+    }
+    Ok(())
+}
 
 /// TOML ファイルの `[entries]` セクションを受ける defensive な型。
 ///
@@ -101,10 +118,11 @@ impl Dict {
 
     /// ディレクトリ配下の `*.toml` 全てから辞書をマージ構築
     ///
-    /// - **サブディレクトリは 1 階層まで再帰** (`core/jukugo/general.toml` 等)
-    /// - 直下 + サブディレクトリ直下の `*.toml` を全集合してファイル名ソート順で
-    ///   読み込み、後に来るファイルが上書きする
+    /// - **サブディレクトリは無制限に再帰** (例: `core/jukugo/general.toml`、
+    ///   `core/works/game/touhou.toml` 等の任意の深さ)
+    /// - 全 `*.toml` を集めて絶対パス順でソートし、後に来るファイルが上書きする
     /// - ディレクトリが存在しない場合は空辞書を返す
+    /// - 配布 tar.gz から展開した静的データを想定するため、symlink ループ対策は持たない
     ///
     /// # Errors
     /// I/O 失敗 / TOML パース失敗。
@@ -120,21 +138,8 @@ impl Dict {
             )));
         }
 
-        // 直下 + 1 階層のサブディレクトリ直下の *.toml を集める
         let mut files: Vec<std::path::PathBuf> = Vec::new();
-        for entry in std::fs::read_dir(dir)?.filter_map(std::result::Result::ok) {
-            let path = entry.path();
-            if path.is_file() && path.extension().is_some_and(|e| e == "toml") {
-                files.push(path);
-            } else if path.is_dir() {
-                for sub in std::fs::read_dir(&path)?.filter_map(std::result::Result::ok) {
-                    let sub_path = sub.path();
-                    if sub_path.is_file() && sub_path.extension().is_some_and(|e| e == "toml") {
-                        files.push(sub_path);
-                    }
-                }
-            }
-        }
+        collect_toml_files_recursive(dir, &mut files)?;
         files.sort();
 
         let mut merged = Self::default();
@@ -359,6 +364,35 @@ mod tests {
         assert_eq!(d.lookup("灰桜"), Some("ハイザクラ"));
         assert_eq!(d.lookup("湯島"), Some("ユシマ"));
         assert_eq!(d.lookup("黎明"), Some("レイメイ"));
+        assert_eq!(d.len(), 3);
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn from_toml_dir_recurses_arbitrary_depth() {
+        // works/game/touhou.toml のような任意深度の構造を扱えること
+        let dir = fresh_temp_dir("dir_deep");
+        let deep = dir.join("works").join("game").join("series");
+        std::fs::create_dir_all(&deep).unwrap();
+        std::fs::write(
+            deep.join("touhou.toml"),
+            "[entries]\n\"霊夢\" = \"レイム\"\n\"魔理沙\" = \"マリサ\"\n",
+        )
+        .unwrap();
+        // 別の深い階層
+        let deep2 = dir.join("works").join("anime");
+        std::fs::create_dir_all(&deep2).unwrap();
+        std::fs::write(
+            deep2.join("placeholder.toml"),
+            "[entries]\n\"宵闇\" = \"ヨイヤミ\"\n",
+        )
+        .unwrap();
+
+        let d = Dict::from_toml_dir(&dir).unwrap();
+        assert_eq!(d.lookup("霊夢"), Some("レイム"));
+        assert_eq!(d.lookup("魔理沙"), Some("マリサ"));
+        assert_eq!(d.lookup("宵闇"), Some("ヨイヤミ"));
         assert_eq!(d.len(), 3);
 
         std::fs::remove_dir_all(&dir).ok();

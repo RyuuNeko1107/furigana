@@ -29,7 +29,9 @@
 
 「不確かなときは形態素解析の素朴な結果に fall back」「辞書 hit したものは確実に固定」という **保守的な決定論**。コミュニティ PR で精度が上がる設計。
 
-> **Status**: **v0.1.0-alpha.3** (2026-05-06)。本番 ryuuneko.com の公開フリガナ API パイプラインに揃えた `context rule → jukugo → Lindera → unihan` の 5 段階優先順位を実装、内部例文 75 件回帰で **75/75 (100%)** 達成。
+> **Status**: **v0.1.0-alpha.6** (2026-05-07)。本番 ryuuneko.com の公開フリガナ API パイプラインに揃えた `context rule → jukugo → Lindera → unihan` の 5 段階優先順位を実装、内部例文 75 件回帰で **75/75 (100%)** 達成。
+> alpha.5 で `furigana serve --auto-pull` と `[auto_update]` config による **admin_tokens 不要の辞書自動更新**、alpha.6 で **辞書ディレクトリ全階層再帰スキャン** (作品単位 1 ファイル等の細分化構造に対応) を追加。
+> 辞書 (`ja-furigana-dict`) は jukugo を **24 ファイル / 約 4,300 件** に拡充済。
 > `0.1.x` の間は公開 API / TOML スキーマ / CLI 引数 / HTTP レスポンス構造が予告なく変わりえます。詳細とロードマップは [docs/ROADMAP.md](./docs/ROADMAP.md)。
 
 ## 名前の対応 (混乱しやすい点)
@@ -54,7 +56,7 @@
 ```toml
 # Cargo.toml
 [dependencies]
-ja-furigana = "0.1.0-alpha.3"
+ja-furigana = "0.1.0-alpha.6"
 ```
 
 ```rust
@@ -85,6 +87,9 @@ furigana
 
 # HTTP サーバー
 furigana serve                                  # http://127.0.0.1:8000
+furigana serve --auto-pull                      # 起動時に GitHub Releases から最新辞書を取得
+# config.toml に [auto_update] enabled=true / interval="24h" で background 定期更新
+# (どちらも admin_tokens 設定不要)
 
 # Docker
 docker run --rm -p 8000:8000 ghcr.io/ryuuneko1107/furigana:latest
