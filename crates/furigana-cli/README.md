@@ -37,7 +37,7 @@ furigana dict list                       # 現状サマリ
 furigana dict remove 灰桜
 furigana dict import path/to/extra.toml  # 既存 TOML を user 配下に取り込み
 
-# ローカルサーバー (本番 /furigana API と互換)
+# ローカル HTTP サーバー (`/furigana` エンドポイント)
 furigana serve                                 # http://127.0.0.1:8000
 furigana serve --bind 0.0.0.0:8000             # 外部からも叩く
 furigana serve --auto-pull                     # 起動時に最新 dict を自動取得

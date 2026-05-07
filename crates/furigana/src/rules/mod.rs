@@ -48,6 +48,6 @@ pub struct RulesData {
     pub numeric_phrases: NumericPhrasesData,
     /// 異体字マップ (compat_map.toml)
     pub compat: CompatData,
-    /// 出力後処理 (postprocess.toml、本番 Step 7 互換)
+    /// 出力後処理 (postprocess.toml、Step 7 (mode 別後処理 regex))
     pub postprocess: PostProcessData,
 }

@@ -168,7 +168,7 @@ fn validate_length(text: &str) -> Result<(), ApiError> {
     Ok(())
 }
 
-/// 不正な mode は静かに `tts` (= default) に fallback (本番 API と同挙動)
+/// 不正な mode は静かに `tts` (= default) に fallback
 fn normalize_mode(mode: &str) -> String {
     match mode {
         "tts" | "hiragana" | "ruby" | "kanji" | "romaji" | "romaji-kunrei" => mode.to_string(),

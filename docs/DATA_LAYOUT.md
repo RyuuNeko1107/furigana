@@ -33,7 +33,7 @@ default では **実行ファイルと同じディレクトリ**:
     ├── numeric_phrases.toml       # 慣用語句 (二十歳→ハタチ 等) + 百個 / 千個 等
     ├── counters/*.toml            # 助数詞ルール (年度 / 時間半 含む 7+ ファイル)
     ├── context/*.toml             # 文脈ルール (3 ファイル: numbers / homonyms / special)
-    ├── postprocess.toml           # 後処理 regex 置換 (本番 Step 7、0.1.2 新設)
+    ├── postprocess.toml           # 後処理 regex 置換 (Step 7、0.1.2 新設)
     ├── user/                      # ユーザー追加 (`furigana dict add` で自動生成)
     │   └── cli-added.toml         #   `furigana dict add` 経由のエントリ
     └── overrides.toml              # 強制上書き用 (最優先、任意)
@@ -61,7 +61,7 @@ furigana lookup '灰桜'
 - Windows: `%LOCALAPPDATA%\furigana\furigana\`
 - macOS: `~/Library/Application Support/com.furigana.furigana/`
 
-## 優先順位 (本番互換、0.1.0-alpha.3 で整備)
+## 優先順位 (、0.1.0-alpha.3 で整備)
 
 辞書ソースの **merge 順** (後勝ち、`Furigana::builder` で組立):
 

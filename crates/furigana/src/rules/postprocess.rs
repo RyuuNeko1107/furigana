@@ -1,8 +1,7 @@
 //! 後処理ルール (regex ベースの mode 別置換)
 //!
 //! [`crate::Furigana::to_hiragana`] / `to_ruby` / `to_tts` / `to_romaji` の
-//! 出力直前に適用される regex 置換ルール。本番の
-//! Step 7 「正規表現ベースの置換ルール」に対応。
+//! 出力直前に適用される regex 置換ルール (Step 7 の正規表現ベース置換)。
 //!
 //! ## ユースケース
 //!

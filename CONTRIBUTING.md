@@ -43,7 +43,7 @@ cargo run -p ja-furigana --example basic
 
 `crates/furigana/tests/fixtures/rules/` に `furigana-dict` のスナップショットコピーがあります。
 スキーマ変更を伴う engine PR は、必要に応じてこのコピーも同期してください
-(本番データは `furigana-dict` 側がマスター)。
+(辞書データは `furigana-dict` 側がマスター)。
 
 ### 2-3. ルール schema を変更する場合
 

@@ -25,9 +25,8 @@
 //! [`Self::lookup_jukugo`] と [`Self::lookup_unihan`] で別々に lookup できる。
 //! [`Self::lookup`] は両者を試す互換 API (jukugo 優先)。
 //!
-//! 呼び出し側 ([`crate::reading::pipeline::resolve_reading`]) は本番の
-//! 公開 API パイプラインに揃えて
-//! `context rule → jukugo lookup → Lindera reading → unihan lookup` の順で評価する。
+//! 呼び出し側 ([`crate::reading::pipeline::resolve_reading`]) は
+//! `context rule → jukugo lookup → Lindera reading → unihan lookup` の優先順位で評価する。
 //! こうすることで、Lindera が動詞活用形 surface に対して持っている自然な reading を
 //! 単漢字 unihan の保守的読みが横取りすることがなくなる。
 

@@ -65,7 +65,7 @@ pub const LATIN_FILE: &str = "latin.toml";
 pub const NUMERIC_PHRASES_FILE: &str = "numeric_phrases.toml";
 /// 異体字マップ
 pub const COMPAT_FILE: &str = "compat_map.toml";
-/// 後処理ルール (本番 Step 7 互換)
+/// 後処理ルール (Step 7 (mode 別後処理 regex))
 pub const POSTPROCESS_FILE: &str = "postprocess.toml";
 
 // ─── 汎用 parse / load ──────────────────────────────────────────────────────

@@ -1,7 +1,7 @@
 //! `furigana serve` サブコマンド
 //!
 //! ローカル HTTP サーバー。default bind は `127.0.0.1:8000`。
-//! API は 本番の公開 Furigana API と互換 (drop-in 差し替え可能)。
+//! API は 公開 Furigana API と互換 (drop-in 差し替え可能)。
 //!
 //! ## 構成
 //! - [`types`]    : リクエスト / レスポンス型 + AppState

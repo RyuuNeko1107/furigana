@@ -31,7 +31,7 @@ ja-furigana のルールはすべて [`ja-furigana-dict`](https://github.com/Ryu
 | 記号 | [`rules/symbols.toml`](https://github.com/RyuuNeko1107/ja-furigana-dict/blob/master/rules/symbols.toml) | `data/symbols.toml` | + / − / % / 〜 / ・ / ※ ... |
 | ラテン文字 | [`rules/latin.toml`](https://github.com/RyuuNeko1107/ja-furigana-dict/blob/master/rules/latin.toml) | `data/latin.toml` | A→エー / B→ビー ... |
 | 例外語句 | [`rules/numeric_phrases.toml`](https://github.com/RyuuNeko1107/ja-furigana-dict/blob/master/rules/numeric_phrases.toml) | `data/numeric_phrases.toml` | 二十歳→ハタチ + 百個 / 千個 等 |
-| **後処理** | [`rules/postprocess.toml`](https://github.com/RyuuNeko1107/ja-furigana-dict/blob/master/rules/postprocess.toml) | `data/postprocess.toml` | **mode 別 regex 置換** (本番 Step 7、0.1.2 新設) |
+| **後処理** | [`rules/postprocess.toml`](https://github.com/RyuuNeko1107/ja-furigana-dict/blob/master/rules/postprocess.toml) | `data/postprocess.toml` | **mode 別 regex 置換** (Step 7、0.1.2 新設) |
 
 `furigana dict pull` で取得 → builder の `core_dict_dir(path)` / `rules_dir(path)` で mount される。詳細は [DATA_LAYOUT.md](./DATA_LAYOUT.md) を参照。
 
@@ -71,7 +71,7 @@ reading = "ツイタチ"          # 「ツイタチ」と読む
 
 使える match 条件 (prev / next / next-next / pos) の一覧は [`ja-furigana-dict/CONTRIBUTING.md`](https://github.com/RyuuNeko1107/ja-furigana-dict/blob/master/CONTRIBUTING.md#使える条件一覧) を参照。
 
-## 後処理 regex (`postprocess.toml`、本番 Step 7 互換)
+## 後処理 regex (`postprocess.toml`、Step 7 (mode 別後処理 regex))
 
 `Furigana::to_{hiragana,ruby,tts,romaji}` の **出力直前** に適用される regex 置換ルール。
 辞書 / context rule で表現しづらい文字列レベルの最終調整 (例: 促音化補正、mode 別の整形) に使う。
