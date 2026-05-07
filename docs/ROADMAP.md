@@ -48,9 +48,9 @@ ja-furigana の中長期計画。**完了履歴は [CHANGELOG.md](../CHANGELOG.m
   - 「6月一日」のような Arabic+漢数字混在日付が日付 chunk として認識
   - counter「N日」単独 = 期間扱い、日付内のみ days.toml の特殊読み (1=ツイタチ等) を採用
   - scale + 漢字 1 文字 unit の連結 (「1万円」「3億ドル」等を 1 chunk で)
-- **`postprocess.toml`** (Step 7 (mode 別後処理 regex)) — mode 別 regex 置換ルールの土台
-- **検証ループ駆動の品質改善** — `tools/check_samples.txt` (75 件) を回帰検証で
-  75/75 (100%) 達成
+- **`postprocess.toml`** — Step 7 (mode 別 regex 置換) の土台
+- **検証ループ駆動の品質改善** — 安定化した case を `ja-furigana-dict/tests/corpus/should_read.toml`
+  に promote する pattern を確立。CI で常時回帰検証 (`tools/run_corpus.py`)
 - CI: macOS test を週次 schedule に移動、cargo-audit + corpus regression job 追加
 
 ### Phase 4 (運用基盤の整備)
