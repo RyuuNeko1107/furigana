@@ -215,6 +215,17 @@ impl Dict {
     pub fn unihan_len(&self) -> usize {
         self.unihan.len()
     }
+
+    /// 熟語の (surface, reading) ペアを iter 公開
+    ///
+    /// `chunks::NumberChunker` が起動時に jukugo の Aho-Corasick automaton を
+    /// build するために使う (counter chunk が jukugo entry の真部分集合になって
+    /// いる場合に jukugo を優先するため)。
+    pub fn jukugo_iter(&self) -> impl Iterator<Item = (&str, &str)> {
+        self.jukugo
+            .iter()
+            .map(|(k, v)| (k.as_str(), v.as_str()))
+    }
 }
 
 #[cfg(test)]

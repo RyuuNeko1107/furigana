@@ -31,6 +31,9 @@ use crate::numbers::{
     symbol_char_reading,
 };
 use crate::rules::{CountersData, DaysData, RulesData, ScalesData, SymbolsData, UnitsData};
+use aho_corasick::AhoCorasick;
+use std::collections::HashMap;
+use std::sync::Arc;
 
 /// 数値テキストのオーケストレーション (regex pre-compiled)
 #[derive(Debug, Clone)]
@@ -48,6 +51,17 @@ pub struct NumberChunker {
     scale_re: Option<::regex::Regex>,
     /// SI 単位 (`(NUM)(km|kg|...)`)。空なら `None`。
     si_unit_re: Option<::regex::Regex>,
+
+    /// 熟語 (jukugo) の Aho-Corasick automaton。
+    ///
+    /// counter / scale が match した範囲の真上位集合となる jukugo entry が
+    /// 存在するか調べ、 あれば counter / scale を破棄して jukugo を採用する
+    /// (例: 「千本桜」 で 「千本」 が counter にマッチするが jukugo
+    /// 「千本桜」 がある場合、 「千本桜」 全体を 1 chunk に固定)。
+    ///
+    /// `None` の場合は何もしない (heteronym bypass 等の副作用ゼロで既存挙動)。
+    jukugo_ac: Option<Arc<AhoCorasick>>,
+    jukugo_map: Option<Arc<HashMap<String, String>>>,
 }
 
 impl NumberChunker {
@@ -67,7 +81,50 @@ impl NumberChunker {
             counter_re,
             scale_re,
             si_unit_re,
+            jukugo_ac: None,
+            jukugo_map: None,
         }
+    }
+
+    /// jukugo の Aho-Corasick automaton を注入する (起動時 1 回、 phrase_matcher と Arc 共有想定)
+    ///
+    /// `Furigana::build()` 側で 1 回 build した AC を chunker と phrase_matcher の両方に
+    /// Arc で渡す。 homonyms (context rule を持つ surface) は呼び出し側で予め除外済み。
+    pub fn set_jukugo(
+        &mut self,
+        ac: Arc<AhoCorasick>,
+        map: Arc<HashMap<String, String>>,
+    ) {
+        self.jukugo_ac = Some(ac);
+        self.jukugo_map = Some(map);
+    }
+
+    /// `rest` (テキストの現在位置以降) の文頭から match する jukugo の最長 surface 長と reading を返す
+    ///
+    /// 文頭からの最長一致が見つからない場合は `None`。
+    fn match_jukugo_at_start(&self, rest: &str) -> Option<(usize, String)> {
+        let ac = self.jukugo_ac.as_ref()?;
+        let map = self.jukugo_map.as_ref()?;
+        let mat = ac.find(rest)?;
+        if mat.start() != 0 {
+            return None;
+        }
+        let surface = &rest[..mat.end()];
+        let reading = map.get(surface)?.clone();
+        Some((mat.end(), reading))
+    }
+
+    /// `rest` の文頭から match する jukugo を、 `min_end_bytes` より厳密に長い場合のみ返す
+    ///
+    /// counter / scale が確定した範囲を真に含む (= longer end) jukugo entry がある場合に
+    /// jukugo を優先採用するための super-set 判定。 「3千本のバラ」 のような scale 確定 case で
+    /// jukugo に「千本」 entry があっても (短いから) 誤って override しないよう strict check。
+    fn match_jukugo_strict_super(&self, rest: &str, min_end_bytes: usize) -> Option<(usize, String)> {
+        let (end, reading) = self.match_jukugo_at_start(rest)?;
+        if end <= min_end_bytes {
+            return None;
+        }
+        Some((end, reading))
     }
 
     /// テキストを (表層, Option<読み>) のチャンク列に分割
@@ -168,12 +225,35 @@ impl NumberChunker {
                 continue;
             }
 
+            // ─── 4.5. jukugo 先取り (counter/scale より前に固有複合語を救う) ──
+            // 「千本桜」「義経千本桜」 のように Lindera が token 境界を切ってしまう
+            // 結果 jukugo lookup が走らない複合語を、 文頭からの最長 match で先取り
+            // して 1 chunk に固定する。 heteronym (homonyms.toml で context rule を
+            // 持つ surface) は set_jukugo の exclude_surfaces で除外済みなので、
+            // reading pipeline の context rule (例: 「翡翠+が+水辺」 → カワセミ) は
+            // ここで bypass されない。
+            if let Some((j_end, j_reading)) = self.match_jukugo_at_start(rest) {
+                let surface = rest[..j_end].to_string();
+                parts.push((surface, Some(j_reading)));
+                i += j_end;
+                continue;
+            }
+
             // ─── 5. 数値 + 大数スケール (+ 末尾漢字単位) ─────────────────────
             // 「1万円」「3億ドル」のような scale + 漢字 1 文字 unit を 1 chunk に。
             // 漢字 unit は build_scale_regex で optional capture (3) として注入済み。
             if let Some(re) = &self.scale_re {
                 if let Some(caps) = at_start(re, rest) {
                     let m_end = caps.get(0).unwrap().end();
+                    // jukugo super-set check: scale match を真に含む jukugo entry が
+                    // あれば jukugo を優先 (例: 「億万長者」 が jukugo にある場合に
+                    // scale 「億万」 で分断されるのを回避)
+                    if let Some((j_end, j_reading)) = self.match_jukugo_strict_super(rest, m_end) {
+                        let surface = rest[..j_end].to_string();
+                        parts.push((surface, Some(j_reading)));
+                        i += j_end;
+                        continue;
+                    }
                     let num = caps.get(1).unwrap().as_str();
                     let scale = caps.get(2).unwrap().as_str();
                     let trailing_unit = caps.get(3).map(|m| m.as_str());
@@ -211,6 +291,16 @@ impl NumberChunker {
             if let Some(re) = &self.counter_re {
                 if let Some(caps) = at_start(re, rest) {
                     let m_end = caps.get(0).unwrap().end();
+                    // jukugo super-set check: counter match を真に含む jukugo entry が
+                    // あれば jukugo を優先 (例: 「千本桜」 で 「千本」 が counter に
+                    // hit するが jukugo 「千本桜 = センボンザクラ」 がある場合に
+                    // 全体を 1 chunk に固定して連濁を救う)
+                    if let Some((j_end, j_reading)) = self.match_jukugo_strict_super(rest, m_end) {
+                        let surface = rest[..j_end].to_string();
+                        parts.push((surface, Some(j_reading)));
+                        i += j_end;
+                        continue;
+                    }
                     let num = caps.get(1).unwrap().as_str();
                     let counter = caps.get(2).unwrap().as_str();
                     let surface = rest[..m_end].to_string();
@@ -426,5 +516,53 @@ mod tests {
         let c = chunker();
         let r = c.split("");
         assert!(r.is_empty());
+    }
+
+    fn build_ac(entries: &[(&str, &str)]) -> (Arc<AhoCorasick>, Arc<HashMap<String, String>>) {
+        let map: HashMap<String, String> = entries
+            .iter()
+            .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
+            .collect();
+        let ac = AhoCorasick::builder()
+            .match_kind(aho_corasick::MatchKind::LeftmostLongest)
+            .build(map.keys())
+            .expect("AC build");
+        (Arc::new(ac), Arc::new(map))
+    }
+
+    /// jukugo prefix-match: 「千本桜」 (漢数字 prefix で counter_re が走らない) を
+    /// 文頭の AC で先取りして 1 chunk に固定する。
+    #[test]
+    fn split_jukugo_prefix_match() {
+        let mut c = chunker();
+        let (ac, map) = build_ac(&[("千本桜", "センボンザクラ")]);
+        c.set_jukugo(ac, map);
+        let r = c.split("千本桜");
+        let m = find(&r, "千本桜").expect("expected jukugo chunk for 千本桜");
+        assert_eq!(m.1.as_deref(), Some("センボンザクラ"));
+    }
+
+    /// 呼び出し側が exclude 済み AC を渡すケース (homonyms surface を含まない AC):
+    /// AC 内に entry が無いので、 ここで chunks 段階の確定はされず形態素解析へ流れる。
+    #[test]
+    fn split_jukugo_excludes_homonym() {
+        let mut c = chunker();
+        // 「翡翠」 を含まない AC を渡す (api.rs 側で exclude 済みの想定)
+        let (ac, map) = build_ac(&[("千本桜", "センボンザクラ")]);
+        c.set_jukugo(ac, map);
+        let r = c.split("翡翠");
+        let m = find(&r, "翡翠").expect("expected raw 翡翠 chunk");
+        assert!(m.1.is_none(), "homonym 翡翠 should pass through: {m:?}");
+    }
+
+    /// jukugo に該当 entry が無ければ counter は普通に動く (副作用ゼロ確認)。
+    #[test]
+    fn split_counter_unchanged_when_no_jukugo() {
+        let mut c = chunker();
+        let (ac, map) = build_ac(&[("無関係", "ムカンケイ")]);
+        c.set_jukugo(ac, map);
+        let r = c.split("3本のバナナ");
+        let m = find(&r, "3本").expect("counter chunk for 3本 should still fire");
+        assert_eq!(m.1.as_deref(), Some("サンボン"));
     }
 }

@@ -300,8 +300,46 @@ impl FuriganaBuilder {
             dict.insert(s, r);
         }
 
-        let phrase_matcher = NumericPhraseMatcher::new(&rules.numeric_phrases);
-        let chunker = NumberChunker::new(&rules);
+        // jukugo の Aho-Corasick を 1 回 build → phrase_matcher と chunker で Arc 共有。
+        // homonyms (context rule を持つ surface) は AC patterns から除外し、
+        // reading pipeline の context rule (例: 「翡翠+が+水辺」 → カワセミ) が
+        // chunks / phrase 段階で bypass されないようにする。
+        let homonyms_exclude: std::collections::HashSet<String> = rules
+            .context
+            .rules
+            .iter()
+            .map(|r| r.surface.clone())
+            .collect();
+        // 2 字 jukugo は AC patterns から除外。 IPADIC が一語として返す長い複合語
+        // (例: 「烏賊墨」 → イカスミ、 「金平糖」 → コンペイトウ) を 2 字 jukugo
+        // (烏賊 / 金平) で先取りすると分断されて誤読になるため。
+        // ≥3 字の jukugo entry だけが、 「Lindera が分解しがちな複合語」 として
+        // AC 先取りに値する (例: 「千本桜」 「向日葵畑」 「義経千本桜」)。
+        let jukugo_filtered: std::collections::HashMap<String, String> = dict
+            .jukugo_iter()
+            .filter(|(k, _)| !homonyms_exclude.contains(*k))
+            .filter(|(k, _)| k.chars().count() >= 3)
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+        let jukugo_ac_arc: Option<std::sync::Arc<aho_corasick::AhoCorasick>> = if jukugo_filtered
+            .is_empty()
+        {
+            None
+        } else {
+            aho_corasick::AhoCorasick::builder()
+                .match_kind(aho_corasick::MatchKind::LeftmostLongest)
+                .build(jukugo_filtered.keys())
+                .ok()
+                .map(std::sync::Arc::new)
+        };
+        let jukugo_map_arc = std::sync::Arc::new(jukugo_filtered);
+
+        let mut phrase_matcher = NumericPhraseMatcher::new(&rules.numeric_phrases);
+        let mut chunker = NumberChunker::new(&rules);
+        if let Some(ac) = jukugo_ac_arc.clone() {
+            phrase_matcher.set_jukugo(ac.clone(), jukugo_map_arc.clone());
+            chunker.set_jukugo(ac, jukugo_map_arc);
+        }
 
         Ok(Furigana {
             analyzer: OnceLock::new(),

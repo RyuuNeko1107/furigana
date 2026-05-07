@@ -29,6 +29,7 @@ regex = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 unicode-normalization = { workspace = true }
+aho-corasick = { workspace = true }
 lindera = { version = "3", features = ["embed-ipadic"] }
 
 [dev-dependencies]
