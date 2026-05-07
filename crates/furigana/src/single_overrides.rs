@@ -61,6 +61,11 @@ impl SingleOverrides {
                 continue;
             }
             if let toml::Value::String(reading) = v {
+                // sanitize: 制御文字 / bidi override / zero-width / 過大長 reject
+                crate::sanitize::sanitize_dict_value("single_override surface", &k)
+                    .map_err(|e| FuriganaError::Validation(format!("{file}: {e}")))?;
+                crate::sanitize::sanitize_dict_value("single_override reading", &reading)
+                    .map_err(|e| FuriganaError::Validation(format!("{file}: {e}")))?;
                 d.map.insert(k, reading);
             }
         }

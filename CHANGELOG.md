@@ -55,6 +55,22 @@
     既に escape 済み、 残る self-DoS 経路を構造的に塞ぐ
   - HTTP CORS Origin / GitHub JSON parse / 環境変数 path 等の他経路は
     現行 default で安全 (axum / serde / std::path の既存防御で吸収)
+- **辞書 load 経路の sanitize layer** (任意コード埋め込み / 詐称防御):
+  TOML 自体の deserialize で RCE は起きないが、 entries の **value** に紛れ
+  込ませて間接的に害を及ぼす経路を構造的に塞ぐ。 新設 `crate::sanitize::
+  sanitize_dict_value` で各 surface / reading を load 時 reject する:
+  - **C0 制御文字 / DEL** (`\t` `\n` `\r` 以外) → log injection / display 破壊
+    / 書き戻し時の TOML parse 全体破壊 (self-DoS) 防御
+  - **Unicode bidi override** (U+202A..U+202E、 U+2066..U+2069) → Trojan Source
+    攻撃 (PR review でコード意味と見た目が乖離する) 防御
+  - **Zero-width / invisible char** (U+200B..U+200F、 U+FEFF) → homoglyph 詐称
+    (一見同じ surface で別 entry を仕込む) 防御
+  - **excessive length per entry** (1024 chars 上限) → 1 entry に巨大 string
+    で OOM させる経路を塞ぐ
+  - 適用先: `Dict::from_toml_str` (jukugo / unihan / works) +
+    `Loanwords::from_toml_str` + `SingleOverrides::from_toml_str`
+  - 公開 ja-furigana-dict (CJK + kana + ASCII + 通常記号のみ) は影響なし、
+    既存 corpus 118/118 pass 確認
 
 ## [0.1.0-alpha.8] - 2026-05-07
 

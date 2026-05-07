@@ -115,8 +115,15 @@ impl Dict {
         })?;
         let mut d = Self::default();
         // string 値だけ採用。inline table 等は rules 用ファイルなので silent skip。
+        // 各 entry の surface (key) と reading (value) は sanitize_dict_value で
+        // 制御文字 / Unicode bidi override / zero-width / 過大長 を reject する
+        // (任意コード埋め込み / Trojan Source 攻撃 / homoglyph 詐称防御)。
         for (k, v) in parsed.entries {
             if let Some(s) = v.as_str() {
+                crate::sanitize::sanitize_dict_value("dict surface", &k)
+                    .map_err(|e| FuriganaError::Validation(format!("{file}: {e}")))?;
+                crate::sanitize::sanitize_dict_value("dict reading", s)
+                    .map_err(|e| FuriganaError::Validation(format!("{file}: {e}")))?;
                 d.insert(k, s.to_string());
             }
         }

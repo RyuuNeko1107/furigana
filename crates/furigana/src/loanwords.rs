@@ -94,6 +94,11 @@ impl Loanwords {
         let mut d = Self::default();
         for (k, v) in parsed.entries {
             if let toml::Value::String(reading) = v {
+                // sanitize: 制御文字 / bidi override / zero-width / 過大長 reject
+                crate::sanitize::sanitize_dict_value("loanword surface", &k)
+                    .map_err(|e| FuriganaError::Validation(format!("{file}: {e}")))?;
+                crate::sanitize::sanitize_dict_value("loanword reading", &reading)
+                    .map_err(|e| FuriganaError::Validation(format!("{file}: {e}")))?;
                 d.insert(k, reading);
             }
         }

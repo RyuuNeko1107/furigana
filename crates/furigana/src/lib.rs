@@ -103,6 +103,7 @@ pub mod tts;
 
 mod api;
 mod embedded;
+mod sanitize;
 
 pub use crate::api::{Furigana, FuriganaBuilder};
 pub use crate::dict::Dict;
