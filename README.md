@@ -10,7 +10,7 @@
 
 日本語テキストに **フリガナ (読み仮名 / ルビ)** を付ける Rust 製ライブラリ + ローカル HTTP サーバー。形態素解析 (Lindera + IPADIC) と TOML 辞書・ルールを組み合わせた **決定論的** エンジン。TTS 音声合成の前段やふりがな補助での使用を想定。
 
-[ryuuneko.com のフリガナ API](https://ryuuneko.com/?slug=furigana-api) の OSS 版。本番 API と同じインターフェース (`mode` / `text_b64` / `segmented` / `X-API-Key` 等) で動くので、既存プラグインから差し替えやセルフホストが容易。
+[ryuuneko.com のフリガナ API](https://ryuuneko.com/?slug=furigana-api) の OSS 版として開発。同等のインターフェース (`mode` / `text_b64` / `segmented` / `X-API-Key` 等) を提供するので、既存クライアントからの差し替えやセルフホストに使える。
 
 ## 立ち位置と精度の限界
 
@@ -29,7 +29,7 @@
 
 「不確かなときは形態素解析の素朴な結果に fall back」「辞書 hit したものは確実に固定」という **保守的な決定論**。コミュニティ PR で精度が上がる設計。
 
-> **Status**: alpha (0.1.x)。`context rule → jukugo → Lindera → unihan` の 5 段階優先順位で本番互換の読み解決パイプラインを実装。
+> **Status**: alpha (0.1.x)。`context rule → jukugo → Lindera → unihan` の 5 段階優先順位で読み解決パイプラインを実装。
 > `furigana serve --auto-pull` および `[auto_update]` config による admin_tokens 不要の辞書自動更新、`core/works/<medium>/<title>.toml` のような作品単位細分化辞書 (loader 全階層再帰) もサポート。
 > 辞書 (`ja-furigana-dict`) は jukugo を 24 カテゴリに分類して継続拡充中、件数の最新値は dict repo の [STATS.md](https://github.com/RyuuNeko1107/ja-furigana-dict/blob/master/STATS.md) を参照。
 > `0.1.x` の間は公開 API / TOML スキーマ / CLI 引数 / HTTP レスポンス構造が予告なく変わりえます。詳細とロードマップは [docs/ROADMAP.md](./docs/ROADMAP.md)、変更履歴は [CHANGELOG.md](./CHANGELOG.md)。

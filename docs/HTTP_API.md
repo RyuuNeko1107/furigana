@@ -1,7 +1,7 @@
 # HTTP API
 
-`furigana serve` は本番 API 互換のローカル HTTP サーバーです。default bind は `127.0.0.1:8000`。
-インターフェース (`mode` / `text_b64` / `segmented` / `X-API-Key` 等) は本番と揃えてあるので、既存クライアントから差し替えが可能です。
+`furigana serve` はローカル HTTP サーバーです。default bind は `127.0.0.1:8000`。
+パラメータ (`mode` / `text_b64` / `segmented` / `X-API-Key` 等) は下記のとおり。
 
 > 戻る: [README](../README.md) / 関連: [CONFIG.md](./CONFIG.md) (auth / cors)
 
@@ -79,7 +79,7 @@ curl -X POST http://127.0.0.1:8000/furigana \
 | `romaji` | ヘボン式ローマ字 |
 | `romaji-kunrei` | 訓令式ローマ字 |
 
-未知の `mode` 値は **silently `tts` (default) にフォールバック** (本番 API と同挙動、エラーにはならない)。
+未知の `mode` 値は **silently `tts` (default) にフォールバック** (エラーにはならない)。
 
 ## エラー応答
 
@@ -111,7 +111,7 @@ curl -X POST http://127.0.0.1:8000/furigana \
 
 **ヘッダ優先順位** (どちらか 1 つあれば OK):
 
-1. `X-API-Key: <token>` (公開 API 互換、優先される)
+1. `X-API-Key: <token>` (優先される)
 2. `Authorization: Bearer <token>` (fallback)
 
 `/healthz` は **常に認証不要**。

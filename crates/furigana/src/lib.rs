@@ -63,7 +63,7 @@
 //! - [`rules`]    : ルールデータ型 (counters / context / scales / units / **postprocess** / etc)
 //! - [`loader`]   : TOML 汎用パーサ
 //!
-//! ### 読み解決の優先順位 (本番互換、0.1.0-alpha.3 以降)
+//! ### 読み解決の優先順位 (、0.1.0-alpha.3 以降)
 //!
 //! [`reading::pipeline::resolve_reading`] (private) で各 token に対して以下の順で評価:
 //!
@@ -75,7 +75,7 @@
 //! 6. fallback `None`
 //!
 //! 出力直前に `rules/postprocess.toml` の **mode 別 regex 置換** が適用される
-//! (本番 Step 7 互換、0.1.0-alpha.3 で導入)。
+//! (Step 7 (mode 別後処理 regex)、0.1.0-alpha.3 で導入)。
 //!
 //! 詳細は [docs/ARCHITECTURE.md](https://github.com/RyuuNeko1107/ja-furigana/blob/master/docs/ARCHITECTURE.md) を参照。
 //!

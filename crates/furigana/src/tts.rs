@@ -211,7 +211,7 @@ mod tests {
         let o = TtsOptions::default();
         let result = normalize_for_tts("こんにちは。きょうははれ、あしたはあめ。", &o);
         // default は short=" ", long="   " だが MULTI_SPACE2 で全て 1 スペースに圧縮される
-        // (本番 API も同挙動。区別したい場合は非空白マーカーを使う)
+        // (区別したい場合は非空白マーカーを使う)
         assert_eq!(result, "こんにちは。 きょうははれ、 あしたはあめ。");
     }
 

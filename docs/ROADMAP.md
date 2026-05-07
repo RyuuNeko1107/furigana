@@ -21,14 +21,14 @@ ja-furigana の中長期計画。**完了履歴は [CHANGELOG.md](../CHANGELOG.m
 
 ### Phase 1 (~2026-05-04)
 - workspace + lib + CLI + データ駆動ルール (全 TOML)
-- HTTP server (Axum、本番 API 互換)
+- HTTP server (Axum、HTTP API)
 - 辞書管理コマンド
 - GitHub Release ワークフロー (5 platform binary + Docker image)
 - 数値テキスト全体オーケストレーション (NumberChunker)
 - [`furigana-dict`](https://github.com/RyuuNeko1107/ja-furigana-dict) リポジトリ開設
 
 ### Phase 2 (~2026-05-05)
-- 本番 dump から `furigana-dict` への辞書 seed 投入 (unihan 43,749 / jukugo 605 / compat 436)
+- (seed として)  `furigana-dict` への辞書 seed 投入 (unihan 43,749 / jukugo 605 / compat 436)
 - `furigana dict pull` (GitHub Releases + SHA-256 検証 + 展開)
 - 辞書のホットリロード (`SIGHUP` / `POST /admin/reload`)
 - portable 配置 (`furigana.exe` 横に `data/` 1 階層集約)
@@ -40,7 +40,7 @@ ja-furigana の中長期計画。**完了履歴は [CHANGELOG.md](../CHANGELOG.m
 - Lindera analyzer の lazy init (`Furigana::minimal()` で 5.97 ms → 27.3 µs)
 
 ### Phase 3 (~2026-05-06、0.1.0-alpha.3 で完了)
-- **本番のフリガナ API パイプライン互換** に揃えた読み解決優先順位
+- **本書のパイプライン互換** に揃えた読み解決優先順位
   (`context rule → jukugo → Lindera → unihan` の 5 段階、`resolve_reading`)
 - **`Dict` を `jukugo` (≥2 文字) / `unihan` (1 文字) に内部分離** + 専用 lookup API
 - **NumberChunker** の改修:
@@ -48,7 +48,7 @@ ja-furigana の中長期計画。**完了履歴は [CHANGELOG.md](../CHANGELOG.m
   - 「6月一日」のような Arabic+漢数字混在日付が日付 chunk として認識
   - counter「N日」単独 = 期間扱い、日付内のみ days.toml の特殊読み (1=ツイタチ等) を採用
   - scale + 漢字 1 文字 unit の連結 (「1万円」「3億ドル」等を 1 chunk で)
-- **`postprocess.toml`** (本番 Step 7 互換) — mode 別 regex 置換ルールの土台
+- **`postprocess.toml`** (Step 7 (mode 別後処理 regex)) — mode 別 regex 置換ルールの土台
 - **検証ループ駆動の品質改善** — `tools/check_samples.txt` (75 件) を回帰検証で
   75/75 (100%) 達成
 - CI: macOS test を週次 schedule に移動、cargo-audit + corpus regression job 追加

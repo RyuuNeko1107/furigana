@@ -29,7 +29,7 @@ crates/
 │   │   ├── latin.rs          #   latin.toml (A→エー…)
 │   │   ├── numeric_phrases.rs #  慣用句 (二十歳→ハタチ等)
 │   │   ├── compat.rs         #   compat.toml (異体字)
-│   │   └── postprocess.rs    #   postprocess.toml (本番 Step 7 互換 regex 置換)
+│   │   └── postprocess.rs    #   postprocess.toml (Step 7 (mode 別後処理 regex) regex 置換)
 │   ├── numbers/              # 数値処理 (data-driven)
 │   │   ├── helpers.rs        #   zen2han / norm_num / sokuonize_last / kansuji_to_arabic 等
 │   │   ├── digit.rs          #   number_to_katakana
@@ -41,7 +41,7 @@ crates/
 │   │   └── regex.rs          #   静的 / 動的 regex builder (DATE_NUM_PAT は漢数字も対応)
 │   └── reading/              # 読み解決パイプライン
 │       ├── mod.rs            #   ReadingToken + tokenize_text (top-level)
-│       ├── pipeline.rs       #   tokenize_chunk + resolve_reading (本番互換 5 段階優先順位)
+│       ├── pipeline.rs       #   tokenize_chunk + resolve_reading (5 段階優先順位)
 │       ├── merge.rs          #   merge_with_dict (最長一致結合、jukugo のみ参照)
 │       ├── context.rs        #   apply_context_rules (data-driven)
 │       └── output.rs         #   tokens_to_hiragana / tokens_to_ruby
@@ -96,9 +96,9 @@ let f = Furigana::builder()
     .build()?;
 ```
 
-## 8 段階パイプライン (本番のフリガナ API と互換)
+## 8 段階パイプライン (HTTP API と互換)
 
-`tokenize_text` + `Furigana::to_*` の流れは本番のフリガナ API パイプラインに揃えてある:
+`tokenize_text` + `Furigana::to_*` の流れは本書のパイプラインに揃えてある:
 
 | # | 工程 | 実装場所 |
 |---|---|---|
@@ -156,7 +156,7 @@ client                                    server (Arc<RwLock<Arc<Furigana>>>)
 - **decisions.md にしない**: ADR (Architecture Decision Records) は今のところ書くほどのスコープではないので、本書で軽くメモする方針
 - **データ駆動 (TOML)**: ルール変更で再ビルド不要、PR が contributors からも入りやすい
 - **Lindera + IPADIC 固定**: `embed-ipadic` で配布物に同梱。NEologd は opt-in feature flag で対応する案 (Phase 3 候補、[Issue #9](https://github.com/RyuuNeko1107/ja-furigana/issues/9))
-- **`Dict` の jukugo / unihan 分離**: 内部 HashMap を 2 つに分けて `lookup_jukugo` / `lookup_unihan` で別 lookup。本番の Step 5 「辞書 → 形態素 → unihan」の 3 段階優先順位に揃えるため (0.1.0-alpha.3 で導入)。
+- **`Dict` の jukugo / unihan 分離**: 内部 HashMap を 2 つに分けて `lookup_jukugo` / `lookup_unihan` で別 lookup。Step 5 「辞書 → 形態素 → unihan」の 3 段階優先順位に揃えるため (0.1.0-alpha.3 で導入)。
 - **`Dict::from_toml_dir` 全階層再帰**: `core/works/<medium>/<title>.toml` のような任意深度のサブディレクトリを許容。配布 tar.gz の展開結果を想定するため symlink ループ対策は持たない (静的データ前提)。works/ の運用ルールは [`ja-furigana-dict/core/works/README.md`](https://github.com/RyuuNeko1107/ja-furigana-dict/blob/master/core/works/README.md) (公式読みのみ採録、出典コメント必須)。
 - **`postprocess.toml` (Step 7)**: 辞書 / context rule で表現しづらい文字列レベルの最終調整 (例: 「ジュウパー → ジュッパー」の促音化補正)。mode 別 (`hiragana` / `ruby` / `tts` / `romaji`) フィルタ + regex pattern + capture group 参照可。
 - **`NumberChunker` の漢数字対応**: `kansuji_to_arabic` (`numbers::helpers`) で「一」「二十一」等を Arabic に変換し、`DATE_KANJI_MD_RE` 等の日付 regex でマッチ。「6月一日」が正しく日付 chunk として認識される。

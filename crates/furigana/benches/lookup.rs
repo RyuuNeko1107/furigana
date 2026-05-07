@@ -17,7 +17,7 @@ use std::hint::black_box;
 fn build_furigana_with_seed_dict() -> Furigana {
     let mut f = Furigana::minimal().expect("minimal init");
     // 代表的な熟語をいくつか流し込んで「辞書 hit する」ケースも測れるようにする。
-    // 本番 seed (44k 字) は data ディレクトリ依存になるので最小サンプルに留める。
+    // 実 seed (44k 字) は data ディレクトリ依存になるので最小サンプルに留める。
     let pairs: &[(&str, &str)] = &[
         ("灰桜", "ハイザクラ"),
         ("黎明", "レイメイ"),
