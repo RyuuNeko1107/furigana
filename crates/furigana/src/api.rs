@@ -227,6 +227,8 @@ pub struct FuriganaBuilder {
     user_dict_dirs: Vec<PathBuf>,
     overrides_files: Vec<PathBuf>,
     extra_entries: Vec<(String, String)>,
+    /// 外来語辞書ディレクトリ (複数指定可、 後勝ち merge)
+    loanwords_dirs: Vec<PathBuf>,
 }
 
 impl FuriganaBuilder {
@@ -268,6 +270,16 @@ impl FuriganaBuilder {
     #[must_use]
     pub fn add_entry(mut self, surface: impl Into<String>, reading: impl Into<String>) -> Self {
         self.extra_entries.push((surface.into(), reading.into()));
+        self
+    }
+
+    /// 外来語辞書ディレクトリを追加 (`core/loanwords/**/*.toml` を recursive load)
+    ///
+    /// IT 用語 / OSS / クラウドサービス等の英単語に対する読み付与用。
+    /// chunks/split() 階層 4.7 で **完全一致 lookup** されるため、 substring 切断ゼロ。
+    #[must_use]
+    pub fn core_loanwords_dir(mut self, p: impl AsRef<Path>) -> Self {
+        self.loanwords_dirs.push(p.as_ref().to_path_buf());
         self
     }
 
@@ -339,6 +351,16 @@ impl FuriganaBuilder {
         if let Some(ac) = jukugo_ac_arc.clone() {
             phrase_matcher.set_jukugo(ac.clone(), jukugo_map_arc.clone());
             chunker.set_jukugo(ac, jukugo_map_arc);
+        }
+
+        // 外来語辞書 (IT 用語等の英単語) を merge して chunker に Arc 渡し。
+        // chunks/split() 階層 4.7 で英単語 chunk 全体を完全一致 lookup に使う。
+        let mut loanwords = crate::loanwords::Loanwords::new();
+        for d in &self.loanwords_dirs {
+            loanwords.merge(crate::loanwords::Loanwords::from_toml_dir(d)?);
+        }
+        if !loanwords.is_empty() {
+            chunker.set_loanwords(std::sync::Arc::new(loanwords));
         }
 
         Ok(Furigana {

@@ -93,6 +93,7 @@ pub mod dict;
 pub mod error;
 pub mod kana;
 pub mod loader;
+pub mod loanwords;
 pub mod numbers;
 pub mod reading;
 pub mod romaji;

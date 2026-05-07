@@ -64,6 +64,15 @@ impl Paths {
         self.data_root()
     }
 
+    /// 外来語辞書ディレクトリ (`<data_root>/loanwords/`)
+    ///
+    /// 存在しなければ lib 側 `from_toml_dir` が空辞書を返すので呼び出し側で
+    /// 存在チェックしなくて良い (jukugo / unihan と同じ挙動)。
+    #[must_use]
+    pub fn loanwords_dir(&self) -> PathBuf {
+        self.data_root().join("loanwords")
+    }
+
     /// user 辞書: `<data_dir>/data/user/`
     #[must_use]
     pub fn dict_user_dir(&self) -> PathBuf {

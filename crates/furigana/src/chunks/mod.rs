@@ -31,9 +31,27 @@ use crate::numbers::{
     symbol_char_reading,
 };
 use crate::rules::{CountersData, DaysData, RulesData, ScalesData, SymbolsData, UnitsData};
+use crate::loanwords::Loanwords;
 use aho_corasick::AhoCorasick;
+use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::sync::Arc;
+
+/// 英単語 chunk pattern: ASCII / 全角 英字 (大小) で開始し、 英数字 + 記号を許容。
+///
+/// IT 用語の代表的な綴り (例: 「C++」 「C#」 「.NET」 「TypeScript-config」 「node_modules」)
+/// を 1 chunk として丸ごと切り出すための regex。 全角英数字 + 全角記号も拾い、
+/// loanwords.normalize() 側で半角化 + case-fold して lookup する。 文頭 anchor は
+/// 呼び出し側で `at_start` を通して位置 0 でしかマッチさせないため、 ここでは付けない。
+///
+/// 注意: 「.NET」 のような pattern 先頭が記号で始まる surface には match しない
+/// (英字始まりに限定)。 そういう surface は loanwords entry 側で「DotNET」 等の
+/// 先頭文字付き alias を登録する必要がある (今回 scope 外)。
+static LOANWORD_RE: Lazy<::regex::Regex> = Lazy::new(|| {
+    // character class 内のハイフンは順序事故を避けるため最後尾に置く。
+    // 全角ハイフン「－」 も含めるが、 こちらも全角記号群の最後尾に配置。
+    ::regex::Regex::new(r"[A-Za-zＡ-Ｚａ-ｚ][A-Za-z0-9Ａ-Ｚａ-ｚ０-９+#._＋＃．＿\-－]*").unwrap()
+});
 
 /// 数値テキストのオーケストレーション (regex pre-compiled)
 #[derive(Debug, Clone)]
@@ -62,6 +80,14 @@ pub struct NumberChunker {
     /// `None` の場合は何もしない (heteronym bypass 等の副作用ゼロで既存挙動)。
     jukugo_ac: Option<Arc<AhoCorasick>>,
     jukugo_map: Option<Arc<HashMap<String, String>>>,
+
+    /// 外来語 (loanwords) 辞書。 IT 用語の英単語等を case-insensitive 完全一致で
+    /// lookup する。 `chunks/split()` の階層 4.7 で英単語 chunk を切り出した後、
+    /// chunk 全体に対して lookup する (substring 切断ゼロ)。
+    ///
+    /// `None` の場合は英単語 chunk 自体は切り出すが loanwords lookup を skip し、
+    /// ASCII surface のまま読みなしで返す (Lindera 経路に渡らないので IPADIC 誤読も回避)。
+    loanwords: Option<Arc<Loanwords>>,
 }
 
 impl NumberChunker {
@@ -83,7 +109,16 @@ impl NumberChunker {
             si_unit_re,
             jukugo_ac: None,
             jukugo_map: None,
+            loanwords: None,
         }
+    }
+
+    /// 外来語辞書を注入する (起動時 1 回、 Furigana::build() から)
+    ///
+    /// `chunks/split()` の階層 4.7 (jukugo prefix-match の後) で
+    /// 英単語 chunk を 1 unit として切り出し、 chunk 全体に対して完全一致 lookup する。
+    pub fn set_loanwords(&mut self, loanwords: Arc<Loanwords>) {
+        self.loanwords = Some(loanwords);
     }
 
     /// jukugo の Aho-Corasick automaton を注入する (起動時 1 回、 phrase_matcher と Arc 共有想定)
@@ -236,6 +271,27 @@ impl NumberChunker {
                 let surface = rest[..j_end].to_string();
                 parts.push((surface, Some(j_reading)));
                 i += j_end;
+                continue;
+            }
+
+            // ─── 4.7. 英単語 chunk + loanwords lookup ─────────────────────────
+            // ASCII 英字始まりの連続 (英数字 + 記号 +#._-) を 1 chunk として丸ごと
+            // 切り出す。 Lindera/IPADIC が英単語を token 単位でぶった切るのを防ぐのが
+            // 主目的 (例: 「PostgreSQL」 を 「Post」 + 「greS」 + 「QL」 等に分解されない)。
+            //
+            // chunk 全体に対して loanwords を **完全一致** で lookup:
+            //   - hit → reading 確定 chunk として切り出し
+            //   - miss → ASCII surface のまま読みなしで切り出し (Some/None 両方とも
+            //     1 chunk として確定 → Lindera 経路に渡さず誤読を防止)
+            if let Some(m) = at_start(&LOANWORD_RE, rest) {
+                let m_end = m.get(0).unwrap().end();
+                let surface = rest[..m_end].to_string();
+                let reading = self
+                    .loanwords
+                    .as_ref()
+                    .and_then(|d| d.lookup(&surface).map(String::from));
+                parts.push((surface, reading));
+                i += m_end;
                 continue;
             }
 
@@ -564,5 +620,78 @@ mod tests {
         let r = c.split("3本のバナナ");
         let m = find(&r, "3本").expect("counter chunk for 3本 should still fire");
         assert_eq!(m.1.as_deref(), Some("サンボン"));
+    }
+
+    fn loanwords_with(entries: &[(&str, &str)]) -> Arc<Loanwords> {
+        let mut d = Loanwords::default();
+        for (k, v) in entries {
+            d.insert(*k, *v);
+        }
+        Arc::new(d)
+    }
+
+    /// 階層 4.7: loanwords lookup hit → reading 確定 chunk として 1 unit に切り出し
+    #[test]
+    fn split_loanword_hit() {
+        let mut c = chunker();
+        c.set_loanwords(loanwords_with(&[("Kubernetes", "クバネティス")]));
+        let r = c.split("Kubernetesが安定");
+        let m = find(&r, "Kubernetes").expect("loanword chunk");
+        assert_eq!(m.1.as_deref(), Some("クバネティス"));
+    }
+
+    /// 階層 4.7: case-fold + 全角→半角 で hit
+    #[test]
+    fn split_loanword_normalization() {
+        let mut c = chunker();
+        c.set_loanwords(loanwords_with(&[("Kubernetes", "クバネティス")]));
+        // 全角 + 大文字混在
+        let r = c.split("ＫＵＢＥＲＮＥＴＥＳ環境");
+        let m = find(&r, "ＫＵＢＥＲＮＥＴＥＳ").expect("loanword chunk");
+        assert_eq!(m.1.as_deref(), Some("クバネティス"));
+    }
+
+    /// 階層 4.7: loanwords miss → ASCII surface のまま読みなしで残す (Lindera 経路に渡らない)
+    #[test]
+    fn split_loanword_miss_stays_raw() {
+        let mut c = chunker();
+        c.set_loanwords(loanwords_with(&[("Kubernetes", "クバネティス")]));
+        // 単独入力 (周囲に non-loanword chunk が無い): loanword が miss でも
+        // ASCII chunk として 1 unit に切り出され、 reading=None で残る
+        let r = c.split("UnknownTechName");
+        assert_eq!(r.len(), 1);
+        assert_eq!(r[0].0, "UnknownTechName");
+        assert!(r[0].1.is_none(), "miss should leave reading=None: {r:?}");
+    }
+
+    /// 階層 4.7: 完全一致のみ — substring に部分一致しても採用しない
+    #[test]
+    fn split_loanword_no_substring_match() {
+        let mut c = chunker();
+        c.set_loanwords(loanwords_with(&[("Post", "ポスト")]));
+        let r = c.split("PostgreSQL");
+        let m = find(&r, "PostgreSQL").expect("chunk for PostgreSQL");
+        // 「Post」 entry はあるが「PostgreSQL」 全体には無いので reading=None で残る
+        assert!(m.1.is_none(), "substring match should NOT fire: {m:?}");
+    }
+
+    /// 階層 4.7: 記号 (+ # . - _) を含む surface もカバー
+    #[test]
+    fn split_loanword_with_symbols() {
+        let mut c = chunker();
+        c.set_loanwords(loanwords_with(&[
+            ("C++", "シープラスプラス"),
+            ("node_modules", "ノードモジュールス"),
+            ("TypeScript-config", "タイプスクリプトコンフィグ"),
+        ]));
+        for (input, expected) in [
+            ("C++", "シープラスプラス"),
+            ("node_modules", "ノードモジュールス"),
+            ("TypeScript-config", "タイプスクリプトコンフィグ"),
+        ] {
+            let r = c.split(input);
+            let m = find(&r, input).unwrap_or_else(|| panic!("missing {input}: {r:?}"));
+            assert_eq!(m.1.as_deref(), Some(expected));
+        }
     }
 }
