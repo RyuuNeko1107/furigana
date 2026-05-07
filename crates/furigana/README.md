@@ -35,9 +35,19 @@ let f = Furigana::builder()
     .rules_dir("/path/to/data")
     .user_dict_dir("/path/to/data/user")
     .overrides_file("/path/to/data/overrides.toml")
+    .core_loanwords_dir("/path/to/data/loanwords")  // IT 用語等の英単語辞書
     .build()?;
 # Ok::<_, furigana::FuriganaError>(())
 ```
+
+**外来語 (loanwords) サポート**: `core_loanwords_dir` 経由で `[entries]` 形式の TOML
+を recursive load。 chunks 段階で英単語 chunk を 1 unit として丸ごと切り出し +
+完全一致 lookup (case-fold + 全角→半角) → IT 用語等を確実に hit させる
+([データ層の形式](https://github.com/RyuuNeko1107/ja-furigana-dict/blob/master/core/loanwords/it.toml) 参照)。
+
+**出力ルール**: `to_hiragana` は surface の文字種で reading 表記を切替えます:
+漢字を含む surface はひらがな化、 ASCII / カタカナ / 数字 / 記号のみの surface は
+カタカナ統一。 例: `to_hiragana("Kubernetesが安定")` → `"クバネティスがあんてい"`。
 
 CLI / HTTP server / 詳細は [project README](https://github.com/RyuuNeko1107/ja-furigana) を参照。
 

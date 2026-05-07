@@ -25,6 +25,12 @@ furigana lookup '灰桜の散る道' --mode hiragana       # → はいざくら
 furigana lookup '灰桜の散る道' --mode romaji         # → haizakura no chiru michi (ヘボン式)
 furigana lookup '灰桜の散る道' --mode romaji-kunrei  # → 訓令式
 
+# 出力ルール: 漢字 → ひらがな化、 アルファベット / 数字 / 記号 → カタカナ統一
+furigana lookup 'Anthropic の Claude を使う' --mode hiragana
+# → アンソロピックのクロードをつかう
+furigana lookup 'PostgreSQL 16 で動かす' --mode hiragana
+# → ポストグレスキューエルジュウロクでうごかす
+
 # 対話モード (REPL) — 引数なしで起動 = REPL (Windows なら exe ダブルクリック相当)
 furigana
 furigana repl --mode hiragana
