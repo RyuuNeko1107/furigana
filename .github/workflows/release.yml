@@ -42,10 +42,13 @@ jobs:
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "Resolved tag: $TAG"
 
-      - name: Create release if missing
+      - name: Create release if missing (draft)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # ※ Immutable Releases policy 下では published release に asset を
+          # 追加できないため、 必ず --draft で create する。 binary 全アップロード
+          # 完了後に finalize-release job で --draft=false に切り替え publish する。
           TAG="${{ steps.tag.outputs.tag }}"
           if gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
             echo "Release $TAG already exists, skipping creation"
@@ -53,6 +56,7 @@ jobs:
             gh release create "$TAG" --repo "${{ github.repository }}" \
               --target "${{ github.sha }}" \
               --title "$TAG" \
+              --draft \
               --generate-notes
           fi
 
@@ -137,3 +141,21 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  # ─── 全 binary upload 完了後に draft → 公開へ ───
+  # Immutable Releases policy 下で published release は asset 追加不可なので、
+  # create-release は draft で release を作り、 binary が全 platform 揃ってから
+  # この job が --draft=false で publish する (immutability lock はここから発効)。
+  finalize-release:
+    name: Finalize Release (publish draft)
+    needs: [create-release, binary]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ needs.create-release.outputs.tag }}"
+          gh release edit "$TAG" --repo "${{ github.repository }}" \
+            --draft=false \
+            --latest
