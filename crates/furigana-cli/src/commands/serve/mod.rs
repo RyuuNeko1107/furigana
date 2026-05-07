@@ -106,6 +106,25 @@ pub fn run(args: Args, paths: &Paths, cfg: &Config) -> Result<()> {
 
     let cors = build_cors(cfg);
 
+    // ─── セキュリティ: HTTP body 上限 + rate limit ───
+    // body 1 MB は通常のリクエスト (text パラメータ ~100k chars) より十分大きい。
+    // rate limit 60 req/min per IP (= 1 req/sec バースト 5)。 admin endpoint も
+    // 含めてグローバルに適用、 過剰トラフィックは即 429 で弾く。
+    use tower_governor::governor::GovernorConfigBuilder;
+    use tower_governor::GovernorLayer;
+    use tower_http::limit::RequestBodyLimitLayer;
+    const MAX_BODY_BYTES: usize = 1024 * 1024;
+    let governor_conf = std::sync::Arc::new(
+        GovernorConfigBuilder::default()
+            .per_second(1)
+            .burst_size(5)
+            .finish()
+            .ok_or_else(|| anyhow!("governor config 構築失敗"))?,
+    );
+    let governor_layer = GovernorLayer {
+        config: governor_conf,
+    };
+
     let furigana_routes = Router::new()
         .route("/furigana", get(furigana_get).post(furigana_post))
         .layer(middleware::from_fn_with_state(state.clone(), require_token));
@@ -122,6 +141,8 @@ pub fn run(args: Args, paths: &Paths, cfg: &Config) -> Result<()> {
         .merge(admin_routes)
         .route("/healthz", get(healthz))
         .layer(cors)
+        .layer(RequestBodyLimitLayer::new(MAX_BODY_BYTES))
+        .layer(governor_layer)
         .with_state(state.clone());
 
     let rt = tokio::runtime::Builder::new_multi_thread()

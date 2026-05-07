@@ -25,6 +25,16 @@ use std::time::Duration;
 const REPO: &str = "RyuuNeko1107/ja-furigana-dict";
 const USER_AGENT: &str = concat!("furigana-cli/", env!("CARGO_PKG_VERSION"));
 
+// ─── セキュリティ上限値 ───
+// 現行 ja-furigana-dict は ~1 MB 程度なので 50 MB は十分余裕。 archive bomb /
+// 帯域 DoS / fs 圧迫を防ぐため compressed download / 展開合計 / 1 entry / entry 数
+// に上限を設ける。 上限超過は abort、 利用者は値を再考できるよう error message に
+// 明示する。
+const MAX_DOWNLOAD_BYTES: usize = 50 * 1024 * 1024;
+const MAX_UNCOMPRESSED_TOTAL: u64 = 200 * 1024 * 1024;
+const MAX_PER_ENTRY_BYTES: u64 = 10 * 1024 * 1024;
+const MAX_ENTRY_COUNT: usize = 50_000;
+
 pub fn run(paths: &Paths, version: Option<&str>) -> Result<()> {
     let client = reqwest::blocking::Client::builder()
         .user_agent(USER_AGENT)
@@ -122,7 +132,21 @@ fn download_bytes(client: &reqwest::blocking::Client, url: &str) -> Result<Vec<u
     if !status.is_success() {
         bail!("HTTP {status}: {url}");
     }
-    Ok(resp.bytes()?.to_vec())
+    // 帯域 DoS / disk DoS 防御: Content-Length と body 実 size の両方で上限チェック。
+    // server が Content-Length を 嘘ついても post-check で catch する (defense in depth)。
+    if let Some(len) = resp.content_length() {
+        if len > MAX_DOWNLOAD_BYTES as u64 {
+            bail!("download size {len} bytes が上限 {MAX_DOWNLOAD_BYTES} bytes を超過: {url}");
+        }
+    }
+    let bytes = resp.bytes()?.to_vec();
+    if bytes.len() > MAX_DOWNLOAD_BYTES {
+        bail!(
+            "download size {} bytes が上限 {MAX_DOWNLOAD_BYTES} bytes を超過 (post-check): {url}",
+            bytes.len()
+        );
+    }
+    Ok(bytes)
 }
 
 fn download_text(client: &reqwest::blocking::Client, url: &str) -> Result<String> {
@@ -209,8 +233,47 @@ fn extract_to(tarball: &[u8], paths: &Paths) -> Result<()> {
         .canonicalize()
         .unwrap_or_else(|_| data_root.clone());
 
+    let mut total_uncompressed: u64 = 0;
+    let mut entry_count: usize = 0;
+
     for entry in archive.entries()? {
         let mut entry = entry?;
+
+        // entry 数上限 (zip bomb 的に大量小ファイルでも防御)
+        entry_count += 1;
+        if entry_count > MAX_ENTRY_COUNT {
+            bail!("archive の entry 数が上限 {MAX_ENTRY_COUNT} を超過 (現在 {entry_count})");
+        }
+
+        // entry type 制限: Regular file と Directory のみ許可。 symlink / hardlink /
+        // char device / block device / fifo は **絶対 reject** (path traversal 経路 +
+        // sensitive file 露出の典型)。
+        let entry_type = entry.header().entry_type();
+        if !entry_type.is_file() && !entry_type.is_dir() {
+            bail!(
+                "拒否された archive entry type: {:?} ({})",
+                entry_type,
+                entry.path()?.display()
+            );
+        }
+
+        // entry サイズ上限 (1 file)
+        let entry_size = entry.header().size().unwrap_or(0);
+        if entry_size > MAX_PER_ENTRY_BYTES {
+            bail!(
+                "archive entry が大きすぎる: {entry_size} bytes (上限 {MAX_PER_ENTRY_BYTES} bytes): {}",
+                entry.path()?.display()
+            );
+        }
+
+        // 展開累積サイズ上限 (archive bomb 防御)
+        total_uncompressed = total_uncompressed.saturating_add(entry_size);
+        if total_uncompressed > MAX_UNCOMPRESSED_TOTAL {
+            bail!(
+                "archive 展開合計サイズが上限 {MAX_UNCOMPRESSED_TOTAL} bytes を超過 (現在 {total_uncompressed} bytes)"
+            );
+        }
+
         let entry_path = entry.path()?.into_owned();
         // archive 内 `core/...` `rules/...` の prefix を剥がして `data/` 直下に。
         // prefix だけのディレクトリエントリ (`core/` `rules/`) は rest が空に

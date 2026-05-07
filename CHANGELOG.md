@@ -6,6 +6,29 @@
 
 ## [Unreleased]
 
+### Security (攻撃面: 辞書 / HTTP 入力)
+
+- **`furigana dict pull` の archive 展開強化**:
+  - download 合計サイズ上限 `MAX_DOWNLOAD_BYTES = 50 MB` (Content-Length と
+    実 body の両方で post-check、 帯域 / disk DoS 防御)
+  - 展開合計サイズ上限 `MAX_UNCOMPRESSED_TOTAL = 200 MB` (archive bomb 防御)
+  - 1 entry サイズ上限 `MAX_PER_ENTRY_BYTES = 10 MB`
+  - entry 数上限 `MAX_ENTRY_COUNT = 50,000` (大量小ファイル zip bomb 防御)
+  - **entry type 制限**: Regular file / Directory のみ許可。 symlink /
+    hardlink / char device / block device / fifo は **絶対 reject**
+    (path traversal + sensitive file 露出の典型攻撃 vector を構造的に潰す)
+- **`furigana serve` の HTTP body / rate limit**:
+  - `tower_http::limit::RequestBodyLimitLayer` で body 上限 1 MB
+    (巨大 POST による memory blow を防御)
+  - `tower_governor` で rate limit 1 req/sec + burst 5 per IP
+    (request flood / brute-force 攻撃の減速)
+- **ReDoS audit**: lib 内 regex (loanword / 数値 / 日付 等) を audit、
+  `regex` crate の linear-time 保証 (NFA-based、 catastrophic backtracking
+  起きない) で OK と確認、 修正不要。
+- 既存対策 (path traversal canonicalize、 SHA-256 sidecar 検証、 admin
+  token 認証、 CORS layer、 `set_preserve_permissions(false)`、 server
+  text 文字数 `MAX_TEXT_LEN`) は維持。
+
 ## [0.1.0-alpha.8] - 2026-05-07
 
 alpha.7 のリリースをやり直したもの。 binary 内容と機能は alpha.7 と実質同じ

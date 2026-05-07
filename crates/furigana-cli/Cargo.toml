@@ -26,7 +26,8 @@ furigana = { package = "ja-furigana", path = "../furigana", version = "=0.1.0-al
 clap = { version = "4", features = ["derive", "env"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "net"] }
 axum = "0.8"
-tower-http = { version = "0.6", features = ["cors", "trace"] }
+tower-http = { version = "0.6", features = ["cors", "trace", "limit"] }
+tower_governor = "0.7"
 serde = { workspace = true }
 serde_json = { workspace = true }
 toml = { workspace = true }
