@@ -6,6 +6,20 @@
 
 ## [Unreleased]
 
+## [0.1.0-alpha.9] - 2026-05-08
+
+alpha.8 から積み上がっていた累積変更をまとめてリリース。 主な軸は
+**security 全 8 軸の補強** + **sanitize layer 新設** + **`[meta] role` 駆動 loader
+の rules + dict 統一** + **rules 3 sub-dir 階層化** + **inline test の append-only
+CI 強制** + **dict TOML format の DSL 化 (triple-quoted string)** + **days.toml の
+`[entries]` block 化** 等。
+
+公開 API は backwards compat を維持 — 既存 dict release tar (alpha.5+) は新 lib で
+何も触らずに `furigana dict pull` で動作する。 `[meta] role` 無しの旧 file は
+path-based 推定で fallback、 `DaysData` の旧 flat 形式も custom Deserialize で受け
+入れる。 dict 側 PR (ja-furigana-dict#9) も新形式に migration 済 — alpha.9 lib +
+新 dict release で最新形式の恩恵 (role tag 駆動 / triple-quoted DSL / 等)。
+
 ### Security (攻撃面: 辞書 / HTTP 入力)
 
 - **`furigana dict pull` の archive 展開強化**:
