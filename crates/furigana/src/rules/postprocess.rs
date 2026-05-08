@@ -51,8 +51,9 @@ struct CompiledRule {
 /// TOML から直接読む型 (deserialize 用)
 #[derive(Debug, Default, Deserialize)]
 pub struct PostProcessSpec {
+    /// `[[rule]]` の集合。 loader が複数 file を merge する際に直接 extend する用途で公開。
     #[serde(default, rename = "rule")]
-    rules: Vec<PostProcessRuleSpec>,
+    pub rules: Vec<PostProcessRuleSpec>,
 }
 
 /// TOML の `[[rule]]` 1 件分

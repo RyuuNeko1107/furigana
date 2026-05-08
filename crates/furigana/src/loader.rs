@@ -43,7 +43,74 @@
 use crate::error::{FuriganaError, Result};
 use crate::rules::{ContextData, CountersData, PostProcessData, PostProcessSpec, RulesData};
 use serde::de::DeserializeOwned;
+use serde::Deserialize;
 use std::path::{Path, PathBuf};
+
+// ─── [meta] role tag の取得 ──────────────────────────────────────────────────
+//
+// 各 dict / rule TOML の冒頭に `[meta] role = "..."` を declare できる。
+// lib loader はこれを見て role 別に dispatch する。 role tag 無い file は
+// file 名から推定 (`infer_role_from_path`) して backwards compat 維持。
+
+#[derive(Deserialize, Default)]
+struct MetaWrapper {
+    #[serde(default)]
+    meta: Option<MetaTag>,
+}
+
+#[derive(Deserialize, Default)]
+struct MetaTag {
+    #[serde(default)]
+    role: Option<String>,
+}
+
+/// TOML 内の `[meta] role` を返す (無ければ None)。 失敗は None 扱い。
+#[must_use]
+pub fn parse_meta_role(content: &str) -> Option<String> {
+    toml::from_str::<MetaWrapper>(content)
+        .ok()
+        .and_then(|w| w.meta)
+        .and_then(|m| m.role)
+}
+
+/// file path から role を推定 (role tag 無い file の互換 fallback)。
+///
+/// 既知の hardcoded path / 名 から「これは何の role か」 を推定する:
+/// - `<dir>/days.toml` → "days"
+/// - `<dir>/scales.toml` → "scales"
+/// - `<dir>/counters.toml` or `<dir>/counters/*.toml` → "counters"
+/// - `<dir>/context.toml` or `<dir>/context/*.toml` → "context"
+/// - 等
+///
+/// 不明 path は None。
+fn infer_role_from_path(path: &Path) -> Option<&'static str> {
+    let name = path.file_name()?.to_str()?;
+    // subdir 親で counters / context を識別
+    if let Some(parent) = path
+        .parent()
+        .and_then(|p| p.file_name())
+        .and_then(|n| n.to_str())
+    {
+        match parent {
+            "counters" => return Some("counters"),
+            "context" => return Some("context"),
+            _ => {}
+        }
+    }
+    match name {
+        "counters.toml" => Some("counters"),
+        "context.toml" => Some("context"),
+        "days.toml" => Some("days"),
+        "scales.toml" => Some("scales"),
+        "units.toml" => Some("units"),
+        "symbols.toml" => Some("symbols"),
+        "latin.toml" => Some("latin"),
+        "numeric_phrases.toml" => Some("numeric_phrases"),
+        "compat.toml" | "compat_map.toml" => Some("compat"),
+        "postprocess.toml" => Some("postprocess"),
+        _ => None,
+    }
+}
 
 // ─── ファイル名定数 ───────────────────────────────────────────────────────────
 
@@ -132,87 +199,101 @@ pub fn load_rules_dir<P: AsRef<Path>>(dir: P) -> Result<RulesData> {
         )));
     }
 
-    Ok(RulesData {
-        counters: load_counters(dir)?,
-        context: load_context(dir)?,
-        days: load_or_default(dir.join(DAYS_FILE))?,
-        scales: load_or_default(dir.join(SCALES_FILE))?,
-        units: load_or_default(dir.join(UNITS_FILE))?,
-        symbols: load_or_default(dir.join(SYMBOLS_FILE))?,
-        latin: load_or_default(dir.join(LATIN_FILE))?,
-        numeric_phrases: load_or_default(dir.join(NUMERIC_PHRASES_FILE))?,
-        compat: load_or_default(dir.join(COMPAT_FILE))?,
-        postprocess: load_postprocess(dir)?,
-    })
-}
-
-/// `postprocess.toml` を読み込んで [`PostProcessData`] にコンパイルする。
-///
-/// ファイル不在なら空の default を返す (no-op で apply される)。
-fn load_postprocess(dir: &Path) -> Result<PostProcessData> {
-    let path = dir.join(POSTPROCESS_FILE);
-    if !path.exists() {
-        return Ok(PostProcessData::default());
-    }
-    let spec: PostProcessSpec = load_or_default(&path)?;
-    PostProcessData::from_spec(spec).map_err(|e| {
-        FuriganaError::Validation(format!("postprocess.toml: regex compile failed: {e}"))
-    })
-}
-
-// ─── 細分化サポート (counters / context) ─────────────────────────────────────
-
-/// `counters.toml` 単一ファイル → 無ければ `counters/*.toml` を全マージ
-fn load_counters(dir: &Path) -> Result<CountersData> {
-    let single = dir.join(COUNTERS_FILE);
-    if single.is_file() {
-        return load_or_default(single);
-    }
-    let subdir = dir.join("counters");
-    let mut acc = CountersData::default();
-    for f in list_toml_files_sorted(&subdir)? {
-        let part: CountersData = load_or_default(&f)?;
-        acc.merge(part);
-    }
-    Ok(acc)
-}
-
-/// `context.toml` 単一ファイル → 無ければ `context/*.toml` を全マージ
-fn load_context(dir: &Path) -> Result<ContextData> {
-    let single = dir.join(CONTEXT_FILE);
-    if single.is_file() {
-        return load_or_default(single);
-    }
-    let subdir = dir.join("context");
-    let mut acc = ContextData::default();
-    for f in list_toml_files_sorted(&subdir)? {
-        let part: ContextData = load_or_default(&f)?;
-        acc.merge(part);
-    }
-    Ok(acc)
-}
-
-/// `dir` 直下の `*.toml` をファイル名ソート順で列挙する。
-/// `dir` が存在しない / ディレクトリでない場合は空 `Vec` を返す (エラーにしない)。
-fn list_toml_files_sorted(dir: &Path) -> Result<Vec<PathBuf>> {
-    if !dir.is_dir() {
-        return Ok(Vec::new());
-    }
-    let mut files: Vec<PathBuf> = std::fs::read_dir(dir)?
-        .filter_map(std::result::Result::ok)
-        .map(|e| e.path())
-        .filter(|p| {
-            if !p.is_file() || p.extension().is_none_or(|e| e != "toml") {
-                return false;
+    // 全 *.toml を再帰 walk して、 各 file の `[meta] role` で振り分け。
+    // role tag 無い file は file 名から推定 (`infer_role_from_path`)。
+    // これで rule file は dir 構造に依存せず配置自由 (例
+    // `rules/text/postprocess.toml` のような階層化が可能)。
+    let mut data = RulesData::default();
+    let mut postprocess_specs: Vec<(PathBuf, PostProcessSpec)> = Vec::new();
+    for path in walk_rule_files(dir)? {
+        let content = std::fs::read_to_string(&path)?;
+        let role =
+            parse_meta_role(&content).or_else(|| infer_role_from_path(&path).map(String::from));
+        let role_str = role.as_deref();
+        let from = path.display().to_string();
+        match role_str {
+            Some("counters") => {
+                let part: CountersData = parse_toml(&content, &from)?;
+                data.counters.merge(part);
             }
-            // *.test.toml / _genre.toml は CI 専用 / メタ用 で rules には不要
-            let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
-            !name.ends_with(".test.toml") && name != "_genre.toml"
-        })
-        .collect();
-    files.sort();
-    Ok(files)
+            Some("context") => {
+                let part: ContextData = parse_toml(&content, &from)?;
+                data.context.merge(part);
+            }
+            Some("days") => {
+                data.days = parse_toml(&content, &from)?;
+            }
+            Some("scales") => {
+                data.scales = parse_toml(&content, &from)?;
+            }
+            Some("units") => {
+                data.units = parse_toml(&content, &from)?;
+            }
+            Some("symbols") => {
+                data.symbols = parse_toml(&content, &from)?;
+            }
+            Some("latin") => {
+                data.latin = parse_toml(&content, &from)?;
+            }
+            Some("numeric_phrases") => {
+                data.numeric_phrases = parse_toml(&content, &from)?;
+            }
+            Some("compat") => {
+                data.compat = parse_toml(&content, &from)?;
+            }
+            Some("postprocess") => {
+                // regex compile は最後にまとめて (複数 file を merge した後)
+                let spec: PostProcessSpec = parse_toml(&content, &from)?;
+                postprocess_specs.push((path.clone(), spec));
+            }
+            _ => {
+                // role 不明 / 認識外 / dict 系 (jukugo/unihan/works/loanwords/
+                // single_overrides) は rules には不要、 silent skip。
+            }
+        }
+    }
+    // postprocess を merge して compile
+    let mut merged_spec = PostProcessSpec::default();
+    for (_path, spec) in postprocess_specs {
+        merged_spec.rules.extend(spec.rules);
+    }
+    data.postprocess = PostProcessData::from_spec(merged_spec)
+        .map_err(|e| FuriganaError::Validation(format!("postprocess regex compile failed: {e}")))?;
+    Ok(data)
 }
+
+/// `dir` 配下の rules 用 *.toml を再帰 walk して列挙。
+///
+/// `_genre.toml` (STATS sub-section meta) と `*.test.toml` (CI 専用) は除外。
+/// 同じ subdir に dict 系 file (jukugo / unihan / works / loanwords /
+/// single_overrides) が混在しても、 それらは role 不明 / dict role として
+/// `load_rules_dir` 内で silent skip される (= rules に取り込まれない)。
+fn walk_rule_files(dir: &Path) -> Result<Vec<PathBuf>> {
+    let mut out = Vec::new();
+    walk_rule_files_inner(dir, &mut out)?;
+    out.sort();
+    Ok(out)
+}
+
+fn walk_rule_files_inner(dir: &Path, out: &mut Vec<PathBuf>) -> Result<()> {
+    for entry in std::fs::read_dir(dir)? {
+        let path = entry?.path();
+        if path.is_file() && path.extension().is_some_and(|e| e == "toml") {
+            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            if name == "_genre.toml" || name.ends_with(".test.toml") {
+                continue;
+            }
+            out.push(path);
+        } else if path.is_dir() {
+            walk_rule_files_inner(&path, out)?;
+        }
+    }
+    Ok(())
+}
+
+// (旧 load_counters / load_context / load_postprocess / list_toml_files_sorted は
+// load_rules_dir の再帰 walk + role 駆動 dispatch に統合された。
+// hardcoded path / file 名定数 は infer_role_from_path の fallback で使われる。)
 
 #[cfg(test)]
 mod tests {
@@ -418,9 +499,11 @@ mod tests {
     }
 
     #[test]
-    fn load_rules_dir_single_file_takes_priority_over_subdir() {
-        // 単一ファイルとサブディレクトリの両方がある時は単一ファイルが優先
-        let dir = fresh_temp_dir("counters_priority");
+    fn load_rules_dir_merges_single_file_and_subdir() {
+        // 新 loader (role 駆動 + 再帰 walk) は単一 file と subdir 配下を **両方 merge**
+        // する。 旧 loader では「単一 file 優先で subdir は ignore」 だったが、
+        // role tag 駆動なら同 role の file が複数 dir に存在しても自然に merge できる。
+        let dir = fresh_temp_dir("counters_merge");
         let sub = dir.join("counters");
         std::fs::create_dir_all(&sub).unwrap();
         std::fs::write(
@@ -429,15 +512,30 @@ mod tests {
         )
         .unwrap();
         std::fs::write(
-            sub.join("ignored.toml"),
+            sub.join("more.toml"),
             "[counter.\"匹\"]\ndefault = \"ヒキ\"\n",
         )
         .unwrap();
 
         let data = load_rules_dir(&dir).unwrap();
         assert!(data.counters.counter.contains_key("本"));
-        // サブディレクトリの方は無視される
-        assert!(!data.counters.counter.contains_key("匹"));
+        assert!(data.counters.counter.contains_key("匹"));
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn load_rules_dir_role_tag_overrides_filename() {
+        // file 名から推定できない場所に置いても [meta] role があれば認識される。
+        let dir = fresh_temp_dir("role_tag_override");
+        std::fs::create_dir_all(dir.join("custom")).unwrap();
+        std::fs::write(
+            dir.join("custom").join("anywhere.toml"),
+            "[meta]\nrole = \"counters\"\n\n[counter.\"枚\"]\ndefault = \"マイ\"\n",
+        )
+        .unwrap();
+
+        let data = load_rules_dir(&dir).unwrap();
+        assert!(data.counters.counter.contains_key("枚"));
         std::fs::remove_dir_all(&dir).ok();
     }
 }
