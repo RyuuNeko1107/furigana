@@ -72,6 +72,29 @@
   - 公開 ja-furigana-dict (CJK + kana + ASCII + 通常記号のみ) は影響なし、
     既存 corpus 118/118 pass 確認
 
+### Changed (dict loader: role 駆動 dispatch)
+
+- **`Dict::from_toml_dir` / `Loanwords::from_toml_dir` を role 駆動に refactor**:
+  従来 file 名 / dir 名 hardcoded skip (`single_overrides.toml` skip /
+  `loanwords/` subdir skip) で識別していたが、 各 dict file の `[meta] role`
+  tag を見て dispatch する形に変更。
+  - `Dict` に load: role ∈ `{"jukugo", "unihan", "works"}` または role 不明
+    (backwards compat: 古い release で `[meta]` 無い file を救う)
+  - `Dict` から skip: role ∈ `{"loanwords", "single_overrides", "compat"}` /
+    rules 系 role (`"counters"` / `"context"` / 等)
+  - `Loanwords` に load: role = `"loanwords"` のみ
+- **新規 helper `crate::loader::resolve_role`**: `[meta] role` → path 推定
+  (rules / dict 両方) → None の優先順位で role を解決。 同 helper を rules /
+  dict 両 loader が共有する。
+- **dir 構造の自由化**: 同じ dir に jukugo file と loanwords file が混在しても
+  正しく分離 load できるようになった。 `core_dict_dir(p)` と `core_loanwords_dir(p)`
+  に同じ path を渡しても重複 load しない。
+- 公開 API (`Dict::from_toml_dir` / `Loanwords::from_toml_dir`) のシグネチャ
+  変更なし、 既存の dict release tar (alpha.5+) は path-based fallback で
+  そのまま動作する。
+- 関連 test 5 件追加 (dict 3 / loanwords 2): role tag 駆動 + path-based
+  back-compat の両経路を validate。
+
 ### Changed (BREAKING: days.toml 構造)
 
 - **`DaysData` を `[entries]` block 形式に migration**: 従来 transparent

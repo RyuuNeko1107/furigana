@@ -119,6 +119,15 @@ impl Loanwords {
     ///
     /// jukugo と同じパターン (`Dict::from_toml_dir` と同じ挙動)。
     ///
+    /// **role 駆動 dispatch**: [`crate::loader::resolve_role`] で
+    /// `[meta] role = "loanwords"` の file のみ load する。 path-based fallback
+    /// で `loanwords/` dir 配下の file も拾う (古い release 互換)。
+    /// 他 role の file (jukugo / unihan / works / single_overrides 等) は skip。
+    ///
+    /// これで dir 構造に依存せず、 同じ dir に jukugo file と loanwords file が
+    /// 混在しても正しく分離 load できる (例: `core_dict_dir(p)` と
+    /// `core_loanwords_dir(p)` に同じ path を渡しても重複 load しない)。
+    ///
     /// # Errors
     /// I/O 失敗 / TOML パース失敗。
     pub fn from_toml_dir<P: AsRef<Path>>(dir: P) -> Result<Self> {
@@ -129,8 +138,16 @@ impl Loanwords {
         }
         files.sort();
         let mut merged = Self::default();
-        for f in files {
-            merged.merge(Self::from_toml_file(&f)?);
+        for f in &files {
+            let content = std::fs::read_to_string(f)?;
+            let role = crate::loader::resolve_role(&content, f);
+            // Loanwords に load するのは role = "loanwords" のみ。
+            // role 不明 (None) かつ path も `loanwords/` dir 配下でない file は
+            // 別 role の jukugo / unihan 等の可能性が高いので skip (silent ignore)。
+            if role.as_deref() != Some("loanwords") {
+                continue;
+            }
+            merged.merge(Self::from_toml_str(&content, &f.display().to_string())?);
         }
         Ok(merged)
     }
@@ -239,5 +256,63 @@ mod tests {
         assert_eq!(d.len(), 2);
         assert_eq!(d.lookup("kubernetes"), Some("クバネティス"));
         assert_eq!(d.lookup("DOCKER"), Some("ドッカー"));
+    }
+
+    #[test]
+    fn from_toml_dir_role_driven_dispatch() {
+        // role 駆動: 同じ dir に jukugo file と loanwords file が混在しても、
+        // [meta] role tag で識別して loanwords だけ load する
+        let tmp = std::env::temp_dir().join(format!(
+            "loanwords_role_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&tmp).unwrap();
+
+        std::fs::write(
+            tmp.join("jukugo_file.toml"),
+            "[meta]\nrole = \"jukugo\"\n\n[entries]\n\"灰桜\" = \"ハイザクラ\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.join("loanwords_file.toml"),
+            "[meta]\nrole = \"loanwords\"\n\n[entries]\n\"Kubernetes\" = \"クバネティス\"\n",
+        )
+        .unwrap();
+
+        let lw = Loanwords::from_toml_dir(&tmp).unwrap();
+        assert_eq!(lw.lookup("Kubernetes"), Some("クバネティス"));
+        assert_eq!(lw.lookup("灰桜"), None, "jukugo file は role tag で skip");
+        assert_eq!(lw.len(), 1);
+
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn from_toml_dir_path_inference_back_compat() {
+        // role tag 無い古い release: path 中の `loanwords/` で識別
+        let tmp = std::env::temp_dir().join(format!(
+            "loanwords_path_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let loan_dir = tmp.join("loanwords");
+        std::fs::create_dir_all(&loan_dir).unwrap();
+
+        std::fs::write(
+            loan_dir.join("it.toml"),
+            "[entries]\n\"Kubernetes\" = \"クバネティス\"\n",
+        )
+        .unwrap();
+
+        let lw = Loanwords::from_toml_dir(&tmp).unwrap();
+        assert_eq!(lw.lookup("Kubernetes"), Some("クバネティス"));
+        assert_eq!(lw.len(), 1);
+
+        std::fs::remove_dir_all(&tmp).ok();
     }
 }
