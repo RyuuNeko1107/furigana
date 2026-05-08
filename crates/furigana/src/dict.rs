@@ -40,21 +40,22 @@ use std::path::{Path, PathBuf};
 /// 配布 tar.gz の展開結果を想定するため、symlink ループや権限なしディレクトリは
 /// std::fs のエラーが上に伝播する (caller 側で `?` で素直に返る)。
 ///
-/// 以下は **意図的に skip** する (Dict::from_toml_dir の対象外):
-/// - `loanwords/` サブディレクトリ: ASCII surface 専用、 `Loanwords::from_toml_dir`
-///   経由で別管理 (jukugo prefix-match で「TypeScript」 等が誤って hit するのを防ぐ)
-/// - `single_overrides.toml`: 単漢字 surface の default reading override 専用、
-///   `SingleOverrides::from_toml_file` 経由で別管理 (Dict に取り込むと既存 unihan を
-///   silent merge で上書きしてしまうため別経路で持つ)
+/// 集めた後の **role 駆動 dispatch** は caller 側 ([`Dict::from_toml_dir`]) が
+/// 行う:
+/// - `[meta] role = "jukugo" / "unihan" / "works"` の file → Dict に load
+/// - `[meta] role = "loanwords" / "single_overrides" / "compat"` の file → SKIP
+///   (それぞれ [`crate::loanwords::Loanwords`] / [`crate::single_overrides::
+///   SingleOverrides`] / rules loader 側で別管理)
+/// - role tag が無い file → path-based 推定 ([`crate::loader::resolve_role`])
+///   で fallback、 推定不能なら Dict にも load (backwards compat)
+///
+/// この walk 自体は file 名・dir 名で skip しない (`*.test.toml` と `_genre.toml`
+/// だけ除く)。 dir 構造に依存しない loader の前提条件。
 fn collect_toml_files_recursive(dir: &Path, out: &mut Vec<PathBuf>) -> std::io::Result<()> {
     for entry in std::fs::read_dir(dir)? {
         let path = entry?.path();
         if path.is_file() && path.extension().is_some_and(|e| e == "toml") {
             let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-            // single_overrides.toml は SingleOverrides 側で別 load
-            if name == "single_overrides.toml" {
-                continue;
-            }
             // *.test.toml は CI 専用の inline test、 lib runtime には不要
             // (release tar からも `--exclude='*.test.toml'` で除外、 通常 dev
             // checkout にだけ存在する想定)
@@ -67,10 +68,6 @@ fn collect_toml_files_recursive(dir: &Path, out: &mut Vec<PathBuf>) -> std::io::
             }
             out.push(path);
         } else if path.is_dir() {
-            // loanwords/ は ASCII surface 専用 (Loanwords 側で別 load)
-            if path.file_name().is_some_and(|n| n == "loanwords") {
-                continue;
-            }
             collect_toml_files_recursive(&path, out)?;
         }
     }
@@ -156,6 +153,20 @@ impl Dict {
     /// - ディレクトリが存在しない場合は空辞書を返す
     /// - 配布 tar.gz から展開した静的データを想定するため、symlink ループ対策は持たない
     ///
+    /// **role 駆動 dispatch**: [`crate::loader::resolve_role`] で `[meta] role`
+    /// または path-based 推定で role を解決し、 以下の role のみ Dict に load:
+    /// - `"jukugo"` (≥2 字 surface)
+    /// - `"unihan"` (1 字 surface フォールバック)
+    /// - `"works"` (作品造語)
+    /// - role 不明 (= `[meta]` 無し + path 推定不能) → backwards compat で
+    ///   Dict に load (古い release との互換性維持)
+    ///
+    /// 以下の role は **skip** (それぞれ別経路で別データ構造に load):
+    /// - `"loanwords"` → [`crate::loanwords::Loanwords::from_toml_dir`]
+    /// - `"single_overrides"` → [`crate::single_overrides::SingleOverrides::from_toml_file`]
+    /// - `"compat"` → rules loader (`load_rules_dir`)
+    /// - rules 系 (`"counters"` / `"context"` / 等) も skip
+    ///
     /// # Errors
     /// I/O 失敗 / TOML パース失敗。
     pub fn from_toml_dir<P: AsRef<Path>>(dir: P) -> Result<Self> {
@@ -176,7 +187,18 @@ impl Dict {
 
         let mut merged = Self::default();
         for f in files {
-            let part = Self::from_toml_file(&f)?;
+            let content = std::fs::read_to_string(&f)?;
+            let role = crate::loader::resolve_role(&content, &f);
+            // Dict に load する role 一覧。 role 不明 (None) は backwards compat
+            // で Dict として扱う (古い release で role tag が無い file を救う)。
+            let load_into_dict = match role.as_deref() {
+                Some("jukugo") | Some("unihan") | Some("works") | None => true,
+                _ => false,
+            };
+            if !load_into_dict {
+                continue;
+            }
+            let part = Self::from_toml_str(&content, &f.display().to_string())?;
             merged.merge(part);
         }
         Ok(merged)
@@ -435,6 +457,86 @@ mod tests {
         assert_eq!(d.lookup("魔理沙"), Some("マリサ"));
         assert_eq!(d.lookup("宵闇"), Some("ヨイヤミ"));
         assert_eq!(d.len(), 3);
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn from_toml_dir_skips_loanwords_role_via_meta_tag() {
+        // role 駆動 dispatch: 同じ dir に jukugo file と loanwords file が混在しても、
+        // [meta] role tag で識別して loanwords は Dict に load されないこと
+        let dir = fresh_temp_dir("dir_role_loanwords");
+        std::fs::write(
+            dir.join("jukugo.toml"),
+            "[meta]\nrole = \"jukugo\"\n\n[entries]\n\"灰桜\" = \"ハイザクラ\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("loan.toml"),
+            "[meta]\nrole = \"loanwords\"\n\n[entries]\n\"Kubernetes\" = \"クバネティス\"\n",
+        )
+        .unwrap();
+
+        let d = Dict::from_toml_dir(&dir).unwrap();
+        assert_eq!(d.lookup("灰桜"), Some("ハイザクラ"));
+        assert_eq!(d.lookup("Kubernetes"), None, "loanwords は role tag で skip");
+        assert_eq!(d.len(), 1);
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn from_toml_dir_skips_single_overrides_role_via_meta_tag() {
+        // single_overrides も role 駆動で識別、 path-based skip に依存しない
+        let dir = fresh_temp_dir("dir_role_single");
+        std::fs::write(
+            dir.join("jukugo.toml"),
+            "[meta]\nrole = \"jukugo\"\n\n[entries]\n\"灰桜\" = \"ハイザクラ\"\n",
+        )
+        .unwrap();
+        // 「single_overrides.toml」 という file 名以外で role tag だけで skip されるか
+        std::fs::write(
+            dir.join("custom_overrides_filename.toml"),
+            "[meta]\nrole = \"single_overrides\"\n\n[entries]\n\"土\" = \"ツチ\"\n",
+        )
+        .unwrap();
+
+        let d = Dict::from_toml_dir(&dir).unwrap();
+        assert_eq!(d.lookup("灰桜"), Some("ハイザクラ"));
+        assert_eq!(d.lookup("土"), None, "single_overrides は role tag で skip");
+        assert_eq!(d.len(), 1);
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn from_toml_dir_path_inference_back_compat() {
+        // role tag 無い古い release との互換: path 中の `loanwords/` で skip
+        let dir = fresh_temp_dir("dir_path_compat");
+        let loan = dir.join("loanwords");
+        std::fs::create_dir_all(&loan).unwrap();
+        std::fs::write(
+            dir.join("jukugo.toml"),
+            "[entries]\n\"灰桜\" = \"ハイザクラ\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            loan.join("it.toml"),
+            "[entries]\n\"Kubernetes\" = \"クバネティス\"\n",
+        )
+        .unwrap();
+        // single_overrides.toml も file 名で skip
+        std::fs::write(
+            dir.join("single_overrides.toml"),
+            "[entries]\n\"土\" = \"ツチ\"\n",
+        )
+        .unwrap();
+
+        let d = Dict::from_toml_dir(&dir).unwrap();
+        assert_eq!(d.lookup("灰桜"), Some("ハイザクラ"));
+        assert_eq!(d.lookup("Kubernetes"), None, "loanwords/ dir は path 推定で skip");
+        assert_eq!(d.lookup("土"), None, "single_overrides.toml は file 名推定で skip");
+        assert_eq!(d.len(), 1);
 
         std::fs::remove_dir_all(&dir).ok();
     }
