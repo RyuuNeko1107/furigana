@@ -8,20 +8,23 @@
 
 | 変更したいもの | PR 先 |
 |---|---|
-| 二字 / 三字熟語 (灰桜→ハイザクラ等) | **`furigana-dict`** [`core/jukugo/general.toml`](https://github.com/RyuuNeko1107/ja-furigana-dict/blob/master/core/jukugo/general.toml) |
-| 四字熟語 (一期一会→イチゴイチエ等) | 同上 [`core/jukugo/four_char.toml`](https://github.com/RyuuNeko1107/ja-furigana-dict/blob/master/core/jukugo/four_char.toml) |
-| 固有名詞・地名・人名の読み | 同上 `core/jukugo/{proper_nouns,place_names,personal_names}.toml` |
-| **IT 用語等の英単語の読み** (Kubernetes / Docker / TypeScript 等) | 同上 [`core/loanwords/it.toml`](https://github.com/RyuuNeko1107/ja-furigana-dict/blob/master/core/loanwords/it.toml) (将来 company.toml 等にサブ分類予定) |
-| 単漢字フォールバック | 同上 `core/unihan.toml` (43k+ 字) |
-| 異体字 → 標準字 (髙→高 等) | 同上 `core/compat.toml` |
+| 熟語 / 固有名詞 / 地名 / 人名 / 専門用語 | **`furigana-dict`** [`core/jukugo/`](https://github.com/RyuuNeko1107/ja-furigana-dict/tree/master/core/jukugo) (24 カテゴリ別、 詳細は dict 側 [STATS.md](https://github.com/RyuuNeko1107/ja-furigana-dict/blob/master/STATS.md)) |
+| **IT 用語等の英単語の読み** (Kubernetes / Docker / TypeScript 等) | 同上 [`core/loanwords/`](https://github.com/RyuuNeko1107/ja-furigana-dict/tree/master/core/loanwords) |
+| 単漢字フォールバック (43k+ 字) | 同上 [`core/unihan/`](https://github.com/RyuuNeko1107/ja-furigana-dict/tree/master/core/unihan) (5 水準別) |
+| 異体字 → 標準字 (髙→高 等) | 同上 [`core/compat.toml`](https://github.com/RyuuNeko1107/ja-furigana-dict/blob/master/core/compat.toml) |
+| 単漢字 default override (1 字 surface 限定) | 同上 [`core/single_overrides.toml`](https://github.com/RyuuNeko1107/ja-furigana-dict/blob/master/core/single_overrides.toml) |
+| 作品単位の固有名詞・造語 | 同上 [`core/works/<medium>/<title>.toml`](https://github.com/RyuuNeko1107/ja-furigana-dict/tree/master/core/works) |
 | 数字を含む例外語句 (二十歳→ハタチ 等) | 同上 `rules/numeric_phrases.toml` |
-| 助数詞 / 連濁ルール | 同上 [`rules/counters/`](https://github.com/RyuuNeko1107/ja-furigana-dict/tree/master/rules/counters) (simple / time / objects 等) |
-| 大数スケール / 単位 / 記号 / 文字 | 同上 `rules/{scales,units,symbols,latin}.toml` |
-| 文脈依存読み (一日→ツイタチ/イチニチ) | 同上 [`rules/context/`](https://github.com/RyuuNeko1107/ja-furigana-dict/tree/master/rules/context) (numbers / homonyms / special) |
+| 助数詞 / 連濁ルール | 同上 [`rules/counters/`](https://github.com/RyuuNeko1107/ja-furigana-dict/tree/master/rules/counters) |
+| 大数スケール / 単位 / 記号 / 文字 | 同上 `rules/{scales,units,symbols,latin,days}.toml` |
+| 文脈依存読み (一日→ツイタチ/イチニチ) | 同上 [`rules/context/`](https://github.com/RyuuNeko1107/ja-furigana-dict/tree/master/rules/context) |
+| 後処理 regex (mode 別整形) | 同上 `rules/postprocess.toml` |
 | **エンジン本体の改修 (Rust)** | **このリポジトリ** |
 | **新しいルール schema (TOML 構造)** | **このリポジトリ** (`rules/` モジュール) + furigana-dict 側のデータも合わせて |
 | HTTP API の挙動変更 | このリポジトリ (`crates/furigana-cli/src/commands/serve/`) |
-| バグ修正 | 影響箇所のリポジトリ (engine bug ならこちら、データ誤りなら furigana-dict) |
+| バグ修正 | 影響箇所のリポジトリ (engine bug ならこちら、 データ誤りなら furigana-dict) |
+
+辞書側の TOML schema 詳細は [`ja-furigana-dict/docs/SCHEMA.md`](https://github.com/RyuuNeko1107/ja-furigana-dict/blob/master/docs/SCHEMA.md) を参照。
 
 ## 2. Engine 改修の進め方
 

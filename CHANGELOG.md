@@ -350,248 +350,57 @@ ja-furigana-dict 側で `core/works/game/touhou.toml`、`core/works/anime/<title
 全 pass、clippy clean、fmt clean。ja-furigana-dict 側 v0.1.2 (24 ファイル /
 `core/jukugo/*.toml` 1 階層構造) は新 loader でも完全互換 (旧 1 階層構造は新 loader の subset)。
 
-## [0.1.0-alpha.5] - 2026-05-06
+## [0.1.0-alpha.1] 〜 [0.1.0-alpha.5] - 2026-05-05〜2026-05-06 (要約)
 
-辞書の自動取得 / 自動更新を **admin_tokens 設定不要** で使えるようにした。
-`/admin/reload` の認証は引き続き「外部から同期トリガーしたい運用者向け」に残置。
+初回 crates.io publish (alpha.1) から、 本番互換の読み解決優先順位整備 (alpha.3) /
+依存 major bump 一気取り込み (alpha.4) / 辞書自動更新 admin_tokens 不要化 (alpha.5)
+までを集約。 各 alpha tag の verbose な entry は
+[GitHub Releases](https://github.com/RyuuNeko1107/ja-furigana/releases) を参照。
 
-### Added (`furigana serve`)
+主な達成点:
 
-- **`--auto-pull` フラグ**: 起動時に GitHub Releases から最新 `ja-furigana-dict`
-  を自動取得してから listen 開始。失敗時は warn を出して既存辞書で起動を続行
-  (network なし / GitHub 一時障害でも壊れない)。
-  `[auto_update].pin` が空でなければそれを使う、空なら latest。
-- **`[auto_update]` config セクション** (`config.toml`):
-  - `enabled` (bool, default false): `furigana serve` 起動中の **定期 polling**
-    background task を spawn する
-  - `interval` (string, default `"24h"`): polling 周期。`"30m" / "1h" / "6h" / "1d"` 等
-  - `pin` (string, default 空): 特定 tag に固定。空なら最新追従
-- **`crate::commands::dict_pull::resolve_latest_tag_async`**: 既存の sync 版を
-  spawn_blocking でラップ、auto_update polling 経路から呼びやすく
+- **Phase 2 機能完成** (alpha.1): `furigana repl` (対話モード) / `furigana dict pull`
+  (GitHub Releases + SHA-256 検証 + tarball 展開) / ホットリロード
+  (`POST /admin/reload` + Unix `SIGHUP`) / portable 配置 (`<exe>/data/` 1 階層集約) /
+  SI 単位 case-insensitive lookup / `cargo about` ベースの NOTICE.md 自動生成 /
+  GitHub Releases 経由の 5 platform binary + Docker image 配布
+- **crate 名統一** (alpha.2): `ja-furigana` (lib) / `ja-furigana-cli` (bin) に rename、
+  GitHub repo も `RyuuNeko1107/ja-furigana` / `ja-furigana-dict` に統一
+- **本番互換 5 段階優先順位** (alpha.3): `resolve_reading` を
+  `context rule → jukugo → Lindera → unihan` で再構成、 `Dict` を jukugo (≥2 字) /
+  unihan (1 字) に内部分離。 `postprocess.toml` (Step 7 mode 別 regex 置換) 新設。
+  `NumberChunker` に漢数字日付 + scale+unit 連結 + counter context (期間 vs 日付)
+  対応。 検証ループ 75/75 (100%)。 CI に `audit` (cargo-audit) + `corpus` (回帰検証) job 追加
+- **依存 major bump 取り込み** (alpha.4): `toml` 0.8 → 1.x / `directories` 5 → 6 /
+  `criterion` 0.5 → 0.8 / `sha2` 0.10 → 0.11
+- **辞書自動更新 admin_tokens 不要** (alpha.5): `furigana serve --auto-pull` フラグ +
+  `[auto_update]` config (background polling、 `enabled` / `interval` / `pin`) 新設。
+  `/admin/reload` HTTP は外部から同期 reload を打ちたい運用者向けに残置
 
-  これらは **admin_tokens 設定なしで動く** (内部呼び出しで HTTP 経由しない)。
-  個人 / 小規模ホビー運用なら admin_tokens は不要、運用者向けに残置。
+その他:
 
-### CI
-
-なし (lib のみ patch、CI 設定変更なし)
-
-## [0.1.0-alpha.4] - 2026-05-06
-
-依存ライブラリの major bump を一気に取り込む。「基本最新」方針を一貫させた。
-
-### Changed (依存)
-
-- **`toml` 0.8 → 1.x** (spec 1.1 対応の major release)
-  - `loader.rs::parse_toml` / `dict.rs::Dict::from_toml_str` /
-    `rules/postprocess.rs::PostProcessSpec` deserialize 経路を確認、互換動作。
-  - 利用者影響なし (公開 API シグネチャ不変)。
-- **`directories` 5 → 6** (`ProjectDirs` API)
-  - `paths.rs` の `ProjectDirs::from("com", "furigana", "furigana")` 経路を確認、
-    XDG fallback の挙動同じ。
-
-### Added (Dependabot 自動 merge 経由)
-
-- **`criterion` 0.5 → 0.8** (bench、`std::hint::black_box` 移行は 0.1.0-alpha.2 で
-  対応済)。
-- **`sha2` 0.10.9 → 0.11.0** (`furigana dict pull` の SHA-256 検証経路、互換動作)。
-
-### CI
-
-- `.github/dependabot.yml` の major bump ignore (toml / directories) を削除。
-  今後の major bump も Dependabot が PR 提示する。
-
-### Verification
-
-170 unit test + 4 doctest + 3 integration test 全 pass、clippy clean、fmt clean。
-NOTICE.md も `cargo about generate` で再生成済。
-
-## [0.1.0-alpha.3] - 2026-05-06
-
-本番 ryuuneko.com の公開フリガナ API パイプラインに揃える形で読み解決の
-優先順位を整備。検証ループ (実例文 75 件回帰) で 75/75 (100%) を達成。
-
-### Changed (本番 Step 5 互換: resolve_reading の優先順位を 5 段階に)
-
-`crates/furigana/src/reading/pipeline.rs` の `resolve_reading` を:
-
-1. 漢字なし → None
-2. **context rule** (動的読み分け、同形異音語が効くように)
-3. **熟語辞書 (jukugo)** (≥2 文字 surface の固定読み)
-4. **Lindera reading** (動詞活用形等の自然な読み)
-5. **単漢字辞書 (unihan)** (1 文字 surface の最終 fallback)
-6. fallback None
-
-旧版では「dict.lookup → context rule → Lindera」の順で、unihan に登録された
-動詞活用形 / 訓読み (能=あたう、本=もと等) が context rule の default を遮断
-していた問題を根本解決。
-
-### Changed (Dict struct を jukugo / unihan に分離)
-
-`crates/furigana/src/dict.rs` の `Dict` を内部で 2 つの HashMap に分割:
-- `jukugo`: surface ≥ 2 文字 (熟語 / 固有名詞 / 複合語)
-- `unihan`: surface = 1 文字 (単漢字 fallback)
-
-新規 lookup API: `lookup_jukugo()` / `lookup_unihan()` / 互換 `lookup()` (jukugo 優先)。
-`insert()` で文字数を自動振り分け。`merge()` / `len()` は両 HashMap を合算。
-`merge_with_dict` も最長一致照合を `lookup_jukugo` のみに変更
-(単漢字 unihan を熟語結合トリガにしない)。
-
-### Added (本番 Step 7 互換: postprocess module)
-
-`crates/furigana/src/rules/postprocess.rs` 新設:
-- `PostProcessData`: コンパイル済み regex リスト + mode 別フィルタ
-- `PostProcessSpec`: TOML deserialize 用 (`[[rule]]` array)
-- `apply(text, mode)`: 順次置換、空なら no-op、`$1` 等のキャプチャ参照可
-
-`Furigana::to_{hiragana,ruby,tts,romaji}` の出力直前に該当 mode で apply。
-`loader.rs` で `postprocess.toml` を読み込み (不在なら default 空)。
-
-ja-furigana-dict v0.1.2 で `rules/postprocess.toml` に「ジュウパー → ジュッパー」
-(50% 促音化) を投入し、検証ループ #70 を解決。
-
-### Added (NumberChunker の漢数字日付 + scale+unit 連結 + counter context)
-
-- `numbers/helpers.rs` に `kansuji_to_arabic()`: 漢数字 (一〜二十一) → Arabic
-  数字文字列。`chunks::NumberChunker::read_counter` で漢数字混在パターンを処理。
-- `chunks/regex.rs` の `DATE_NUM_PAT` を Arabic + 全角数字 + 漢数字に拡張。
-  `DATE_KANJI_FULL_RE` / `DATE_KANJI_MD_RE` が「6月一日」のような漢数字日も
-  日付 chunk として認識。
-- `build_scale_regex(scales, units)` に変更: scale 末尾に「漢字 1 文字 unit」
-  (円 / %) を optional capture (3) として注入。「1万円」のような scale + unit
-  パターンが 1 chunk として処理される。
-- `chunks/mod.rs` に `read_counter_in_date` を新設: 日付内の「N日」は days.toml の
-  特殊読み (1=ツイタチ等) を採用。単独 counter としての「N日」は期間文脈とみなし
-  default ニチ にする。「6月一日」=ツイタチ / 「1日に2〜3回」=イチニチ を両立。
-
-### Fixed
-
-- `Furigana::add_reading` 経由で追加した単漢字エントリが、前優先順位 (旧) で
-  Lindera reading より先に hit する問題を解決 (Dict 分離 + 新優先順位)。
-- 検証ループで判明した動詞活用形 surface (差/能/約/見) の Lindera 出力に対し、
-  jukugo 熟語登録 + unihan 音読み正規化で解決可能に。
-
-### CI
-
-- `.github/workflows/ci.yml`: macOS test を `schedule` のみ (週次) に移動。
-  push / PR では `ubuntu-latest` + `windows-latest` の 2 OS で走らせる。
-  GitHub macOS runner queue が常に混雑し PR が 10+ 分 macOS 待ちで詰まる問題の対策。
-- 新規 `audit` job: `cargo-audit` で RustSec advisory DB を毎週 schedule + push / PR
-  でチェック。`continue-on-error: true` (advisory DB 更新による偶発失敗を blocking にしない)。
-- 新規 `corpus` job: ja-furigana-dict の master を checkout → release binary build →
-  `tools/run_corpus.py` で `should_read.toml` の各 case を `expected` と diff 検証。
-
-### Removed
-- **役目を終えた reproducer test ファイル** 4 件を削除:
-  - `crates/furigana/tests/lindera_minimal_repro.rs`
-  - `crates/furigana/tests/furigana_layer_repro.rs`
-  - `crates/furigana/tests/components_repro.rs`
-  - `crates/furigana/tests/static_regex_repro.rs`
-
-  これらは「`cargo test --release` 経由の 51 GB alloc 暴走」の原因切り分け用に
-  作った一時的なファイル。原因 (`build_alt_regex` の never-match pattern) が
-  特定されて修正済みなので、用途を終えた。詳細経緯は本 CHANGELOG の Fixed
-  セクションに残してあり、必要なら git history で復元可能 (`git log -- ...`)。
-  新しめの clippy 新規 lint (`explicit_iter_loop` / `unused_imports`) で
-  繰り返し fail する原因にもなっていたため整理。
-
-### Fixed
-- **`cargo test --release` / `cargo bench` harness で `NumberChunker::split` が
-  巨大 alloc (51 GB 級) で `STATUS_STACK_BUFFER_OVERRUN` を起こしていた問題を修正**。
-  原因は `chunks::regex::build_alt_regex` で空 list 時に返していた never-match
-  pattern `r"(?P<n>\A\B)(?P<x>\A\B)"` が、release ビルドの test/bench harness
-  特有のメモリ allocator 状況下で内部 DFA 構築を暴発させていたこと。
-  - `build_*_regex` を `Option<Regex>` 返却に変更し、空時は `None`
-  - `NumberChunker.{counter_re,scale_re,si_unit_re}` を `Option<Regex>` に変更
-  - `split` の各 dynamic regex 呼び出しを `if let Some(re) = ...` で gate
-  - 過去 `#[ignore]` していた `api::tests::to_tts_*` 3 件を解禁、bench も
-    medium / long テキスト復活。bench 実測: medium 51 µs (2.2 MiB/s) / long 263 µs。
-  - **Lindera は最後まで無罪** (途中で疑った issue #326 とは無関係)。
-
-### Added
-- **ローマ字出力モード** (`--mode romaji` / `--mode romaji-kunrei`):
-  - lib: `Furigana::to_romaji(text, RomajiStyle)` + 公開 `hiragana_to_romaji` 関数
-  - CLI: `furigana lookup --mode romaji` / `--mode romaji-kunrei`
-  - REPL: `mode romaji` / `mode romaji-kunrei`
-  - HTTP API: `mode=romaji` / `mode=romaji-kunrei`
-  - ヘボン式 (default): し→shi、ち→chi、つ→tsu、b/m/p 前 ん→m、母音/y 前 `'` 区切り
-  - 訓令式: し→si、ち→ti、つ→tu、ん→常に n
-  - 促音 (っ) は次の子音を重ねる、ヘボン式 ち系の前は t (motchi)
-  - 長音 (ー) は直前の母音を repeat
-- `Furigana::merge_dict_toml(content)` — TOML 文字列を辞書に一括 merge する API。
-  ファイルシステムベースの `core_dict_dir` が使えない環境向け。
-- `Furigana::preload()` — Lindera 形態素解析器を eager に初期化する API
-  (server 起動時の preload 用)。
-- `examples/clients/{python,nodejs,curl}/` — `furigana serve` HTTP API を他言語から
-  叩く最小サンプル (TTS パイプライン / Discord bot / shell パイプ用途)。
-- `crates/furigana/benches/lookup.rs` — criterion ベンチ (init / mode 別 / tokenize)。
-
-### Changed
-- **`Furigana` の Lindera 初期化を lazy に**。`Furigana::minimal()` /
-  `FuriganaBuilder::build()` の時点では Analyzer を init せず、最初の
-  `tokenize` / `to_*` 呼び出し時に [`OnceLock`] で 1 度だけ init。
-  `Furigana::minimal()` 単体の bench で **5.97 ms → 27.3 µs (-99.5%)**。
-  CLI レベルでは `--version` / `--help` 等の Lindera 不要経路が
-  ~80 ms → ~10 ms に高速化。`furigana serve` は preload を起動時に呼んで
-  最初のリクエストレイテンシを保つ。
-
-### Removed
-- `crates/furigana-wasm/` (WebAssembly bindings) を削除。`.wasm` が Lindera + IPADIC
-  込みで 57 MB と重く、Web からは `furigana serve` (HTTP API) で十分という判断。
-  Pages workflow (`.github/workflows/pages.yml`) も合わせて削除。
-  `lib::merge_dict_toml` API は WASM 用に追加したが、サーバ無し環境からの利用にも
-  汎用的に役立つので lib 側に残してある。
-
-## [0.1.0-alpha.2] - 2026-05-06
-
-### Changed
-- crate と GitHub repo の名前統一: `furigana` (取得済) は別 crate に取られていたため
-  `ja-furigana` (lib) / `ja-furigana-cli` (bin) に rename。
-- GitHub repo を `RyuuNeko1107/furigana` → `RyuuNeko1107/ja-furigana` /
-  `RyuuNeko1107/furigana-dict` → `RyuuNeko1107/ja-furigana-dict` に rename。
-  GitHub redirect が効くため旧 URL も互換。
-- `crates/furigana-cli/src/commands/dict_pull.rs` の REPO 定数を
-  `RyuuNeko1107/ja-furigana-dict` に更新 (alpha.1 は redirect 経由)。
-
-### Removed
-- 旧 `furigana-cli@0.1.0-alpha.1` を yank (rename 前の crate name、利用者ほぼゼロ前提)。
-
-## [0.1.0-alpha.1] - 2026-05-05
-
-初回 crates.io publish。Phase 2 機能ほぼ完成版。
-
-### Added (Phase 2)
-- **`furigana repl`**: 対話モード (rustyline、Tab 補完、↑↓ 履歴、`:` optional)。
-  引数なしで起動すれば REPL に入る (Windows ダブルクリック対応)。
-- **`furigana dict pull`**: GitHub Releases から `ja-furigana-dict` の tarball を fetch、
-  SHA-256 検証、`<data_dir>/data/` 配下に flat 展開。
-- **ホットリロード**: `POST /admin/reload` (`[auth].admin_tokens` 認証) と Unix 上の
-  `SIGHUP` で `<data_dir>` から辞書を再 build。
-- **portable 配置**: 既定では `<exe>/data/` に展開。フォルダごとコピーで持ち運べる。
-- **SI 単位の case-insensitive lookup**: `1km` / `1KM` / `1Km` どれも「いちきろめーとる」。
-  個別 entry で `ci = false` opt-out 可能。
-- **依存ライセンスの自動収集**: `cargo about` で `NOTICE.md` を生成。CI で license
-  drift を検知 (GPL/AGPL の混入を防止)。
-- **GitHub Releases 自動配布**: `release.yml` で 5 platform の binary +
-  `ghcr.io/ryuuneko1107/furigana` Docker image を tag push で配布。
-
-### Changed
-- 配布物 layout を `<data_dir>/{core,rules}/` の 2 階層から `<data_dir>/data/`
-  1 階層に統合。`Dict::from_toml_str` を defensive に修正し、rules 系
-  inline-table TOML を silent skip するように。
+- alpha.4 で **`Furigana` の Lindera 初期化を lazy 化** (`Furigana::minimal()`
+  単体で 5.97 ms → 27.3 µs)、 `Furigana::merge_dict_toml` / `Furigana::preload` /
+  ローマ字出力モード (ヘボン式 / 訓令式) 追加
+- `crates/furigana-wasm/` (WebAssembly bindings) は alpha.4 で削除
+  (`.wasm` が Lindera + IPADIC 込みで 57 MB と重く、 Web からは `furigana serve` で
+  十分という判断)
+- alpha.3 で `cargo test --release` harness の **51 GB alloc 暴走** を修正
+  (`chunks::regex::build_alt_regex` 空 list 時の never-match pattern が release DFA
+  を暴発させていた、 Lindera は無罪)
 
 ## [Pre-history (Phase 1)] - ~2026-05-04
 
 - workspace 構成 (`furigana` lib + `furigana-cli` bin) と Lindera + IPADIC ベースの
-  形態素解析パイプライン。
-- `Furigana` / `FuriganaBuilder` 公開 API、`tokens_to_ruby` / `tokens_to_hiragana`、
-  TTS 整形 (`TtsOptions` + `normalize_for_tts`)。
-- `furigana lookup` / `furigana serve` (Axum HTTP、本番 API 互換) /
-  `furigana dict {add,list,remove,import}` サブコマンド。
+  形態素解析パイプライン
+- `Furigana` / `FuriganaBuilder` 公開 API、 `tokens_to_ruby` / `tokens_to_hiragana`、
+  TTS 整形 (`TtsOptions` + `normalize_for_tts`)
+- `furigana lookup` / `furigana serve` (Axum HTTP、 本番 API 互換) /
+  `furigana dict {add,list,remove,import}` サブコマンド
 - 数値テキスト全体オーケストレーション (`NumberChunker` で時刻・日付・URL・スケール・
-  助数詞・SI 単位を 1 パイプラインで処理)。
-- データ駆動ルール: 全ルールを `ja-furigana-dict` 側 TOML で外部化。
-- 本番 ryuuneko.com から seed 投入 (unihan 43,749 / jukugo 605 / compat 436)。
+  助数詞・SI 単位を 1 パイプラインで処理)
+- データ駆動ルール: 全ルールを `ja-furigana-dict` 側 TOML で外部化
+- 本番 ryuuneko.com から seed 投入 (unihan 43,749 / jukugo 605 / compat 436)
 
 ## [一覧]
 

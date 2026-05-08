@@ -1,110 +1,95 @@
 # ロードマップ
 
-ja-furigana の中長期計画。**完了履歴は [CHANGELOG.md](../CHANGELOG.md)** を参照。本書は「これから何をやるか」志向で書く。
+ja-furigana の中長期計画。 **完了履歴は [CHANGELOG.md](../CHANGELOG.md)** を参照。
+本書は「これから何をやるか」 志向で書く。
 
 > 戻る: [README](../README.md)
 
 ## ステータス概観
 
-**v0.1.x (alpha)**: Phase 1/2 機能はすべて動作。`0.1.x` の間は以下が予告なく変更されうる:
+**v0.1.x (alpha)**: Phase 1〜5 機能はすべて動作。 alpha.9 を最終 alpha として、
+**0.1.0 正式版** を直近目標としている。
+
+`0.1.x` の間は以下が予告なく変更されうる:
 
 - 公開 Rust API (`Furigana` / `FuriganaBuilder` のメソッドシグネチャ)
 - `furigana-dict` の TOML スキーマ (新フィールド追加、廃止)
 - CLI 引数の名前 / デフォルト値
 - HTTP レスポンスの JSON フィールド名 / 構造
 
-安定版 (0.1.0 正式) 以降は SemVer で互換を守る。Rust toolchain は **1.89+** が必要 (`std::fs::File::lock` 安定化要求のため、依存 rustyline 18 経由)。
+安定版 (0.1.0 正式) 以降は SemVer で互換を守る。 Rust toolchain は **1.89+** が必要
+(`std::fs::File::lock` 安定化要求のため、 依存 rustyline 18 経由)。
 
 ## 完了済み
 
-詳細は [CHANGELOG.md](../CHANGELOG.md) で。サマリのみ:
+詳細は [CHANGELOG.md](../CHANGELOG.md) で。 サマリのみ:
 
-### Phase 1 (~2026-05-04)
+### Phase 1〜2 (~2026-05-05)
 - workspace + lib + CLI + データ駆動ルール (全 TOML)
-- HTTP server (Axum、HTTP API)
-- 辞書管理コマンド
-- GitHub Release ワークフロー (5 platform binary + Docker image)
-- 数値テキスト全体オーケストレーション (NumberChunker)
-- [`furigana-dict`](https://github.com/RyuuNeko1107/ja-furigana-dict) リポジトリ開設
-
-### Phase 2 (~2026-05-05)
-- (seed として)  `furigana-dict` への辞書 seed 投入 (unihan 43,749 / jukugo 605 / compat 436)
+- HTTP server (Axum)、 辞書管理コマンド、 GitHub Release ワークフロー
+- `furigana-dict` リポジトリ開設 + seed 投入
 - `furigana dict pull` (GitHub Releases + SHA-256 検証 + 展開)
-- 辞書のホットリロード (`SIGHUP` / `POST /admin/reload`)
-- portable 配置 (`furigana.exe` 横に `data/` 1 階層集約)
-- 対話 REPL (`furigana repl` / 引数なし起動 / Tab 補完 / 履歴 / `:` optional)
-- SI 単位の case-insensitive lookup
-- 四字熟語の分離 (`core/jukugo/basic/four_char.toml`)
+- ホットリロード (`SIGHUP` / `POST /admin/reload`)
+- portable 配置、 対話 REPL、 SI 単位 case-insensitive、 ローマ字出力モード
 - crates.io 公開 (`ja-furigana` lib + `ja-furigana-cli` bin)
-- ローマ字出力モード (ヘボン式 / 訓令式)
-- Lindera analyzer の lazy init (`Furigana::minimal()` で 5.97 ms → 27.3 µs)
+- Lindera analyzer の lazy init
 
-### Phase 3 (~2026-05-06、0.1.0-alpha.3 で完了)
-- **本書のパイプライン互換** に揃えた読み解決優先順位
-  (`context rule → jukugo → Lindera → unihan` の 5 段階、`resolve_reading`)
-- **`Dict` を `jukugo` (≥2 文字) / `unihan` (1 文字) に内部分離** + 専用 lookup API
-- **NumberChunker** の改修:
-  - 漢数字対応 (一〜二十一を Arabic に変換、`kansuji_to_arabic`)
-  - 「6月一日」のような Arabic+漢数字混在日付が日付 chunk として認識
-  - counter「N日」単独 = 期間扱い、日付内のみ days.toml の特殊読み (1=ツイタチ等) を採用
-  - scale + 漢字 1 文字 unit の連結 (「1万円」「3億ドル」等を 1 chunk で)
-- **`postprocess.toml`** — Step 7 (mode 別 regex 置換) の土台
-- **検証ループ駆動の品質改善** — 安定化した case を `ja-furigana-dict/tests/corpus/should_read.toml`
-  に promote する pattern を確立。CI で常時回帰検証 (`tools/run_corpus.py`)
-- CI: macOS test を週次 schedule に移動、cargo-audit + corpus regression job 追加
+### Phase 3 (~2026-05-06、 alpha.3)
+- 本番互換の **5 段階優先順位** (`context rule → jukugo → Lindera → unihan`)
+- `Dict` の jukugo / unihan 内部分離
+- `NumberChunker` の漢数字対応 + scale+unit 連結 + counter context
+- `postprocess.toml` (Step 7 mode 別 regex 置換)
+- 検証ループ駆動の品質改善基盤 (`should_read.toml` + `tools/run_corpus.py`)
+- CI の audit / corpus regression job 追加
 
-### Phase 4 (運用基盤の整備)
-- **辞書自動更新 (admin_tokens 不要)** — `furigana serve --auto-pull` フラグと
-  `[auto_update]` config による background polling。`/admin/reload` HTTP は
-  外部から同期トリガーしたい運用者向けに残置
-- **辞書ディレクトリの全階層再帰スキャン** — `Dict::from_toml_dir` が
-  無制限階層対応。`core/works/<medium>/<title>.toml` のような作品単位 1 ファイル
-  の細分化構造を許容
-- **作品単位辞書 `core/works/`** — ja-furigana-dict 側で新設、東方Project を seed として
-  収録。サブポリシー: 公式読みのみ採録、出典コメント必須、二次創作読み禁止
-- **辞書大規模拡充** (jukugo 24 カテゴリ、4.5k 件超) — vehicles / clothes / architecture /
-  literature / science / emotions / idioms / politics / religions / music / sports を含む
-- **STATS.md 自動生成基盤** — `tools/regen_stats.py` で件数 / サイズ table を再生成、
-  TOML 編集後 master push されると GitHub Actions が auto-commit で STATS.md を更新。
-  各 TOML ファイル先頭の `[meta] description` を引いて用途列を自動生成
+### Phase 4 (運用基盤)
+- 辞書自動更新 (`--auto-pull` + `[auto_update]`、 admin_tokens 不要)
+- `Dict::from_toml_dir` 全階層再帰
+- 作品単位辞書 `core/works/` 新設
+- 辞書大規模拡充 (jukugo 24 カテゴリ、 4.5k 件超)
+- STATS.md 自動生成基盤
 
-### Phase 5 (lookup priority 強化 + 外来語サポート + 出力ルール仕様)
-- **jukugo Aho-Corasick prefix-match** — `chunks::NumberChunker::split` 階層 4.5
-  で文頭から最長 match で固有複合語を 1 chunk に固定。 `numeric_phrases` の「千本」 が
-  「千本桜」 を分断する問題 ([issue #18](https://github.com/RyuuNeko1107/ja-furigana/issues/18)) を解決。
-  homonyms 除外 + ≥3 字制約で副作用ゼロ
-- **外来語 (loanwords) 辞書サポート** ([issue #19](https://github.com/RyuuNeko1107/ja-furigana/issues/19)) —
-  `Loanwords` data type 新設、 `chunks/split()` 階層 4.7 で英単語 chunk を 1 unit
-  として丸ごと切り出し + 完全一致 lookup (case-fold + 全角→半角)。 IT 用語の
-  Kubernetes / Docker / TypeScript / PostgreSQL 等を seed
-- **出力ルール仕様変更** — surface の文字種で reading 表記を切替:
-  漢字含む → ひらがな化 (既存) / 漢字含まない (ASCII / カタカナ / 数字 / 記号) →
-  カタカナに統一。 「Anthropic の Claude を使う」 → 「アンソロピックのクロードをつかう」
-  のような自然な混在表記が可能に
-- **cross-file 重複検出の自動化** — `validate.py` に divergent reading 検出 (CI fail 化) +
-  `tools/list_dups.py` で `STATS_DUPS.md` を auto-generate。 「一蓮托生
-  イチレント vs イチレンタ」 のような事故を構造的に防止
-- **本体側 issue 起票** ([#13](https://github.com/RyuuNeko1107/ja-furigana/issues/13)
-  〜 [#17](https://github.com/RyuuNeko1107/ja-furigana/issues/17)): 検証ループで
-  発見した動詞活用 / unihan lookup / 踊り字「々」 / 動詞 default 系の bug を分離記録
+### Phase 5 (lookup priority + 外来語 + 出力ルール、 alpha.7)
+- jukugo Aho-Corasick prefix-match (chunks 階層 4.5)
+- 外来語 (loanwords) 辞書サポート (chunks 階層 4.7、 完全一致 lookup)
+- 出力ルール仕様変更 (surface 文字種で reading 表記分岐)
+- cross-file 重複検出の自動化 (validate.py + STATS_DUPS.md)
+- 踊り字「々」 自動展開
+- 単漢字 default override (`SingleOverrides`、 issue #15 限定解)
+
+### Phase 6 (security + role 駆動 loader、 alpha.8〜alpha.9)
+- security 全 8 軸補強 (archive 展開 caps / HTTP body limit + rate limit / ReDoS audit /
+  RCE audit / sanitize layer for dict load / timing-safe token 比較 /
+  GitHub tag strict format / CLI 制御文字 reject)
+- `[meta] role` 駆動 loader (rules + dict 両方を統一 dispatch)
+- rules 3 sub-dir 階層化 (numbers / context / output)
+- inline test (`*.test.toml`) の append-only CI 強制
+- dict TOML format DSL 化 (triple-quoted string)
+- days.toml の `[entries]` block 化
 
 ## 進行中 / 候補
 
-### Phase 6 候補
+### 0.1.0 stable に向けて
 
-- [ ] **0.1.0 正式版へ昇格** — alpha → 安定版。リリース前に確認するもの:
-  - 公開 Rust API のシグネチャ最終確認 (rename したくないものは fix)
-  - HTTP レスポンスの JSON フィールド名 fix
-  - CHANGELOG の Migration ガイド
+- [ ] **公開 API のシグネチャ最終確認** — rename したくないものは fix
+- [ ] **HTTP レスポンスの JSON フィールド名 fix**
+- [ ] **CHANGELOG の Migration ガイド整備** — 0.1.x → 0.1.0 の breaking 一覧
+- [ ] **大規模 QA corpus** — `should_read.toml` の network coverage を増やす
+  (現在 108 件)
+- [ ] **branch protection 復元** — alpha 期間中の loose rule から stable 体制へ
+
+### Phase 7 候補 (0.1.0 後)
+
 - [ ] **作品単位辞書の継続拡充** — `core/works/` 構造に他作品を PR ベースで追加、
   サブポリシー (公式読みのみ採録 + 出典 comment 必須) を満たすもの
-- [ ] **`lindera-neologd` opt-in feature flag** — [Issue #9](https://github.com/RyuuNeko1107/ja-furigana/issues/9)
+- [ ] **`lindera-neologd` opt-in feature flag** ([Issue #9](https://github.com/RyuuNeko1107/ja-furigana/issues/9))
   - 新語 / 商標 / アニメ作品名等が default で読めるようになる
-  - 一方で binary 肥大化 (~50 MB → 数百 MB)、NEologd は upstream 凍結中、過剰な複合語化の懸念
+  - 一方で binary 肥大化 (~50 MB → 数百 MB)、 NEologd は upstream 凍結中、
+    過剰な複合語化の懸念
   - feature flag で choice にする案
 - [ ] **辞書ピンの依存表記** — `Cargo.toml` 経由で辞書 version を declare できるように?
   - `cargo install ja-furigana-cli --features dict-pinned` のような切り口
-- [ ] **postprocess ルールの拡充** — 土台 (mode 別 regex) はあるが具体ルールは少数のみ。
+- [ ] **postprocess ルールの拡充** — 土台 (mode 別 regex) はあるが具体ルールは少数。
   汎用的に使える rule を蓄積する
 - [ ] **検証バッチからの corpus promote** — `tools/verify_batch.txt` で見つけた
   empirical な誤読修正を `ja-furigana-dict/tests/corpus/should_read.toml` に
@@ -112,13 +97,16 @@ ja-furigana の中長期計画。**完了履歴は [CHANGELOG.md](../CHANGELOG.m
 
 ## 廃止された候補
 
-過去に検討したが、別アプローチで代替したもの:
+過去に検討したが、 別アプローチで代替したもの:
 
-- ❌ **WebAssembly ビルド** — 一度実装したが `.wasm` が Lindera + IPADIC 込みで 57 MB と重く、ブラウザから直接ロードするには不向きだった。Web からは `furigana serve` (HTTP API) で十分という判断で削除。CHANGELOG `[Unreleased]` の Removed セクション参照
-- ❌ **本体バイナリへの辞書 embed** — バイナリ肥大化 / 利用者ごとの辞書差し替え不能 / PR ループの遅さで却下。`furigana-dict` 別 repo + `furigana dict pull` の構成に
+- ❌ **WebAssembly ビルド** — `.wasm` が Lindera + IPADIC 込みで 57 MB と重く、
+  ブラウザから直接ロードするには不向きだった。 Web からは `furigana serve` (HTTP API)
+  で十分という判断で削除 (alpha.4)
+- ❌ **本体バイナリへの辞書 embed** — バイナリ肥大化 / 利用者ごとの辞書差し替え不能 /
+  PR ループの遅さで却下。 `furigana-dict` 別 repo + `furigana dict pull` の構成に
 
 ## ロードマップ更新ポリシー
 
-- 完了したものは [CHANGELOG.md](../CHANGELOG.md) `[Unreleased]` に移し、本書からは消す
-- Phase 4 以降を書き始める時は本書を分割せず追記する (規模次第で再考)
+- 完了したものは [CHANGELOG.md](../CHANGELOG.md) `[Unreleased]` に移し、 本書からは
+  サマリ 1 行に圧縮
 - 大きい設計判断は本書ではなく [ARCHITECTURE.md](./ARCHITECTURE.md) に書く

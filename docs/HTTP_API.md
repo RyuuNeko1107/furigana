@@ -192,7 +192,7 @@ furigana serve --auto-pull
 [auto_update]
 enabled  = true
 interval = "6h"      # 30m / 1h / 6h / 1d 等。1h 以上推奨 (GitHub API rate limit)
-# pin = "v0.1.3"     # 空なら最新追従
+# pin = "v2026.05.07"     # 空なら最新追従
 ```
 
 - **トークン不要** (内部呼び出しで HTTP 経由しないため)
@@ -203,7 +203,7 @@ interval = "6h"      # 30m / 1h / 6h / 1d 等。1h 以上推奨 (GitHub API rate
 ### D. `SIGHUP` シグナル (Unix のみ)
 
 ```sh
-furigana dict pull --version v0.1.3  # 先に DL
+furigana dict pull --version v2026.05.07  # 先に DL
 kill -HUP $(pgrep furigana)          # signal で reload
 # systemd なら ExecReload=/bin/kill -HUP $MAINPID
 ```
@@ -214,7 +214,7 @@ kill -HUP $(pgrep furigana)          # signal で reload
 ### E. `POST /admin/reload` (外部から HTTP で reload、admin_tokens 必須)
 
 ```sh
-furigana dict pull --version v0.1.3
+furigana dict pull --version v2026.05.07
 
 curl -X POST -H 'X-API-Key: <admin-token>' \
   http://127.0.0.1:8000/admin/reload
