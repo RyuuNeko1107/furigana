@@ -112,6 +112,63 @@ fn infer_role_from_path(path: &Path) -> Option<&'static str> {
     }
 }
 
+/// dict 系 file の role を推定 (role tag 無い file の互換 fallback)。
+///
+/// 既知の hardcoded path / 名 から「これは何の role か」 を推定する:
+/// - `<dir>/single_overrides.toml` → "single_overrides"
+/// - `<dir>/compat.toml` or `compat_map.toml` → "compat"
+/// - path 中に `loanwords/` を含む → "loanwords"
+/// - path 中に `jukugo/` を含む → "jukugo"
+/// - path 中に `unihan/` を含む → "unihan"
+/// - path 中に `works/` を含む → "works"
+///
+/// 不明 path は None。 caller 側で 「role 不明 = jukugo (back-compat)」 のように
+/// 扱うかどうかを決める。
+fn infer_dict_role_from_path(path: &Path) -> Option<&'static str> {
+    let name = path.file_name()?.to_str()?;
+    if name == "single_overrides.toml" {
+        return Some("single_overrides");
+    }
+    if name == "compat.toml" || name == "compat_map.toml" {
+        return Some("compat");
+    }
+    // path 中の dir 名で識別
+    for component in path.components() {
+        if let Some(s) = component.as_os_str().to_str() {
+            match s {
+                "loanwords" => return Some("loanwords"),
+                "jukugo" => return Some("jukugo"),
+                "unihan" => return Some("unihan"),
+                "works" => return Some("works"),
+                _ => {}
+            }
+        }
+    }
+    None
+}
+
+/// dict / rule 系 file の role を `[meta] role` から取得、 失敗時は path 推定。
+///
+/// `parse_meta_role` で `[meta] role` を読み、 無ければ
+/// [`infer_role_from_path`] (rules) → [`infer_dict_role_from_path`] (dict) の
+/// 順で path-based 推定を試す。 どちらにも該当しなければ None。
+///
+/// dict 側 loader (`Dict::from_toml_dir` / `Loanwords::from_toml_dir`) からは
+/// この関数を経由して role を解決し、 role 値で dispatch する。
+#[must_use]
+pub fn resolve_role(content: &str, path: &Path) -> Option<String> {
+    if let Some(role) = parse_meta_role(content) {
+        return Some(role);
+    }
+    if let Some(role) = infer_role_from_path(path) {
+        return Some(role.to_string());
+    }
+    if let Some(role) = infer_dict_role_from_path(path) {
+        return Some(role.to_string());
+    }
+    None
+}
+
 // ─── ファイル名定数 ───────────────────────────────────────────────────────────
 
 /// 助数詞ルール
