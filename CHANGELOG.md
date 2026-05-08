@@ -350,7 +350,7 @@ ja-furigana-dict 側で `core/works/game/touhou.toml`、`core/works/anime/<title
 全 pass、clippy clean、fmt clean。ja-furigana-dict 側 v0.1.2 (24 ファイル /
 `core/jukugo/*.toml` 1 階層構造) は新 loader でも完全互換 (旧 1 階層構造は新 loader の subset)。
 
-## [0.1.0-alpha.1] 〜 [0.1.0-alpha.5] - 2026-05-05〜2026-05-06 (要約)
+## 0.1.0-alpha.1 〜 0.1.0-alpha.5 - 2026-05-05〜2026-05-06 (要約)
 
 初回 crates.io publish (alpha.1) から、 本番互換の読み解決優先順位整備 (alpha.3) /
 依存 major bump 一気取り込み (alpha.4) / 辞書自動更新 admin_tokens 不要化 (alpha.5)
@@ -389,7 +389,7 @@ ja-furigana-dict 側で `core/works/game/touhou.toml`、`core/works/anime/<title
   (`chunks::regex::build_alt_regex` 空 list 時の never-match pattern が release DFA
   を暴発させていた、 Lindera は無罪)
 
-## [Pre-history (Phase 1)] - ~2026-05-04
+## Pre-history (Phase 1) - ~2026-05-04
 
 - workspace 構成 (`furigana` lib + `furigana-cli` bin) と Lindera + IPADIC ベースの
   形態素解析パイプライン
@@ -402,14 +402,14 @@ ja-furigana-dict 側で `core/works/game/touhou.toml`、`core/works/anime/<title
 - データ駆動ルール: 全ルールを `ja-furigana-dict` 側 TOML で外部化
 - 本番 ryuuneko.com から seed 投入 (unihan 43,749 / jukugo 605 / compat 436)
 
-## [一覧]
+<!-- ───────────────────────────────────────────────────────────────────
+     リンク参照 (Markdown reference-style links、 GitHub では invisible)
+     上記 body の [Unreleased] / [0.1.0-alpha.X] の bracket 表記をクリック可能に
+     する metadata。 alpha.7 は immutable releases lock + author email 焼き付き
+     で yank、 alpha.1 / alpha.2 は yank 済み (rename 前 crate name)。
+     ─────────────────────────────────────────────────────────────────── -->
 
-[Unreleased]: https://github.com/RyuuNeko1107/ja-furigana/compare/v0.1.0-alpha.8...HEAD
+[Unreleased]: https://github.com/RyuuNeko1107/ja-furigana/compare/v0.1.0-alpha.9...HEAD
+[0.1.0-alpha.9]: https://github.com/RyuuNeko1107/ja-furigana/releases/tag/v0.1.0-alpha.9
 [0.1.0-alpha.8]: https://github.com/RyuuNeko1107/ja-furigana/releases/tag/v0.1.0-alpha.8
-[0.1.0-alpha.7]: https://github.com/RyuuNeko1107/ja-furigana/releases/tag/v0.1.0-alpha.7
 [0.1.0-alpha.6]: https://github.com/RyuuNeko1107/ja-furigana/releases/tag/v0.1.0-alpha.6
-[0.1.0-alpha.5]: https://github.com/RyuuNeko1107/ja-furigana/releases/tag/v0.1.0-alpha.5
-[0.1.0-alpha.4]: https://github.com/RyuuNeko1107/ja-furigana/releases/tag/v0.1.0-alpha.4
-[0.1.0-alpha.3]: https://github.com/RyuuNeko1107/ja-furigana/releases/tag/v0.1.0-alpha.3
-[0.1.0-alpha.2]: https://github.com/RyuuNeko1107/ja-furigana/releases/tag/v0.1.0-alpha.2
-[0.1.0-alpha.1]: https://github.com/RyuuNeko1107/ja-furigana/releases/tag/v0.1.0-alpha.1
