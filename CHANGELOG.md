@@ -95,6 +95,19 @@
 - 関連 test 5 件追加 (dict 3 / loanwords 2): role tag 駆動 + path-based
   back-compat の両経路を validate。
 
+### Changed (context rule: triple-quoted string で string list を受ける)
+
+- **`prev_ends` / `next_starts_any` / `next2_starts` field に triple-quoted
+  string 形式を追加**: 従来の TOML array (`["a", "b", "c"]`) に加えて、
+  triple-quoted string (`"""\na\nb\nc\n"""`) でも書けるようになる。 後者は
+  newline split + trim + 空行 filter で `Vec<String>` に変換される。
+- **目的**: contributor が array で各行末に `,` を付ける friction を削減。
+  特に多行 array (10+ entry) で merge conflict 耐性も向上 (1 行 1 entry)。
+- 旧形式 (TOML array) は引き続きサポート (`#[serde(untagged)]` enum で両受け)、
+  既存 dict release tar との backwards compat は維持。
+- 関連 test 4 件追加: triple-quoted / blank line filter / array back-compat
+  / empty string の各経路を validate。
+
 ### Changed (BREAKING: days.toml 構造)
 
 - **`DaysData` を `[entries]` block 形式に migration**: 従来 transparent

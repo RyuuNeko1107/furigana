@@ -28,7 +28,38 @@
 //! reading = "オトナゲ"
 //! ```
 
+use serde::de::Deserializer;
 use serde::Deserialize;
+
+/// 文字列 or `Vec<String>` を `Vec<String>` に変換する serde helper。
+///
+/// TOML で 2 形式どちらも受け付ける:
+/// - `field = ["a", "b", "c"]` (標準 array、 後方互換)
+/// - `field = """\na\nb\nc\n"""` (triple-quoted string、 1 行 1 entry、
+///   行末 `,` 不要、 空行・前後 whitespace は trim/filter)
+///
+/// 後者は contributor が `,` を毎行付ける friction を避けるための DSL。
+/// alpha era 中は両形式併存、 stable release 後は新形式統一の方向。
+fn string_list<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Either {
+        Vec(Vec<String>),
+        String(String),
+    }
+    match Either::deserialize(deserializer)? {
+        Either::Vec(v) => Ok(v),
+        Either::String(s) => Ok(s
+            .lines()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(String::from)
+            .collect()),
+    }
+}
 
 /// context.toml 全体
 #[derive(Debug, Default, Clone, Deserialize)]
@@ -79,7 +110,11 @@ pub struct ContextMatch {
     #[serde(default)]
     pub prev_eq: Option<String>,
     /// 前トークンの surface が末尾でいずれかに一致 (旧 TOML key `prev_ends_with_any` も受ける)
-    #[serde(default, alias = "prev_ends_with_any")]
+    #[serde(
+        default,
+        alias = "prev_ends_with_any",
+        deserialize_with = "string_list"
+    )]
     pub prev_ends: Vec<String>,
     /// 前トークンが月名 (一月〜十二月 / 1月〜12月) で終わるか (旧 key `prev_ends_with_month`)
     #[serde(default, alias = "prev_ends_with_month")]
@@ -93,7 +128,11 @@ pub struct ContextMatch {
     #[serde(default, alias = "next_starts_with")]
     pub next_starts: Option<String>,
     /// 次トークンの surface が先頭でいずれかに一致 (旧 key `next_starts_with_any`)
-    #[serde(default, alias = "next_starts_with_any")]
+    #[serde(
+        default,
+        alias = "next_starts_with_any",
+        deserialize_with = "string_list"
+    )]
     pub next_starts_any: Vec<String>,
     /// 次トークンの surface が数字 (半角/全角) で始まる (旧 key `next_starts_with_digit`)
     #[serde(default, alias = "next_starts_with_digit")]
@@ -101,7 +140,11 @@ pub struct ContextMatch {
 
     // ─── 次の次トークン条件 ───
     /// 「大人気の無い」のように 1 つ飛ばし参照する用途 (旧 key `next_next_starts_with_any`)
-    #[serde(default, alias = "next_next_starts_with_any")]
+    #[serde(
+        default,
+        alias = "next_next_starts_with_any",
+        deserialize_with = "string_list"
+    )]
     pub next2_starts: Vec<String>,
 
     // ─── 品詞条件 ───
@@ -211,5 +254,94 @@ mod tests {
     fn empty_input_yields_default() {
         let data: ContextData = toml::from_str("").unwrap();
         assert!(data.rules.is_empty());
+    }
+
+    #[test]
+    fn parses_string_list_as_triple_quoted() {
+        // triple-quoted string で next_starts_any / prev_ends / next2_starts を
+        // 受けられること (`,` 不要 DSL)
+        let toml_str = r#"
+            [[rule]]
+            surface = "一日"
+
+            [[rule.match]]
+            next_starts_any = """
+中
+間
+分
+"""
+            prev_ends = """
+毎
+約
+"""
+            next2_starts = """
+旅
+集団
+"""
+            reading = "ツイタチ"
+        "#;
+        let data: ContextData = toml::from_str(toml_str).unwrap();
+        let m = &data.rules[0].matches[0];
+        assert_eq!(m.next_starts_any, vec!["中", "間", "分"]);
+        assert_eq!(m.prev_ends, vec!["毎", "約"]);
+        assert_eq!(m.next2_starts, vec!["旅", "集団"]);
+    }
+
+    #[test]
+    fn string_list_handles_blank_lines_and_whitespace() {
+        // 空行 / 前後 whitespace を trim/filter
+        let toml_str = r#"
+            [[rule]]
+            surface = "一日"
+
+            [[rule.match]]
+            next_starts_any = """
+
+  中
+  間
+
+  分
+
+"""
+            reading = "ツイタチ"
+        "#;
+        let data: ContextData = toml::from_str(toml_str).unwrap();
+        assert_eq!(
+            data.rules[0].matches[0].next_starts_any,
+            vec!["中", "間", "分"]
+        );
+    }
+
+    #[test]
+    fn string_list_back_compat_array_form() {
+        // 旧形式 (TOML array) も引き続き受ける
+        let toml_str = r#"
+            [[rule]]
+            surface = "一日"
+
+            [[rule.match]]
+            next_starts_any = ["中", "間"]
+            prev_ends = ["毎", "約"]
+            reading = "ツイタチ"
+        "#;
+        let data: ContextData = toml::from_str(toml_str).unwrap();
+        let m = &data.rules[0].matches[0];
+        assert_eq!(m.next_starts_any, vec!["中", "間"]);
+        assert_eq!(m.prev_ends, vec!["毎", "約"]);
+    }
+
+    #[test]
+    fn string_list_empty_string_yields_empty_vec() {
+        // 空 triple-quoted string は空 Vec
+        let toml_str = r#"
+            [[rule]]
+            surface = "一日"
+
+            [[rule.match]]
+            next_starts_any = ""
+            reading = "ツイタチ"
+        "#;
+        let data: ContextData = toml::from_str(toml_str).unwrap();
+        assert!(data.rules[0].matches[0].next_starts_any.is_empty());
     }
 }
