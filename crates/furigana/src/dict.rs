@@ -191,10 +191,10 @@ impl Dict {
             let role = crate::loader::resolve_role(&content, &f);
             // Dict に load する role 一覧。 role 不明 (None) は backwards compat
             // で Dict として扱う (古い release で role tag が無い file を救う)。
-            let load_into_dict = match role.as_deref() {
-                Some("jukugo") | Some("unihan") | Some("works") | None => true,
-                _ => false,
-            };
+            let load_into_dict = matches!(
+                role.as_deref(),
+                Some("jukugo") | Some("unihan") | Some("works") | None
+            );
             if !load_into_dict {
                 continue;
             }
@@ -479,7 +479,11 @@ mod tests {
 
         let d = Dict::from_toml_dir(&dir).unwrap();
         assert_eq!(d.lookup("灰桜"), Some("ハイザクラ"));
-        assert_eq!(d.lookup("Kubernetes"), None, "loanwords は role tag で skip");
+        assert_eq!(
+            d.lookup("Kubernetes"),
+            None,
+            "loanwords は role tag で skip"
+        );
         assert_eq!(d.len(), 1);
 
         std::fs::remove_dir_all(&dir).ok();
@@ -534,8 +538,16 @@ mod tests {
 
         let d = Dict::from_toml_dir(&dir).unwrap();
         assert_eq!(d.lookup("灰桜"), Some("ハイザクラ"));
-        assert_eq!(d.lookup("Kubernetes"), None, "loanwords/ dir は path 推定で skip");
-        assert_eq!(d.lookup("土"), None, "single_overrides.toml は file 名推定で skip");
+        assert_eq!(
+            d.lookup("Kubernetes"),
+            None,
+            "loanwords/ dir は path 推定で skip"
+        );
+        assert_eq!(
+            d.lookup("土"),
+            None,
+            "single_overrides.toml は file 名推定で skip"
+        );
         assert_eq!(d.len(), 1);
 
         std::fs::remove_dir_all(&dir).ok();
