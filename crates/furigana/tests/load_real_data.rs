@@ -58,7 +58,7 @@ fn load_all_rules_succeeds() {
         .find(|r| r.surface == "一日")
         .expect("一日 not found");
     assert_eq!(ichinichi.matches.len(), 3);
-    assert!(ichinichi.matches[0].prev_ends_with_month);
+    assert!(ichinichi.matches[0].prev_month);
 
     let ichigatsu = data
         .context
@@ -66,7 +66,7 @@ fn load_all_rules_succeeds() {
         .iter()
         .find(|r| r.surface == "一月")
         .expect("一月 not found");
-    assert!(ichigatsu.matches.iter().any(|m| m.next_starts_with_digit));
+    assert!(ichigatsu.matches.iter().any(|m| m.next_digit));
 
     // ─── Days ──────────────────────────────────────────────────────────
     assert_eq!(data.days.get(1), Some("ツイタチ"));

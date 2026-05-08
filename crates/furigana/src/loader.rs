@@ -201,7 +201,14 @@ fn list_toml_files_sorted(dir: &Path) -> Result<Vec<PathBuf>> {
     let mut files: Vec<PathBuf> = std::fs::read_dir(dir)?
         .filter_map(std::result::Result::ok)
         .map(|e| e.path())
-        .filter(|p| p.is_file() && p.extension().is_some_and(|e| e == "toml"))
+        .filter(|p| {
+            if !p.is_file() || p.extension().is_none_or(|e| e != "toml") {
+                return false;
+            }
+            // *.test.toml / _genre.toml は CI 専用 / メタ用 で rules には不要
+            let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            !name.ends_with(".test.toml") && name != "_genre.toml"
+        })
         .collect();
     files.sort();
     Ok(files)

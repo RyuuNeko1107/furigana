@@ -174,6 +174,12 @@ fn collect_toml_recursive(dir: &Path, out: &mut Vec<PathBuf>) -> std::io::Result
     for entry in std::fs::read_dir(dir)? {
         let path = entry?.path();
         if path.is_file() && path.extension().is_some_and(|e| e == "toml") {
+            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            // *.test.toml は CI 専用 inline test、 _genre.toml は STATS sub-section
+            // description で entries 無し → どちらも runtime load 対象外。
+            if name.ends_with(".test.toml") || name == "_genre.toml" {
+                continue;
+            }
             out.push(path);
         } else if path.is_dir() {
             collect_toml_recursive(&path, out)?;

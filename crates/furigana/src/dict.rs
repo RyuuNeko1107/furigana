@@ -50,11 +50,19 @@ fn collect_toml_files_recursive(dir: &Path, out: &mut Vec<PathBuf>) -> std::io::
     for entry in std::fs::read_dir(dir)? {
         let path = entry?.path();
         if path.is_file() && path.extension().is_some_and(|e| e == "toml") {
+            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
             // single_overrides.toml は SingleOverrides 側で別 load
-            if path
-                .file_name()
-                .is_some_and(|n| n == "single_overrides.toml")
-            {
+            if name == "single_overrides.toml" {
+                continue;
+            }
+            // *.test.toml は CI 専用の inline test、 lib runtime には不要
+            // (release tar からも `--exclude='*.test.toml'` で除外、 通常 dev
+            // checkout にだけ存在する想定)
+            if name.ends_with(".test.toml") {
+                continue;
+            }
+            // _genre.toml は STATS.md sub-section description 用メタ、 entries なし
+            if name == "_genre.toml" {
                 continue;
             }
             out.push(path);

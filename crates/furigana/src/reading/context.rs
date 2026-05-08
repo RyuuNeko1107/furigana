@@ -44,17 +44,13 @@ fn context_match_eval(m: &ContextMatch, tokens: &[MorphToken], idx: usize) -> bo
             return false;
         }
     }
-    if !m.prev_ends_with_any.is_empty() {
-        let ok = prev.is_some_and(|t| {
-            m.prev_ends_with_any
-                .iter()
-                .any(|s| t.surface.ends_with(s.as_str()))
-        });
+    if !m.prev_ends.is_empty() {
+        let ok = prev.is_some_and(|t| m.prev_ends.iter().any(|s| t.surface.ends_with(s.as_str())));
         if !ok {
             return false;
         }
     }
-    if m.prev_ends_with_month {
+    if m.prev_month {
         let ok = prev.is_some_and(|t| ends_with_month(&t.surface));
         if !ok {
             return false;
@@ -67,15 +63,15 @@ fn context_match_eval(m: &ContextMatch, tokens: &[MorphToken], idx: usize) -> bo
             return false;
         }
     }
-    if let Some(prefix) = &m.next_starts_with {
+    if let Some(prefix) = &m.next_starts {
         let ok = next.is_some_and(|t| t.surface.starts_with(prefix.as_str()));
         if !ok {
             return false;
         }
     }
-    if !m.next_starts_with_any.is_empty() {
+    if !m.next_starts_any.is_empty() {
         let ok = next.is_some_and(|t| {
-            m.next_starts_with_any
+            m.next_starts_any
                 .iter()
                 .any(|s| t.surface.starts_with(s.as_str()))
         });
@@ -83,7 +79,7 @@ fn context_match_eval(m: &ContextMatch, tokens: &[MorphToken], idx: usize) -> bo
             return false;
         }
     }
-    if m.next_starts_with_digit {
+    if m.next_digit {
         let ok = next.is_some_and(|t| starts_with_digit(&t.surface));
         if !ok {
             return false;
@@ -91,9 +87,9 @@ fn context_match_eval(m: &ContextMatch, tokens: &[MorphToken], idx: usize) -> bo
     }
 
     // ─── 次の次トークン条件 ────────────────────────────────────────────────
-    if !m.next_next_starts_with_any.is_empty() {
+    if !m.next2_starts.is_empty() {
         let ok = next_next.is_some_and(|t| {
-            m.next_next_starts_with_any
+            m.next2_starts
                 .iter()
                 .any(|s| t.surface.starts_with(s.as_str()))
         });
@@ -103,7 +99,7 @@ fn context_match_eval(m: &ContextMatch, tokens: &[MorphToken], idx: usize) -> bo
     }
 
     // ─── 品詞条件 ──────────────────────────────────────────────────────────
-    if let Some(eq) = &m.pos_eq {
+    if let Some(eq) = &m.pos {
         if token.pos.as_deref() != Some(eq.as_str()) {
             return false;
         }

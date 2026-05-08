@@ -8,11 +8,11 @@
 //! surface = "一日"
 //!
 //! [[rule.match]]
-//! prev_ends_with_month = true
+//! prev_month = true
 //! reading = "ツイタチ"
 //!
 //! [[rule.match]]
-//! next_starts_with_any = ["中", "間", "分"]
+//! next_starts_any = ["中", "間", "分"]
 //! reading = "イチニチ"
 //!
 //! [[rule]]
@@ -24,7 +24,7 @@
 //! default = "ダイニンキ"
 //!
 //! [[rule.match]]
-//! next_starts_with = "な"
+//! next_starts = "な"
 //! reading = "オトナゲ"
 //! ```
 
@@ -78,36 +78,36 @@ pub struct ContextMatch {
     /// 前トークンの surface 完全一致
     #[serde(default)]
     pub prev_eq: Option<String>,
-    /// 前トークンの surface が末尾でいずれかに一致
-    #[serde(default)]
-    pub prev_ends_with_any: Vec<String>,
-    /// 前トークンが月名 (一月〜十二月 / 1月〜12月) で終わるか
-    #[serde(default)]
-    pub prev_ends_with_month: bool,
+    /// 前トークンの surface が末尾でいずれかに一致 (旧 TOML key `prev_ends_with_any` も受ける)
+    #[serde(default, alias = "prev_ends_with_any")]
+    pub prev_ends: Vec<String>,
+    /// 前トークンが月名 (一月〜十二月 / 1月〜12月) で終わるか (旧 key `prev_ends_with_month`)
+    #[serde(default, alias = "prev_ends_with_month")]
+    pub prev_month: bool,
 
     // ─── 次トークン条件 ───
     /// 次トークンの surface 完全一致
     #[serde(default)]
     pub next_eq: Option<String>,
-    /// 次トークンの surface が先頭で指定文字列に一致
-    #[serde(default)]
-    pub next_starts_with: Option<String>,
-    /// 次トークンの surface が先頭でいずれかに一致
-    #[serde(default)]
-    pub next_starts_with_any: Vec<String>,
-    /// 次トークンの surface が数字 (半角/全角) で始まる
-    #[serde(default)]
-    pub next_starts_with_digit: bool,
+    /// 次トークンの surface が先頭で指定文字列に一致 (旧 key `next_starts_with`)
+    #[serde(default, alias = "next_starts_with")]
+    pub next_starts: Option<String>,
+    /// 次トークンの surface が先頭でいずれかに一致 (旧 key `next_starts_with_any`)
+    #[serde(default, alias = "next_starts_with_any")]
+    pub next_starts_any: Vec<String>,
+    /// 次トークンの surface が数字 (半角/全角) で始まる (旧 key `next_starts_with_digit`)
+    #[serde(default, alias = "next_starts_with_digit")]
+    pub next_digit: bool,
 
     // ─── 次の次トークン条件 ───
-    /// 「大人気の無い」のように 1 つ飛ばし参照する用途
-    #[serde(default)]
-    pub next_next_starts_with_any: Vec<String>,
+    /// 「大人気の無い」のように 1 つ飛ばし参照する用途 (旧 key `next_next_starts_with_any`)
+    #[serde(default, alias = "next_next_starts_with_any")]
+    pub next2_starts: Vec<String>,
 
     // ─── 品詞条件 ───
-    /// 当該トークンの品詞 (例: "名詞", "形容詞")
-    #[serde(default)]
-    pub pos_eq: Option<String>,
+    /// 当該トークンの品詞 (例: "名詞", "形容詞") — 旧 key `pos_eq`
+    #[serde(default, alias = "pos_eq")]
+    pub pos: Option<String>,
 }
 
 #[cfg(test)]
@@ -135,19 +135,19 @@ mod tests {
             surface = "一日"
 
             [[rule.match]]
-            prev_ends_with_month = true
+            prev_month = true
             reading = "ツイタチ"
 
             [[rule.match]]
-            next_starts_with_any = ["中", "間"]
+            next_starts_any = ["中", "間"]
             reading = "イチニチ"
         "#;
         let data: ContextData = toml::from_str(toml_str).unwrap();
         let r = &data.rules[0];
         assert_eq!(r.matches.len(), 2);
-        assert!(r.matches[0].prev_ends_with_month);
+        assert!(r.matches[0].prev_month);
         assert_eq!(r.matches[0].reading, "ツイタチ");
-        assert_eq!(r.matches[1].next_starts_with_any, vec!["中", "間"]);
+        assert_eq!(r.matches[1].next_starts_any, vec!["中", "間"]);
         assert_eq!(r.matches[1].reading, "イチニチ");
     }
 
@@ -158,11 +158,11 @@ mod tests {
             surface = "上手"
 
             [[rule.match]]
-            pos_eq = "名詞"
+            pos = "名詞"
             reading = "ジョウズ"
         "#;
         let data: ContextData = toml::from_str(toml_str).unwrap();
-        assert_eq!(data.rules[0].matches[0].pos_eq.as_deref(), Some("名詞"));
+        assert_eq!(data.rules[0].matches[0].pos.as_deref(), Some("名詞"));
         assert_eq!(data.rules[0].matches[0].reading, "ジョウズ");
     }
 
@@ -175,13 +175,36 @@ mod tests {
 
             [[rule.match]]
             next_eq = "の"
-            next_next_starts_with_any = ["な", "無"]
+            next2_starts = ["な", "無"]
             reading = "オトナゲ"
         "#;
         let data: ContextData = toml::from_str(toml_str).unwrap();
         let r = &data.rules[0];
         assert_eq!(r.matches[0].next_eq.as_deref(), Some("の"));
-        assert_eq!(r.matches[0].next_next_starts_with_any, vec!["な", "無"]);
+        assert_eq!(r.matches[0].next2_starts, vec!["な", "無"]);
+    }
+
+    /// 旧 TOML key (alias 互換) でも deserialize できることを確認
+    #[test]
+    fn parses_legacy_aliases() {
+        let toml_str = r#"
+            [[rule]]
+            surface = "一日"
+
+            [[rule.match]]
+            prev_ends_with_month = true
+            reading = "ツイタチ"
+
+            [[rule.match]]
+            next_starts_with_any = ["中", "間"]
+            pos_eq = "名詞"
+            reading = "イチニチ"
+        "#;
+        let data: ContextData = toml::from_str(toml_str).unwrap();
+        let r = &data.rules[0];
+        assert!(r.matches[0].prev_month);
+        assert_eq!(r.matches[1].next_starts_any, vec!["中", "間"]);
+        assert_eq!(r.matches[1].pos.as_deref(), Some("名詞"));
     }
 
     #[test]
