@@ -386,6 +386,7 @@ mod tests {
     #[test]
     fn parses_days_toml_lookup_by_int() {
         let toml_str = r#"
+            [entries]
             "1" = "ツイタチ"
             "20" = "ハツカ"
         "#;

@@ -6,6 +6,20 @@
 
 ## [Unreleased]
 
+## [0.1.0-alpha.9] - 2026-05-08
+
+alpha.8 から積み上がっていた累積変更をまとめてリリース。 主な軸は
+**security 全 8 軸の補強** + **sanitize layer 新設** + **`[meta] role` 駆動 loader
+の rules + dict 統一** + **rules 3 sub-dir 階層化** + **inline test の append-only
+CI 強制** + **dict TOML format の DSL 化 (triple-quoted string)** + **days.toml の
+`[entries]` block 化** 等。
+
+公開 API は backwards compat を維持 — 既存 dict release tar (alpha.5+) は新 lib で
+何も触らずに `furigana dict pull` で動作する。 `[meta] role` 無しの旧 file は
+path-based 推定で fallback、 `DaysData` の旧 flat 形式も custom Deserialize で受け
+入れる。 dict 側 PR (ja-furigana-dict#9) も新形式に migration 済 — alpha.9 lib +
+新 dict release で最新形式の恩恵 (role tag 駆動 / triple-quoted DSL / 等)。
+
 ### Security (攻撃面: 辞書 / HTTP 入力)
 
 - **`furigana dict pull` の archive 展開強化**:
@@ -94,6 +108,52 @@
   そのまま動作する。
 - 関連 test 5 件追加 (dict 3 / loanwords 2): role tag 駆動 + path-based
   back-compat の両経路を validate。
+
+### Changed (context rule: triple-quoted string で string list を受ける)
+
+- **`prev_ends` / `next_starts_any` / `next2_starts` field に triple-quoted
+  string 形式を追加**: 従来の TOML array (`["a", "b", "c"]`) に加えて、
+  triple-quoted string (`"""\na\nb\nc\n"""`) でも書けるようになる。 後者は
+  newline split + trim + 空行 filter で `Vec<String>` に変換される。
+- **目的**: contributor が array で各行末に `,` を付ける friction を削減。
+  特に多行 array (10+ entry) で merge conflict 耐性も向上 (1 行 1 entry)。
+- 旧形式 (TOML array) は引き続きサポート (`#[serde(untagged)]` enum で両受け)、
+  既存 dict release tar との backwards compat は維持。
+- 関連 test 4 件追加: triple-quoted / blank line filter / array back-compat
+  / empty string の各経路を validate。
+
+### Changed (days.toml 構造: `[entries]` block 推奨、 旧形式互換維持)
+
+- **`DaysData` を `[entries]` block 形式に migration、 旧 flat 形式も引き続き
+  サポート**: 従来 transparent HashMap (top-level に `"1" = "ツイタチ"` 直書き)
+  だったため `[meta] role` block を併置できず、 role 駆動 loader の対象外
+  だった。 alpha.9 から `[entries]` table 内に entries を移し、
+  `[meta] role = "days"` + `description` を併置可能に。 これで days.toml も
+  他 rule file と同じく role tag 駆動で識別できる。
+- 推奨形式 (alpha.9+):
+  ```toml
+  [meta]
+  role = "days"
+  description = "1〜31 日の特殊読み (1→ツイタチ 等)"
+
+  [entries]
+  "1" = "ツイタチ"
+  "2" = "フツカ"
+  ```
+- 旧形式 (flat top-level、 alpha.5 〜 alpha.8 互換) も引き続き受け入れる:
+  ```toml
+  "1" = "ツイタチ"
+  "2" = "フツカ"
+  ```
+  → custom Deserialize impl で `[entries]` key を見つければ Table 配下、
+  無ければ top-level table 直下を採用する。 既存 dict release tar
+  (alpha.5+) で `furigana dict pull` した user は何もせずに alpha.9 に
+  upgrade できる。
+- `DaysData` struct: `pub struct DaysData(pub HashMap<String,String>)` →
+  `pub struct DaysData { pub entries: HashMap<String,String> }`。 `get` /
+  `len` / `is_empty` の API は据え置き、 内部実装のみ `self.0` →
+  `self.entries`。 derive(Deserialize) → 手書き impl に変更 (両形式 dispatch
+  のため)。
 
 ## [0.1.0-alpha.8] - 2026-05-07
 
