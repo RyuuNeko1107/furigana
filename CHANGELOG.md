@@ -72,6 +72,33 @@
   - 公開 ja-furigana-dict (CJK + kana + ASCII + 通常記号のみ) は影響なし、
     既存 corpus 118/118 pass 確認
 
+### Changed (BREAKING: days.toml 構造)
+
+- **`DaysData` を `[entries]` block 形式に migration**: 従来 transparent
+  HashMap (top-level に `"1" = "ツイタチ"` 直書き) だったため `[meta] role`
+  block を併置できず、 role 駆動 loader の対象外だった。 alpha.9 から
+  `[entries]` table 内に entries を移し、 `[meta] role = "days"` +
+  `description` を併置可能に。 これで days.toml も他 rule file と同じく
+  role tag 駆動で識別できる。
+- 新形式:
+  ```toml
+  [meta]
+  role = "days"
+  description = "1〜31 日の特殊読み (1→ツイタチ 等)"
+
+  [entries]
+  "1" = "ツイタチ"
+  "2" = "フツカ"
+  ```
+- 旧形式 (flat top-level) は alpha.9 から deserialize 失敗。 ja-furigana-dict
+  v2026.05.08+ は新形式で release されるため、 lib alpha.9 と coordinated
+  に upgrade する必要がある (alpha.8 + new dict / alpha.9 + old dict は
+  どちらも非互換)。
+- `DaysData` struct: `pub struct DaysData(pub HashMap<String,String>)` →
+  `pub struct DaysData { pub entries: HashMap<String,String> }`。 `get`
+  / `len` / `is_empty` の API は据え置き、 内部実装のみ `self.0` →
+  `self.entries`。
+
 ## [0.1.0-alpha.8] - 2026-05-07
 
 alpha.7 のリリースをやり直したもの。 binary 内容と機能は alpha.7 と実質同じ
