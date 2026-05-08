@@ -63,8 +63,14 @@ pub const SYMBOLS_FILE: &str = "symbols.toml";
 pub const LATIN_FILE: &str = "latin.toml";
 /// 慣用語句
 pub const NUMERIC_PHRASES_FILE: &str = "numeric_phrases.toml";
-/// 異体字マップ
-pub const COMPAT_FILE: &str = "compat_map.toml";
+/// 異体字マップ。 配布物 (ja-furigana-dict release tar) 内のファイル名と一致させる。
+/// 旧 alpha 系で「`compat_map.toml`」 にしていた時代があったが、 dict 側は当初
+/// から `core/compat.toml` で配布しており、 lib が探していたファイル名と乖離して
+/// **異体字正規化が無効化されていた** (reading::tokenize_text Step 1 が no-op
+/// になり、 「髙橋」 / 「檜風呂」 等が compat 経由で標準字に変換されないまま
+/// chunker / Lindera に流れていた)。 R15 で corpus に「檜風呂に入る」 が追加され
+/// るまで気付かれなかった構造的 bug の修正。
+pub const COMPAT_FILE: &str = "compat.toml";
 /// 後処理ルール (Step 7 (mode 別後処理 regex))
 pub const POSTPROCESS_FILE: &str = "postprocess.toml";
 
