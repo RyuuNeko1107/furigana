@@ -198,3 +198,12 @@ jobs:
             --binary "$GITHUB_WORKSPACE/ja-furigana/target/release/furigana" \
             --data-dir "$GITHUB_WORKSPACE/data-staging" \
             -v
+
+      - name: Run inline rule tests (各 dict / rule TOML 内 [[test]])
+        # 各 file 末尾に書かれた inline test を集めて binary で検証。
+        # corpus regression は repo 全体の最終 ロック、 inline test は file 単位の
+        # 「この file が担当する変換」 ロック。 重複しても問題なし。
+        run: |
+          python3 ja-furigana-dict/tools/test_inline_rules.py \
+            --binary "$GITHUB_WORKSPACE/ja-furigana/target/release/furigana" \
+            --data-dir "$GITHUB_WORKSPACE/data-staging"
