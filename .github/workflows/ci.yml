@@ -5,6 +5,7 @@ on:
     branches: [master]
   pull_request:
     branches: [master]
+  workflow_dispatch:    # 手動再実行用 (dict 側 corpus 変更後に CI を再評価する等)
   schedule:
     # 毎週月曜 09:00 JST = 00:00 UTC に security audit を回す
     # (Dependabot の補完: cargo crate の advisory DB に新規エントリが入ったら検知)
