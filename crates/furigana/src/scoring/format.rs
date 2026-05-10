@@ -112,20 +112,25 @@ pub struct MatchBlock {
     pub condition: MatchCondition,
 }
 
-/// matcher 条件。 literal + char_type のみ、 品詞 (Lindera POS) は **採用しない**。
+/// matcher 条件。 literal (exact / prefix / suffix) + char_type + 述語 のみ、
+/// 品詞 (Lindera POS) は **採用しない**。
 ///
-/// 全 field が `None` / 空配列 (= 条件なし) の場合は無条件 match (= default 等価)。
+/// 全 field が `None` / 空配列 / `false` (= 条件なし) の場合は無条件 match
+/// (= default 等価)。
 ///
 /// ## vocabulary (proposal §3.3)
 ///
-/// | 軸 | prev 側 | next 側 |
-/// |---|---|---|
-/// | literal 一致 | `prev_eq` | `next_eq` |
-/// | literal いずれか | `prev_eq_any` | `next_eq_any` |
-/// | 文字種 | `prev_char_type` | `next_char_type` |
+/// | 軸 | prev 側 | next 側 | next-after-next |
+/// |---|---|---|---|
+/// | literal exact | `prev_eq` | `next_eq` | — |
+/// | literal exact いずれか | `prev_eq_any` | `next_eq_any` | — |
+/// | literal suffix | `prev_ends_any` | — | — |
+/// | literal prefix | — | `next_starts` / `next_starts_any` | `next2_starts_any` |
+/// | 文字種 | `prev_char_type` | `next_char_type` | — |
+/// | 述語 | `prev_month` | `next_digit` | — |
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct MatchCondition {
-    // ─── literal 一致 ───
+    // ─── literal 完全一致 ───
     /// 直前 token の surface 完全一致
     #[serde(default)]
     pub prev_eq: Option<String>,
@@ -139,6 +144,21 @@ pub struct MatchCondition {
     #[serde(default)]
     pub next_eq_any: Vec<String>,
 
+    // ─── literal suffix / prefix ───
+    /// 直前 token の surface 末尾がいずれかに一致 (= ends_with any of)
+    #[serde(default)]
+    pub prev_ends_any: Vec<String>,
+    /// 直後 token の surface 先頭が指定文字列に一致 (= starts_with)
+    #[serde(default)]
+    pub next_starts: Option<String>,
+    /// 直後 token の surface 先頭がいずれかに一致 (= starts_with any of)
+    #[serde(default)]
+    pub next_starts_any: Vec<String>,
+    /// 「直後の更に直後」 (= idx+2) の token surface 先頭がいずれかに一致。
+    /// 「人気が無い」 → idx+1=「が」、 idx+2=「無」 のような 1 飛ばし参照用。
+    #[serde(default)]
+    pub next2_starts_any: Vec<String>,
+
     // ─── 文字種一致 ───
     /// 直前文字 (= 直前 token の末尾文字) の文字種一致
     #[serde(default)]
@@ -146,6 +166,15 @@ pub struct MatchCondition {
     /// 直後文字 (= 直後 token の先頭文字) の文字種一致
     #[serde(default)]
     pub next_char_type: Option<CharType>,
+
+    // ─── 述語 (boolean predicate) ───
+    /// 直前 token の surface が月名 (`一月` 〜 `十二月` / `1月` 〜 `12月` /
+    /// 全角数字含む) で終わるか
+    #[serde(default)]
+    pub prev_month: bool,
+    /// 直後 token の surface が数字 (半角 / 全角) で始まるか
+    #[serde(default)]
+    pub next_digit: bool,
 }
 
 /// 文字種列挙 (matcher の `prev_char_type` / `next_char_type` の値型)。

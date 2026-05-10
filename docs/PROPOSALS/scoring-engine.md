@@ -77,17 +77,31 @@ reading = "ウワテ"
 
 ### 3.3 matcher vocabulary
 
-| 軸 | prev 側 | next 側 | 値型 |
-|---|---|---|---|
-| literal 一致 | `prev_eq` | `next_eq` | string |
-| literal いずれか | `prev_eq_any` | `next_eq_any` | string array |
-| 文字種 | `prev_char_type` | `next_char_type` | "漢字" / "ひらがな" / "カタカナ" / "英数" / "記号" |
+| 軸 | prev 側 | next 側 | next-after-next | 値型 |
+|---|---|---|---|---|
+| literal 完全一致 | `prev_eq` | `next_eq` | — | string |
+| literal いずれか | `prev_eq_any` | `next_eq_any` | — | string array |
+| literal 末尾一致 (suffix) | `prev_ends_any` | — | — | string array |
+| literal 先頭一致 (prefix) | — | `next_starts` | — | string |
+| literal 先頭いずれか | — | `next_starts_any` | `next2_starts_any` | string array |
+| 文字種 | `prev_char_type` | `next_char_type` | — | "漢字" / "ひらがな" / "カタカナ" / "英数" / "記号" |
+| 述語 | `prev_month` | `next_digit` | — | bool (true/false) |
 
 **Lindera 品詞 matcher は採用しない** (2026-05-10 確定):
 - `prev_pos` / `next_pos` / `prev_pos_any` / `next_pos_any` は **削除**
 - 理由: Lindera は長期 vision (1.0+) で完全撤廃路線、 廃止予定の機能を新仕様に組み込まない
 - trade-off: 「名詞の後 / 動詞の後」 みたいな汎用条件は表現不可、 literal 列挙 (`prev_eq_any = ["階段", "段", "梯子"]` 等) で代用
 - Lindera の **形態素分割 + reading** は継続使用 (band 50 unihan injection、 §4.3)
+
+**suffix / prefix / 述語 matcher は維持** (2026-05-11 拡張):
+- 旧 format `prev_ends` / `next_starts` / `next_starts_any` / `next_digit` /
+  `prev_month` / `next_next_starts_with_any` (= `next2_starts`) を新 format でも
+  対応 (前者は名前を `prev_ends_any` / `next2_starts_any` に揃えて consistency)
+- 当初 「literal + char_type のみ」 と書いていたが、 実 dict (= rules/context/) で
+  これら matcher が 60%+ の context rule で使われており、 削除すると corpus
+  regression が広範に出るので保持判断に変更
+- 月名 list (`一月` 〜 `十二月` / `1月` 〜 `12月` / 全角数字) は lib 内蔵 (= dict
+  側で記述不要、 `prev_month = true` で発火)、 半角全角数字 list は同様 (`next_digit = true`)
 
 (将来拡張: `prev_within_N` / `next_within_N` 距離指定、 0.3.0+ 検討)
 

@@ -20,13 +20,16 @@ use crate::scoring::format::{CharType, MatchCondition};
 /// matcher 評価時の周辺 context。
 ///
 /// caller は現在の token 位置で前後 token を参照可能な構造を渡す。
-/// 文頭は `prev_token = None`、 文末は `next_token = None`。
+/// 文頭は `prev_token = None`、 文末は `next_token = None`、 `next2_token` は
+/// idx+2 token (= 「人気が無い」 で idx+2=「無」、 1 飛ばし参照用) を指す。
 #[derive(Debug, Clone, Copy, Default)]
 pub struct MatchContext<'a> {
     /// 直前 token surface (文頭は None)
     pub prev_token: Option<&'a str>,
     /// 直後 token surface (文末は None)
     pub next_token: Option<&'a str>,
+    /// 直後の更に直後 (idx+2) の token surface (= 1 飛ばし参照用、 None で文末扱い)
+    pub next2_token: Option<&'a str>,
 }
 
 impl<'a> MatchContext<'a> {
@@ -42,6 +45,7 @@ impl<'a> MatchContext<'a> {
         Self {
             prev_token: Some(prev),
             next_token: None,
+            next2_token: None,
         }
     }
 
@@ -51,6 +55,7 @@ impl<'a> MatchContext<'a> {
         Self {
             prev_token: None,
             next_token: Some(next),
+            next2_token: None,
         }
     }
 
@@ -60,6 +65,17 @@ impl<'a> MatchContext<'a> {
         Self {
             prev_token: Some(prev),
             next_token: Some(next),
+            next2_token: None,
+        }
+    }
+
+    /// prev / next / next2 を全指定 (= 「人気が無い」 のような 3 token 連続を扱う用)
+    #[must_use]
+    pub fn with_all(prev: Option<&'a str>, next: Option<&'a str>, next2: Option<&'a str>) -> Self {
+        Self {
+            prev_token: prev,
+            next_token: next,
+            next2_token: next2,
         }
     }
 }
@@ -109,6 +125,59 @@ impl MatchCondition {
             }
         }
 
+        // ─── prev_ends_any (= prev_token surface ends_with any of) ─────────
+        if !self.prev_ends_any.is_empty() {
+            let prev = match ctx.prev_token {
+                Some(p) => p,
+                None => return false,
+            };
+            if !self
+                .prev_ends_any
+                .iter()
+                .any(|s| prev.ends_with(s.as_str()))
+            {
+                return false;
+            }
+        }
+
+        // ─── next_starts (= next_token surface starts_with) ────────────────
+        if let Some(prefix) = &self.next_starts {
+            match ctx.next_token {
+                Some(actual) if actual.starts_with(prefix.as_str()) => {}
+                _ => return false,
+            }
+        }
+
+        // ─── next_starts_any (= next_token surface starts_with any of) ─────
+        if !self.next_starts_any.is_empty() {
+            let next = match ctx.next_token {
+                Some(n) => n,
+                None => return false,
+            };
+            if !self
+                .next_starts_any
+                .iter()
+                .any(|s| next.starts_with(s.as_str()))
+            {
+                return false;
+            }
+        }
+
+        // ─── next2_starts_any (= next2_token surface starts_with any of) ───
+        if !self.next2_starts_any.is_empty() {
+            let next2 = match ctx.next2_token {
+                Some(n) => n,
+                None => return false,
+            };
+            if !self
+                .next2_starts_any
+                .iter()
+                .any(|s| next2.starts_with(s.as_str()))
+            {
+                return false;
+            }
+        }
+
         // ─── prev_char_type ─────────────────────────────────────────────────
         if let Some(expected_type) = self.prev_char_type {
             let last_char = ctx.prev_token.and_then(|s| s.chars().next_back());
@@ -127,8 +196,74 @@ impl MatchCondition {
             }
         }
 
+        // ─── prev_month (= prev_token ends_with 月名) ──────────────────────
+        if self.prev_month {
+            let ok = ctx.prev_token.is_some_and(ends_with_month);
+            if !ok {
+                return false;
+            }
+        }
+
+        // ─── next_digit (= next_token starts_with 半角/全角数字) ───────────
+        if self.next_digit {
+            let ok = ctx.next_token.is_some_and(starts_with_digit);
+            if !ok {
+                return false;
+            }
+        }
+
         true
     }
+}
+
+/// 月名 (一月〜十二月、 1月〜12月、 全角数字含む) で終わるか。
+///
+/// scoring 用途の self-contained helper、 `crate::reading::context` の同名関数と
+/// 同 logic / 同 list を持つ。 0.2.0+ で chunker / reading 経路を整理する際に共通化候補。
+fn ends_with_month(s: &str) -> bool {
+    const MONTHS: &[&str] = &[
+        "一月",
+        "二月",
+        "三月",
+        "四月",
+        "五月",
+        "六月",
+        "七月",
+        "八月",
+        "九月",
+        "十月",
+        "十一月",
+        "十二月",
+        "1月",
+        "2月",
+        "3月",
+        "4月",
+        "5月",
+        "6月",
+        "7月",
+        "8月",
+        "9月",
+        "10月",
+        "11月",
+        "12月",
+        "１月",
+        "２月",
+        "３月",
+        "４月",
+        "５月",
+        "６月",
+        "７月",
+        "８月",
+        "９月",
+    ];
+    MONTHS.iter().any(|m| s.ends_with(m))
+}
+
+/// 半角・全角の数字で始まるか。
+fn starts_with_digit(s: &str) -> bool {
+    s.chars()
+        .next()
+        .is_some_and(|c| c.is_ascii_digit() || ('０'..='９').contains(&c))
 }
 
 /// 文字を [`CharType`] に分類。
@@ -407,5 +542,112 @@ mod tests {
         assert!(cond.matches_context(&MatchContext::with_next("生まれ")));
         // 「まれ生」 の先頭は 「ま」 = ひらがな → no match
         assert!(!cond.matches_context(&MatchContext::with_next("まれ生")));
+    }
+
+    // ─── prev_ends_any (literal suffix) ─────────────────────────────────────
+
+    #[test]
+    fn prev_ends_any_matches_when_suffix_in_list() {
+        let cond = MatchCondition {
+            prev_ends_any: vec!["校".into(), "学校".into()],
+            ..Default::default()
+        };
+        assert!(cond.matches_context(&MatchContext::with_prev("高校"))); // ends with 校
+        assert!(cond.matches_context(&MatchContext::with_prev("中学校"))); // ends with 学校
+        assert!(!cond.matches_context(&MatchContext::with_prev("高")));
+        assert!(!cond.matches_context(&MatchContext::empty()));
+    }
+
+    // ─── next_starts ────────────────────────────────────────────────────────
+
+    #[test]
+    fn next_starts_matches_when_prefix_equal() {
+        let cond = MatchCondition {
+            next_starts: Some("な".into()),
+            ..Default::default()
+        };
+        assert!(cond.matches_context(&MatchContext::with_next("ない")));
+        assert!(cond.matches_context(&MatchContext::with_next("なんて")));
+        assert!(!cond.matches_context(&MatchContext::with_next("だ")));
+        assert!(!cond.matches_context(&MatchContext::empty()));
+    }
+
+    // ─── next_starts_any (literal prefix any) ───────────────────────────────
+
+    #[test]
+    fn next_starts_any_matches_when_any_prefix_in_list() {
+        let cond = MatchCondition {
+            next_starts_any: vec!["な".into(), "無".into()],
+            ..Default::default()
+        };
+        assert!(cond.matches_context(&MatchContext::with_next("ない")));
+        assert!(cond.matches_context(&MatchContext::with_next("無い")));
+        assert!(!cond.matches_context(&MatchContext::with_next("だ")));
+        assert!(!cond.matches_context(&MatchContext::empty()));
+    }
+
+    // ─── next2_starts_any (1 飛ばし) ────────────────────────────────────────
+
+    #[test]
+    fn next2_starts_any_matches_token_at_idx_plus_2() {
+        // 「人気が無い」 のような pattern: surface=人気、 next=が、 next2=無い
+        let cond = MatchCondition {
+            next_eq: Some("が".into()),
+            next2_starts_any: vec!["な".into(), "無".into()],
+            ..Default::default()
+        };
+        let ctx = MatchContext::with_all(None, Some("が"), Some("無い"));
+        assert!(cond.matches_context(&ctx));
+        // next2 が異なる → no match
+        let ctx2 = MatchContext::with_all(None, Some("が"), Some("出る"));
+        assert!(!cond.matches_context(&ctx2));
+        // next2 不在 → no match
+        let ctx3 = MatchContext::with_all(None, Some("が"), None);
+        assert!(!cond.matches_context(&ctx3));
+    }
+
+    // ─── prev_month (predicate) ─────────────────────────────────────────────
+
+    #[test]
+    fn prev_month_matches_kanji_month_endings() {
+        let cond = MatchCondition {
+            prev_month: true,
+            ..Default::default()
+        };
+        assert!(cond.matches_context(&MatchContext::with_prev("一月"))); // exact
+        assert!(cond.matches_context(&MatchContext::with_prev("六月"))); // exact
+        assert!(cond.matches_context(&MatchContext::with_prev("十二月")));
+        assert!(cond.matches_context(&MatchContext::with_prev("先月の十一月"))); // ends_with
+        assert!(!cond.matches_context(&MatchContext::with_prev("月曜日"))); // 月 alone, not month
+        assert!(!cond.matches_context(&MatchContext::empty()));
+    }
+
+    #[test]
+    fn prev_month_matches_arabic_month_endings() {
+        let cond = MatchCondition {
+            prev_month: true,
+            ..Default::default()
+        };
+        assert!(cond.matches_context(&MatchContext::with_prev("1月")));
+        assert!(cond.matches_context(&MatchContext::with_prev("12月")));
+        assert!(cond.matches_context(&MatchContext::with_prev("１月"))); // 全角
+        assert!(cond.matches_context(&MatchContext::with_prev("９月"))); // 全角
+        assert!(!cond.matches_context(&MatchContext::with_prev("1日"))); // 月 ではない
+    }
+
+    // ─── next_digit (predicate) ─────────────────────────────────────────────
+
+    #[test]
+    fn next_digit_matches_when_starts_with_digit() {
+        let cond = MatchCondition {
+            next_digit: true,
+            ..Default::default()
+        };
+        assert!(cond.matches_context(&MatchContext::with_next("1日")));
+        assert!(cond.matches_context(&MatchContext::with_next("123")));
+        assert!(cond.matches_context(&MatchContext::with_next("０時"))); // 全角
+        assert!(!cond.matches_context(&MatchContext::with_next("一日"))); // 漢数字は false
+        assert!(!cond.matches_context(&MatchContext::with_next("ABC")));
+        assert!(!cond.matches_context(&MatchContext::empty()));
     }
 }
