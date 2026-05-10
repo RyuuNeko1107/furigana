@@ -37,7 +37,6 @@ mod tests {
         assert!(r.scales.is_empty());
         assert!(r.units.is_empty());
         assert!(r.symbols.is_empty());
-        assert!(r.latin.is_empty());
         assert!(r.numeric_phrases.is_empty());
         assert!(r.compat.is_empty());
     }

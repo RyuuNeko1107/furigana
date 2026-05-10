@@ -91,12 +91,6 @@ fn load_all_rules_succeeds() {
     assert_eq!(data.symbols.lookup("+"), Some("プラス"));
     assert_eq!(data.symbols.lookup("‰"), Some("パーミル"));
 
-    // ─── Latin (case-insensitive) ──────────────────────────────────────
-    assert_eq!(data.latin.lookup('A'), Some("エー"));
-    assert_eq!(data.latin.lookup('a'), Some("エー"));
-    assert_eq!(data.latin.lookup('Z'), Some("ズィー"));
-    assert_eq!(data.latin.len(), 26);
-
     // ─── Numeric phrases ───────────────────────────────────────────────
     assert_eq!(data.numeric_phrases.lookup("二十歳"), Some("ハタチ"));
     assert_eq!(data.numeric_phrases.lookup("明後日"), Some("アサッテ"));

@@ -12,7 +12,6 @@
 //! | `scales.toml` | [`ScalesData`] |
 //! | `units.toml` | [`UnitsData`] |
 //! | `symbols.toml` | [`SymbolsData`] |
-//! | `latin.toml` | [`LatinData`] |
 //! | `numeric_phrases.toml` | [`NumericPhrasesData`] |
 //! | `compat_map.toml` | [`CompatData`] |
 //!
@@ -174,7 +173,6 @@ fn infer_role_from_path(path: &Path) -> Option<&'static str> {
         "scales.toml" => Some("scales"),
         "units.toml" => Some("units"),
         "symbols.toml" => Some("symbols"),
-        "latin.toml" => Some("latin"),
         "numeric_phrases.toml" => Some("numeric_phrases"),
         "compat.toml" | "compat_map.toml" => Some("compat"),
         "postprocess.toml" => Some("postprocess"),
@@ -253,8 +251,6 @@ pub const SCALES_FILE: &str = "scales.toml";
 pub const UNITS_FILE: &str = "units.toml";
 /// 記号読み
 pub const SYMBOLS_FILE: &str = "symbols.toml";
-/// ラテン文字読み
-pub const LATIN_FILE: &str = "latin.toml";
 /// 慣用語句
 pub const NUMERIC_PHRASES_FILE: &str = "numeric_phrases.toml";
 /// 異体字マップ。 配布物 (ja-furigana-dict release tar) 内のファイル名と一致させる。
@@ -363,9 +359,6 @@ pub fn load_rules_dir<P: AsRef<Path>>(dir: P) -> Result<RulesData> {
             }
             Some("symbols") => {
                 data.symbols = parse_toml(&content, &from)?;
-            }
-            Some("latin") => {
-                data.latin = parse_toml(&content, &from)?;
             }
             Some("numeric_phrases") => {
                 data.numeric_phrases = parse_toml(&content, &from)?;
