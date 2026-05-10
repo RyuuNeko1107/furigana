@@ -31,6 +31,7 @@
 //! 単漢字 unihan の保守的読みが横取りすることがなくなる。
 
 use crate::error::{FuriganaError, Result};
+use crate::scoring::format::{Entry, EntryDetail};
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -90,12 +91,22 @@ struct DictFile {
 /// 単純 HashMap ベースの surface→reading 辞書
 ///
 /// 内部では surface 文字数で `jukugo` (≥2 文字) と `unihan` (1 文字) を分けて保持。
+///
+/// alpha.11 の ★A2 wire-up で、 各 entry の **完全 Entry data** (= inline match
+/// block 含む) を `rich` field にも保持するようになった。 既存 simple lookup API
+/// (`lookup_jukugo` / `lookup_unihan`) は `default_reading` 経由で旧挙動維持、
+/// 新 inline match を使う Smart engine 側 logic は別 layer (= scoring engine
+/// 内 provider) で `rich` を読む想定。
 #[derive(Debug, Default, Clone)]
 pub struct Dict {
-    /// 熟語・固有名詞・複合語 (surface ≥ 2 文字)
+    /// 熟語・固有名詞・複合語 (surface ≥ 2 文字)、 default reading のみ保持
     jukugo: HashMap<String, String>,
-    /// 単漢字フォールバック (surface = 1 文字)
+    /// 単漢字フォールバック (surface = 1 文字)、 default reading のみ保持
     unihan: HashMap<String, String>,
+    /// 完全 [`Entry`] data (= Simple variant か、 inline / expanded match block 持ち
+    /// Detailed variant)。 surface 長で振り分けず全 entry をここに保持、
+    /// alpha.11+ で Smart engine が `MatchCondition` 評価に使う想定。
+    rich: HashMap<String, Entry>,
 }
 
 impl Dict {
@@ -107,30 +118,64 @@ impl Dict {
 
     /// TOML 文字列から辞書を構築
     ///
-    /// `[entries]` セクション直下の key→value を全て取り込む。
-    /// 後勝ち (同じ surface があれば最後のものが採用)。
-    /// surface 文字数で内部的に jukugo / unihan に振り分け。
+    /// `[entries]` セクション直下の各 entry を取り込む。 後勝ち (同じ surface が
+    /// あれば最後のものが採用)、 surface 文字数で内部的に jukugo / unihan に振り分け。
+    ///
+    /// **新 format 対応** (★A2、 alpha.11): string value (= 旧 Simple 形式) に加え、
+    /// inline / expanded sub-table 形式 (= [`EntryDetail`] = `reading` field +
+    /// `[[match]]` block 配列) も受け付ける。 Simple は default_reading のみ保持、
+    /// Detailed は完全 [`Entry`] を `rich` field に保持して inline match を活用可能に。
+    ///
+    /// **旧 simple format との互換**: 99% の既存 entry は `"surface" = "reading"`
+    /// 1 行 → `Entry::Simple` 経路で従来挙動。 `lookup_jukugo` / `lookup_unihan`
+    /// は引き続き default_reading を返す。
+    ///
+    /// **不一致 value の silent skip**: `[entries]` table に EntryDetail 型でない
+    /// inline table (例: `units.toml` の `{ kana = "..." }` 形式) が混在しても
+    /// silent skip する (= 同 dir に rules file が混在するケースの defensive 動作)。
     ///
     /// # Errors
-    /// TOML パース失敗時 [`FuriganaError::Toml`]。
+    /// TOML 構文エラー / sanitize 失敗時に Err。
     pub fn from_toml_str(content: &str, file: &str) -> Result<Self> {
+        // permissive parse: HashMap<String, toml::Value> で受けて、 各 value を
+        // Entry に変換可能か個別判定する (= 不一致 value silent skip 維持)。
         let parsed: DictFile = toml::from_str(content).map_err(|e| FuriganaError::Toml {
             file: file.to_string(),
             source: e,
         })?;
         let mut d = Self::default();
-        // string 値だけ採用。inline table 等は rules 用ファイルなので silent skip。
-        // 各 entry の surface (key) と reading (value) は sanitize_dict_value で
-        // 制御文字 / Unicode bidi override / zero-width / 過大長 を reject する
-        // (任意コード埋め込み / Trojan Source 攻撃 / homoglyph 詐称防御)。
         for (k, v) in parsed.entries {
+            // 1) value が string なら Simple Entry
             if let Some(s) = v.as_str() {
                 crate::sanitize::sanitize_dict_value("dict surface", &k)
                     .map_err(|e| FuriganaError::Validation(format!("{file}: {e}")))?;
                 crate::sanitize::sanitize_dict_value("dict reading", s)
                     .map_err(|e| FuriganaError::Validation(format!("{file}: {e}")))?;
-                d.insert(k, s.to_string());
+                d.insert(k.clone(), s.to_string());
+                d.rich.insert(k, Entry::Simple(s.to_string()));
+                continue;
             }
+            // 2) value が table なら EntryDetail として deserialize 試行
+            //    rules 系 file の `{ kana = "..." }` のような不一致 inline table は
+            //    silent skip (= deserialize 失敗で次の entry に進む)。
+            if matches!(v, toml::Value::Table(_)) {
+                let Ok(detail) = v.try_into::<EntryDetail>() else {
+                    continue; // 不一致 inline table は skip
+                };
+                crate::sanitize::sanitize_dict_value("dict surface", &k)
+                    .map_err(|e| FuriganaError::Validation(format!("{file}: {e}")))?;
+                crate::sanitize::sanitize_dict_value("dict default reading", &detail.reading)
+                    .map_err(|e| FuriganaError::Validation(format!("{file}: {e}")))?;
+                for m in &detail.matches {
+                    crate::sanitize::sanitize_dict_value("dict match reading", &m.reading)
+                        .map_err(|e| FuriganaError::Validation(format!("{file}: {e}")))?;
+                }
+                let default_reading = detail.reading.clone();
+                d.insert(k.clone(), default_reading);
+                d.rich.insert(k, Entry::Detailed(detail));
+                continue;
+            }
+            // 3) その他 (= bool / array / etc) は silent skip
         }
         Ok(d)
     }
@@ -239,21 +284,43 @@ impl Dict {
 
     /// エントリを追加 (既存 surface は上書き)
     ///
-    /// surface 文字数で内部的に jukugo / unihan に振り分け。
+    /// surface 文字数で内部的に jukugo / unihan に振り分け、 同時に `rich` にも
+    /// `Entry::Simple` で登録する (= ★A2、 lookup_rich でも見える)。
     pub fn insert(&mut self, surface: impl Into<String>, reading: impl Into<String>) {
         let s = surface.into();
         let r = reading.into();
         if s.chars().count() == 1 {
-            self.unihan.insert(s, r);
+            self.unihan.insert(s.clone(), r.clone());
         } else {
-            self.jukugo.insert(s, r);
+            self.jukugo.insert(s.clone(), r.clone());
         }
+        self.rich.insert(s, Entry::Simple(r));
     }
 
     /// 別の Dict を merge (other の方が後勝ち)
     pub fn merge(&mut self, other: Self) {
         self.jukugo.extend(other.jukugo);
         self.unihan.extend(other.unihan);
+        self.rich.extend(other.rich);
+    }
+
+    /// surface に対応する完全 [`Entry`] を返す (★A2、 alpha.11)。
+    ///
+    /// Simple variant (= 旧 simple format) なら default reading のみ、 Detailed
+    /// variant (= 新 inline match format) なら default + match block 配列を持つ。
+    /// Smart engine が `MatchCondition` 評価で文脈分岐 reading を解決する用途。
+    #[must_use]
+    pub fn lookup_rich(&self, surface: &str) -> Option<&Entry> {
+        self.rich.get(surface)
+    }
+
+    /// (surface, [`Entry`]) ペアを iter 公開 (★A2、 alpha.11)。
+    ///
+    /// Smart engine 側 provider が dict 全 entry を walk して inline match を評価
+    /// する用途。 `jukugo_iter` と異なり surface 長の制約なし、 Simple / Detailed
+    /// 区別なく全 entry を返す。
+    pub fn rich_iter(&self) -> impl Iterator<Item = (&str, &Entry)> {
+        self.rich.iter().map(|(k, v)| (k.as_str(), v))
     }
 
     /// 件数 (jukugo + unihan の合計)
@@ -304,6 +371,100 @@ mod tests {
         let d = Dict::from_toml_str(toml_str, "test.toml").unwrap();
         assert_eq!(d.lookup("灰桜"), Some("ハイザクラ"));
         assert_eq!(d.lookup("黎明"), Some("レイメイ"));
+        assert_eq!(d.len(), 2);
+        // ★A2: rich field にも Simple variant として entry が保持される
+        assert!(matches!(d.lookup_rich("灰桜"), Some(Entry::Simple(_))));
+        assert_eq!(
+            d.lookup_rich("灰桜").unwrap().default_reading(),
+            "ハイザクラ"
+        );
+    }
+
+    // ─── ★A2: 新 format inline match の load test ────────────────────────────
+
+    #[test]
+    fn from_toml_str_inline_detailed_form() {
+        // inline 形式: "上手" = { reading = "ジョウズ", match = [...] }
+        let toml_str = r#"
+            [entries]
+            "上手" = { reading = "ジョウズ", match = [
+              { next_eq = "から", reading = "カミテ" },
+            ]}
+        "#;
+        let d = Dict::from_toml_str(toml_str, "test.toml").unwrap();
+        // 旧 simple lookup は default_reading が返る
+        assert_eq!(d.lookup("上手"), Some("ジョウズ"));
+        // rich lookup は Detailed variant
+        let entry = d.lookup_rich("上手").expect("rich entry");
+        assert!(matches!(entry, Entry::Detailed(_)));
+        assert_eq!(entry.default_reading(), "ジョウズ");
+        assert_eq!(entry.matches().len(), 1);
+        assert_eq!(entry.matches()[0].reading, "カミテ");
+        assert_eq!(
+            entry.matches()[0].condition.next_eq.as_deref(),
+            Some("から")
+        );
+    }
+
+    #[test]
+    fn from_toml_str_expanded_detailed_form() {
+        // expanded sub-table 形式 ([entries."x"] と [[entries."x".match]])
+        let toml_str = r#"
+            [entries."上手"]
+            reading = "ジョウズ"
+
+            [[entries."上手".match]]
+            next_eq = "から"
+            reading = "カミテ"
+
+            [[entries."上手".match]]
+            prev_eq = "下"
+            reading = "シタテ"
+        "#;
+        let d = Dict::from_toml_str(toml_str, "test.toml").unwrap();
+        assert_eq!(d.lookup("上手"), Some("ジョウズ"));
+        let entry = d.lookup_rich("上手").expect("rich entry");
+        assert_eq!(entry.matches().len(), 2);
+        assert_eq!(entry.matches()[0].reading, "カミテ");
+        assert_eq!(entry.matches()[1].reading, "シタテ");
+        assert_eq!(entry.matches()[1].condition.prev_eq.as_deref(), Some("下"));
+    }
+
+    #[test]
+    fn from_toml_str_mixed_simple_and_detailed() {
+        // 同 file に Simple と Detailed が混在しても OK
+        let toml_str = r#"
+            [entries]
+            "魔理沙" = "マリサ"
+            "上手" = { reading = "ジョウズ", match = [
+              { next_eq = "から", reading = "カミテ" },
+            ]}
+            "霊夢" = "レイム"
+        "#;
+        let d = Dict::from_toml_str(toml_str, "test.toml").unwrap();
+        assert_eq!(d.len(), 3);
+        assert!(matches!(d.lookup_rich("魔理沙"), Some(Entry::Simple(_))));
+        assert!(matches!(d.lookup_rich("上手"), Some(Entry::Detailed(_))));
+        assert!(matches!(d.lookup_rich("霊夢"), Some(Entry::Simple(_))));
+    }
+
+    #[test]
+    fn from_toml_str_silently_skips_unrelated_inline_table() {
+        // rules 系 file (例: units.toml の `{ kana = "..." }`) と同 dir 混在しても
+        // EntryDetail に変換失敗 → silent skip して残り entry は load される
+        let toml_str = r#"
+            [entries]
+            "灰桜" = "ハイザクラ"
+            "km" = { kana = "キロメートル" }
+            "黎明" = "レイメイ"
+        "#;
+        let d = Dict::from_toml_str(toml_str, "test.toml").unwrap();
+        assert_eq!(d.lookup("灰桜"), Some("ハイザクラ"));
+        assert_eq!(d.lookup("黎明"), Some("レイメイ"));
+        assert!(
+            d.lookup("km").is_none(),
+            "rules 系 inline table は silent skip"
+        );
         assert_eq!(d.len(), 2);
     }
 
