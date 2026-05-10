@@ -29,9 +29,11 @@ v2 stamp は coordinated に E1 / alpha.11 dict release で実施 (lib alpha.10 
 時点では shipped dict v2026.05.09 と非互換、 alpha.11 dict release との pair で
 利用想定)。
 
-残作業: E1 dict migration script (dict repo 側) / H1 release prep
-(CHANGELOG finalize / branch protection 復元 / **GitHub release のみ**、
-crates.io publish は 0.1.0 stable まで休止)。
+2026-05-11 更新: **alpha.10 release 自体 skip** 方針 (= GitHub release 含めて
+出さず、 4 commit は master push 済の内部 milestone label として残す)。 次の
+release は alpha.11+ で alpha.10 work + alpha.11 work を一括公開。 crates.io
+publish は依然として 0.1.0 stable まで休止。 dict 側 E1 (= schema_version stamp)
+は coordinated に furigana-dict v2026.05.11 として release 公開済。
 
 ### Added (scoring engine: Smart engine 投入 + 新 dict format 受け入れ)
 
