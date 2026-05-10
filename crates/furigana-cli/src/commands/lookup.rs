@@ -6,7 +6,7 @@
 
 use crate::config::Config;
 use crate::paths::Paths;
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
 use clap::Args as ClapArgs;
 use furigana::{RomajiStyle, TtsOptions};
 
@@ -16,7 +16,7 @@ pub struct Args {
     /// 変換対象テキスト
     text: String,
 
-    /// 変換モード: `tts` (default) | `hiragana` | `ruby` | `kanji` | `romaji` | `romaji-kunrei`
+    /// 変換モード: `tts` (default) | `hiragana` | `ruby` | `kanji` | `romaji` | `romaji-kunrei` | `analyze`
     #[arg(short, long, default_value = "tts")]
     mode: String,
 
@@ -51,8 +51,14 @@ pub fn run(args: Args, paths: &Paths, _cfg: &Config) -> Result<()> {
             };
             f.to_tts(&args.text, &opts)
         }
+        // Smart engine debug API (★F1): AnalyzeResult を JSON pretty 出力。
+        // alpha.10 段階の experimental、 path 採択 / 候補列 / boundary region を inspect 用途。
+        "analyze" => {
+            let result = f.analyze(&args.text);
+            serde_json::to_string_pretty(&result).context("serialize AnalyzeResult to JSON")?
+        }
         other => bail!(
-            "未知の mode: {other} (使用可能: tts | hiragana | ruby | kanji | romaji | romaji-kunrei)"
+            "未知の mode: {other} (使用可能: tts | hiragana | ruby | kanji | romaji | romaji-kunrei | analyze)"
         ),
     };
 

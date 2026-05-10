@@ -76,6 +76,42 @@ fn process(f: &Furigana, params: &FuriganaParams) -> Result<Json<FuriganaRespons
     let mode = normalize_mode(&params.mode);
 
     let t_start = Instant::now();
+
+    // analyze mode は tokenize 経路ではなく Smart engine analyze() を直接呼ぶ。
+    // 既存 mode (tts/ruby/...) は従来通り tokenize → 変換。
+    if mode == "analyze" {
+        let analyze_start = Instant::now();
+        let analyze_result = f.analyze(&text);
+        let t_convert_ms = analyze_start.elapsed().as_secs_f64() * 1000.0;
+        let t_total_ms = t_start.elapsed().as_secs_f64() * 1000.0;
+
+        // result には採択 path の reading を連結 (= Smart engine が決めた reading sequence)、
+        // 詳細 candidate / boundary は analyze field 経由で参照。
+        let result: String = analyze_result
+            .tokens
+            .iter()
+            .map(|t| t.reading.as_str())
+            .collect();
+
+        let timings_ms = if params.debug {
+            Some(json!({
+                "total": round1(t_total_ms),
+                "tokenize": 0.0, // analyze は tokenize 経由しないため 0
+                "convert": round1(t_convert_ms),
+            }))
+        } else {
+            None
+        };
+
+        return Ok(Json(FuriganaResponse {
+            result,
+            mode,
+            segments: None,
+            timings_ms,
+            analyze: Some(analyze_result),
+        }));
+    }
+
     let tokens_start = Instant::now();
     let tokens = f.tokenize(&text);
     let t_tokenize_ms = tokens_start.elapsed().as_secs_f64() * 1000.0;
@@ -131,6 +167,7 @@ fn process(f: &Furigana, params: &FuriganaParams) -> Result<Json<FuriganaRespons
         mode,
         segments,
         timings_ms,
+        analyze: None,
     }))
 }
 
@@ -171,7 +208,9 @@ fn validate_length(text: &str) -> Result<(), ApiError> {
 /// 不正な mode は静かに `tts` (= default) に fallback
 fn normalize_mode(mode: &str) -> String {
     match mode {
-        "tts" | "hiragana" | "ruby" | "kanji" | "romaji" | "romaji-kunrei" => mode.to_string(),
+        "tts" | "hiragana" | "ruby" | "kanji" | "romaji" | "romaji-kunrei" | "analyze" => {
+            mode.to_string()
+        }
         _ => default_mode(),
     }
 }

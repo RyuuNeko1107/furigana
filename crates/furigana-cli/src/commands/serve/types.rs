@@ -3,7 +3,7 @@
 use crate::paths::Paths;
 use axum::http::StatusCode;
 use axum::Json;
-use furigana::Furigana;
+use furigana::{AnalyzeResult, Furigana};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::sync::Arc;
@@ -75,6 +75,10 @@ pub(super) struct FuriganaResponse {
     pub(super) segments: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) timings_ms: Option<Value>,
+    /// `mode=analyze` の時のみ入る Smart engine debug 詳細 (★F1)。
+    /// `result` には採択 path の reading 連結が入る。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) analyze: Option<AnalyzeResult>,
 }
 
 /// `/furigana` のエラーレスポンス (`{"error": "..."}` + HTTP ステータス)
