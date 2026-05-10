@@ -3,6 +3,18 @@
 //! [`crate::Furigana::to_hiragana`] / `to_ruby` / `to_tts` / `to_romaji` の
 //! 出力直前に適用される regex 置換ルール (Step 7 の正規表現ベース置換)。
 //!
+//! ## scoring engine との関係 (★C4)
+//!
+//! 本 layer は **scoring engine の score / candidate logic とは独立**:
+//!
+//! - scoring engine (`crate::scoring`) は input → candidate path 確定 までを担当
+//! - postprocess は path 確定後の **mode 別 output 生成 layer**、 文字列 regex 置換のみ
+//! - したがって [`crate::Furigana::analyze`] (= scoring engine debug API) は
+//!   postprocess を **適用しない**、 caller は raw token reading を見る
+//! - [`crate::Furigana::to_hiragana`] 等の本流 method のみで postprocess が走る
+//!
+//! 詳細仕様: `docs/PROPOSALS/scoring-engine.md` §5.6 (「scoring-engine とは別軸 で維持」)
+//!
 //! ## ユースケース
 //!
 //! - 文字列レベルの最終調整 (「ゴジュウパー → ゴジュッパー」等の促音化補正)

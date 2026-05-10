@@ -22,6 +22,16 @@
 //! engine) が default、 Smart engine は experimental flag (env var
 //! `JA_FURIGANA_ENGINE=smart` で切替可能)。 0.1.0-rc1 で Smart を default 切替、
 //! 0.2.0+ で Strict を削除予定。
+//!
+//! ## postprocess との分離 (★C4)
+//!
+//! [`crate::rules::postprocess`] (mode 別 regex 置換 layer) は **本 module と独立**:
+//!
+//! - scoring engine は input → candidate path 確定 までを担当 (= 何を読むか の決定)
+//! - postprocess は path 確定後の output layer (= 文字列レベルの最終調整)
+//! - [`crate::Furigana::analyze`] は postprocess を呼ばず raw reading を返す
+//!
+//! 詳細: `docs/PROPOSALS/scoring-engine.md` §5.6
 
 pub mod analyze;
 pub mod boundary;
@@ -30,4 +40,6 @@ pub mod candidate;
 pub mod engine;
 pub mod format;
 pub mod matcher;
+pub mod numbers;
+pub mod odoriji;
 pub mod special;

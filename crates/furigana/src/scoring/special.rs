@@ -18,7 +18,7 @@
 //! 既存実装を deprecate、 0.2.0+ で削除予定)。
 
 use crate::scoring::candidate::{
-    Candidate, CandidateProvider, Score, BAND_DICT_EXACT, BAND_PROTECTED,
+    Candidate, CandidateProvider, Score, BAND_DICT_EXACT, BAND_KANJI, BAND_PROTECTED,
 };
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -284,10 +284,14 @@ pub fn normalize_alphabet(s: &str) -> String {
 ///
 /// 構築時に input を scan して英字 range を pre-compute。 各 range で:
 /// - 正規化 ([`normalize_alphabet`]) 後 lookup map に hit → band 1000 candidate (= dict 適用)
-/// - miss → passthrough candidate (= surface = output、 reading 振らない、 band 1000)
+/// - miss → passthrough candidate (= surface = output、 reading 振らない、 band [`BAND_KANJI`])
 ///
-/// どちらも band 1000 で path に乗る (= 英字 range は他 provider の対象外、
-/// 競合がないため band は dict_exact と同等で十分)。
+/// **band 設計** (proposal §5.6 「band 比較対象外」 を fallback と解釈):
+///
+/// hit (= 辞書経由 reading 確定) は band 1000 で他 provider と勝負、 miss (= 入力素通し) は
+/// band 100 で fallback 扱い。 これにより数字系 [`crate::scoring::numbers::NumberCandidateProvider`]
+/// (band 950) が `100km` のような alphanumeric mixed surface で SI reading を勝たせられる。
+/// 単独 ASCII (例: `API`) は他 provider に競合候補が無いので miss band 100 でも path に採用される。
 #[derive(Debug, Clone)]
 pub struct AlphabetPassthroughProvider {
     /// 入力中の英字 byte range (pre-computed)
@@ -331,16 +335,16 @@ impl CandidateProvider for AlphabetPassthroughProvider {
             let length = u8::try_from(char_count).unwrap_or(u8::MAX);
 
             let normalized = normalize_alphabet(surface);
-            let reading = match self.lookup.get(&normalized) {
-                Some(r) => r.clone(),
-                None => surface.to_string(), // passthrough: reading = surface
+            let (reading, band) = match self.lookup.get(&normalized) {
+                Some(r) => (r.clone(), BAND_DICT_EXACT),
+                None => (surface.to_string(), BAND_KANJI), // passthrough miss は fallback band
             };
 
             out.push(Candidate::new(
                 surface.to_string(),
                 reading,
                 range.clone(),
-                Score::new(BAND_DICT_EXACT, length, 0, 0),
+                Score::new(band, length, 0, 0),
             ));
         }
         out
@@ -573,7 +577,8 @@ mod tests {
         assert_eq!(candidates.len(), 1);
         assert_eq!(candidates[0].surface, "API");
         assert_eq!(candidates[0].reading, "API"); // passthrough: reading = surface
-        assert_eq!(candidates[0].score.band, BAND_DICT_EXACT);
+                                                  // miss は fallback band (= BAND_KANJI)、 数字系 provider (band 950) との競合解決のため
+        assert_eq!(candidates[0].score.band, BAND_KANJI);
     }
 
     #[test]

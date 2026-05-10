@@ -98,6 +98,58 @@ pub fn has_katakana(s: &str) -> bool {
         .any(|c| is_katakana_char(c) || c == 'ー' || c == 'ヴ')
 }
 
+/// 全角カタカナ reading の **第 1 音を連濁化** する (踊り字 「々」 展開で使用)。
+///
+/// カ/サ/タ/ハ 行の清音 → 対応する濁音 (ハ 行は半濁音前の濁音) に変換し、 第 1 音を
+/// 置き換えた新文字列を返す。 連濁対象外 (ア/ナ/マ/ヤ/ラ/ワ 行 + 既に濁音 + ハ 行半濁音)
+/// は `None` を返し、 caller は 「清音のまま複製」 にフォールバックする想定。
+///
+/// 既存 Strict engine ([`crate::reading::pipeline`] の `expand_odoriji_inplace`) と
+/// Smart engine ([`crate::scoring::odoriji`]) の両方で共有。
+///
+/// ## 例
+///
+/// ```
+/// use furigana::kana::voice_first_kana;
+///
+/// assert_eq!(voice_first_kana("カミ").as_deref(), Some("ガミ"));   // 神々 → カミ + ガミ
+/// assert_eq!(voice_first_kana("ヒト").as_deref(), Some("ビト"));   // 人々 → ヒト + ビト
+/// assert_eq!(voice_first_kana("ワレ"), None);                       // 我々 → ワレワレ (連濁なし)
+/// assert_eq!(voice_first_kana("ヤマ"), None);                       // 山々 → ヤマヤマ (連濁なし)
+/// ```
+#[must_use]
+pub fn voice_first_kana(reading: &str) -> Option<String> {
+    let mut chars = reading.chars();
+    let first = chars.next()?;
+    let voiced = match first {
+        'カ' => 'ガ',
+        'キ' => 'ギ',
+        'ク' => 'グ',
+        'ケ' => 'ゲ',
+        'コ' => 'ゴ',
+        'サ' => 'ザ',
+        'シ' => 'ジ',
+        'ス' => 'ズ',
+        'セ' => 'ゼ',
+        'ソ' => 'ゾ',
+        'タ' => 'ダ',
+        'チ' => 'ヂ',
+        'ツ' => 'ヅ',
+        'テ' => 'デ',
+        'ト' => 'ド',
+        'ハ' => 'バ',
+        'ヒ' => 'ビ',
+        'フ' => 'ブ',
+        'ヘ' => 'ベ',
+        'ホ' => 'ボ',
+        _ => return None,
+    };
+    let mut out = String::new();
+    out.push(voiced);
+    out.push_str(chars.as_str());
+    Some(out)
+}
+
 /// 純カタカナ文字列か (長音 ー / 中点 ・ も許容)
 #[must_use]
 pub fn is_pure_katakana(s: &str) -> bool {

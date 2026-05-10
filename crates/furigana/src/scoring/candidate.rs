@@ -10,6 +10,7 @@
 //! - [`Engine`]: engine 選択 enum (Strict / Smart)
 //! - band 定数: 1000 = 単語辞書完全一致、 950 = 特殊処理、 100 = 漢字辞書、 50 = Lindera unihan injection
 
+use serde::Serialize;
 use std::cmp::Ordering;
 use std::ops::Range;
 
@@ -48,7 +49,7 @@ pub const BAND_PROTECTED: u16 = 2000;
 /// 4. `boundary_penalty` 大 (= less negative、 ペナルティが軽い path が勝つ)
 ///
 /// 同点 (= 全 4 軸同値) の場合の tie-break は caller 側 (例: TOML 出現順) で。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
 pub struct Score {
     /// band 値 (1000 / 950 / 100 / 50 等)
     pub band: u16,
@@ -121,7 +122,7 @@ impl PartialOrd for Score {
 /// Viterbi DP 上の 1 つの candidate edge。
 ///
 /// `range` は input text 上の byte range。 `range.end - range.start` が surface byte 長。
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Candidate {
     /// surface 文字列 (= input[range])
     pub surface: String,

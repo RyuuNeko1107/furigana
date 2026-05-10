@@ -11,7 +11,13 @@ use crate::error::Result;
 use crate::numbers::NumericPhraseMatcher;
 use crate::reading::{tokenize_text, tokens_to_hiragana, tokens_to_ruby, ReadingToken};
 use crate::rules::RulesData;
-use crate::scoring::candidate::Engine;
+use crate::scoring::analyze::{analyze as scoring_analyze, AnalyzeResult};
+use crate::scoring::boundary::BoundaryAnalysis;
+use crate::scoring::bracket::strip_intonation_markers;
+use crate::scoring::candidate::{Candidate, CandidateProvider, Engine, Score};
+use crate::scoring::numbers::NumberCandidateProvider;
+use crate::scoring::odoriji::{apply_rendaku_to_result, OdorijiProvider};
+use crate::scoring::special::{AlphabetPassthroughProvider, ProtectTokenProvider};
 use crate::single_overrides::SingleOverrides;
 use crate::tts::{self, TtsOptions};
 use std::path::{Path, PathBuf};
@@ -68,6 +74,11 @@ pub struct Furigana {
     dict: Dict,
     phrase_matcher: NumericPhraseMatcher,
     chunker: NumberChunker,
+    /// Smart engine 用の数字系 candidate provider (alpha.10 C3、 band 950)
+    ///
+    /// `analyze()` で 5 つ目の provider として使う。 既存 [`NumberChunker`] と独立 implementation、
+    /// 0.2.0+ で chunker 削除と coordinated に整理予定。
+    number_provider: NumberCandidateProvider,
     /// 単漢字 default override (issue #15 の限定解、 jukugo / Lindera より先に評価)
     single_overrides: SingleOverrides,
     /// 使用 engine (alpha.10〜0.1.0-rc1 の experimental 期間中は env var or builder で切替)
@@ -254,6 +265,127 @@ impl Furigana {
     #[must_use]
     pub fn dict_size(&self) -> usize {
         self.dict.len()
+    }
+
+    /// Smart engine で input を analyze、 採択 path / 候補 / boundary region を返す (★F1)。
+    ///
+    /// `to_hiragana` 等の本流 method は alpha 期間中 Strict engine 経由だが、
+    /// 本 method は **常に Smart engine** で動作する debug / inspection API。
+    /// `engine()` setting に依らず Smart 結果を返す (= caller が明示的に
+    /// Smart 解析を要求している前提)。
+    ///
+    /// ## 構成 provider (alpha.10 段階)
+    ///
+    /// - [`ProtectTokenProvider`] (URL / Email / 絵文字、 band 2000)
+    /// - [`AlphabetPassthroughProvider`] (英字 passthrough、 hit は band 1000 / miss は band 100)
+    /// - [`DictBridgeProvider`] (= self.dict 経由、 jukugo は band 1000 / unihan は band 100)
+    /// - [`NumberCandidateProvider`] (数字 + 助数詞 / 大数スケール / SI 単位 / 日付 / 時刻 /
+    ///   記号 / 素の数字、 band 950)
+    /// - [`OdorijiProvider`] (々 placeholder edge、 band 100、 post-pass で連濁適用)
+    ///
+    /// loanwords 検索は alpha.10 では未統合 (= AlphabetPassthrough は lookup 無しの passthrough_only)。
+    /// `numeric_phrases` (二十歳=ハタチ 等) も別 provider 化が望ましいが C3 scope 外。
+    ///
+    /// ## 戻り値
+    ///
+    /// [`AnalyzeResult`] (= ★11 freeze、 0.1.0 stable で additive 追加のみ可)。
+    ///
+    /// 入力空 / 全 field 空、 path 構築不能 (= dict / 特殊処理で覆い切れない) →
+    /// `tokens` / `path_indices` 空 で `candidates` / `boundary_regions` のみ返る。
+    ///
+    /// 「々」 token の reading は path 確定後に直前 token reading + 連濁判定で書き換え
+    /// ([`crate::scoring::odoriji::apply_rendaku_to_result`])、 placeholder の 「々」 は残らない。
+    #[must_use]
+    pub fn analyze(&self, input: &str) -> AnalyzeResult {
+        let protect = ProtectTokenProvider::new(input);
+        let alphabet = AlphabetPassthroughProvider::passthrough_only(input);
+        let dict_bridge = DictBridgeProvider::new(&self.dict);
+        let odoriji = OdorijiProvider::new();
+        let providers: [&dyn CandidateProvider; 5] = [
+            &protect,
+            &alphabet,
+            &dict_bridge,
+            &self.number_provider,
+            &odoriji,
+        ];
+
+        let boundary =
+            BoundaryAnalysis::analyze(input, |surface| self.dict.lookup_jukugo(surface).is_some());
+
+        let mut result = scoring_analyze(input, &providers, Some(&boundary));
+        apply_rendaku_to_result(&mut result);
+        result
+    }
+}
+
+// ============================================================================
+// DictBridgeProvider — Dict (jukugo + unihan) を CandidateProvider に橋渡し
+// ============================================================================
+
+/// 既存 [`Dict`] を [`CandidateProvider`] として scoring engine に流す bridge。
+///
+/// alpha.10 段階の transitional impl: Dict (= 旧 format、 simple HashMap) が
+/// 0.1.0 stable で新 format (`scoring::format::Entry`) に置き換わるまでの繋ぎ。
+///
+/// ## band 割り当て
+///
+/// - jukugo (≥ 2 文字 surface) → [`Score::dict_exact`] (band 1000)
+/// - unihan (= 1 文字 surface) → [`Score::kanji`] (band 100)
+///
+/// reading は [`strip_intonation_markers`] で bracket marker を除去
+/// (forward compat for 0.2.0)。
+///
+/// ## 計算量
+///
+/// `candidates_at(pos)` は jukugo を全件 prefix match scan する naive 実装で
+/// O(M)、 input 全体で O(N × M)。 alpha.10 wire-up 用、 必要なら 0.1.0-rc1 で
+/// trie / Aho-Corasick 化。
+struct DictBridgeProvider<'a> {
+    dict: &'a Dict,
+}
+
+impl<'a> DictBridgeProvider<'a> {
+    fn new(dict: &'a Dict) -> Self {
+        Self { dict }
+    }
+}
+
+impl<'a> CandidateProvider for DictBridgeProvider<'a> {
+    fn candidates_at(&self, input: &str, pos: usize) -> Vec<Candidate> {
+        let mut out = Vec::new();
+
+        // jukugo (≥ 2 文字 surface): 全 entry を prefix match scan。
+        // input[pos..] は呼び出し元 (engine.rs solve_path) が char-aligned pos のみ
+        // 通す前提 (= dp[pos] が Some の位置は必ず char 境界)。
+        let tail = &input[pos..];
+        for (surface, reading) in self.dict.jukugo_iter() {
+            if tail.starts_with(surface) {
+                let char_count = surface.chars().count();
+                let length = u8::try_from(char_count).unwrap_or(u8::MAX);
+                out.push(Candidate::new(
+                    surface.to_string(),
+                    strip_intonation_markers(reading),
+                    pos..pos + surface.len(),
+                    Score::dict_exact(length),
+                ));
+            }
+        }
+
+        // unihan (= 1 文字 surface): pos の 1 文字を lookup
+        if let Some(c) = tail.chars().next() {
+            let char_len = c.len_utf8();
+            let surface = &tail[..char_len];
+            if let Some(reading) = self.dict.lookup_unihan(surface) {
+                out.push(Candidate::new(
+                    surface.to_string(),
+                    strip_intonation_markers(reading),
+                    pos..pos + char_len,
+                    Score::kanji(1),
+                ));
+            }
+        }
+
+        out
     }
 }
 
@@ -461,12 +593,17 @@ impl FuriganaBuilder {
         // engine 解決: builder 指定 > env var > default (Strict)
         let engine = self.engine.unwrap_or_else(resolve_engine_from_env);
 
+        // Smart engine 用の数字系 provider (alpha.10 C3): rules を pre-compile して保持。
+        // analyze() 呼び出しごとに rebuild すると regex compile cost が乗るので一度作る。
+        let number_provider = NumberCandidateProvider::new(&rules);
+
         Ok(Furigana {
             analyzer: OnceLock::new(),
             rules,
             dict,
             phrase_matcher,
             chunker,
+            number_provider,
             single_overrides,
             engine,
         })
@@ -627,5 +764,253 @@ mod tests {
     #[test]
     fn engine_env_var_constant_is_correctly_named() {
         assert_eq!(ENGINE_ENV_VAR, "JA_FURIGANA_ENGINE");
+    }
+
+    // ─── analyze() (F1) tests ────────────────────────────────────────────────
+
+    #[test]
+    fn analyze_empty_input_yields_empty_result() {
+        let f = Furigana::minimal().unwrap();
+        let r = f.analyze("");
+        assert!(r.tokens.is_empty());
+        assert!(r.candidates.is_empty());
+        assert!(r.path_indices.is_empty());
+        assert!(r.boundary_regions.is_empty());
+    }
+
+    #[test]
+    fn analyze_single_jukugo_entry_yields_one_token() {
+        let mut f = Furigana::minimal().unwrap();
+        f.add_reading("灰桜", "ハイザクラ");
+        let r = f.analyze("灰桜");
+        assert_eq!(r.tokens.len(), 1);
+        assert_eq!(r.tokens[0].surface, "灰桜");
+        assert_eq!(r.tokens[0].reading, "ハイザクラ");
+        assert_eq!(r.tokens[0].range, 0..6); // UTF-8 3 bytes × 2
+        assert_eq!(r.path_indices, vec![0]);
+    }
+
+    #[test]
+    fn analyze_jukugo_prefers_longer_match_over_unihan() {
+        // 「灰桜」 jukugo (band 1000、 length 2) が
+        // 「灰」 unihan + 「桜」 unihan (各 band 100) を path レベルで上回る
+        let mut f = Furigana::minimal().unwrap();
+        f.add_reading("灰桜", "ハイザクラ");
+        f.add_reading("灰", "ハイ");
+        f.add_reading("桜", "サクラ");
+        let r = f.analyze("灰桜");
+        assert_eq!(r.tokens.len(), 1);
+        assert_eq!(r.tokens[0].reading, "ハイザクラ");
+    }
+
+    #[test]
+    fn analyze_unihan_fallback_when_no_jukugo() {
+        let mut f = Furigana::minimal().unwrap();
+        f.add_reading("猫", "ネコ");
+        let r = f.analyze("猫");
+        assert_eq!(r.tokens.len(), 1);
+        assert_eq!(r.tokens[0].surface, "猫");
+        assert_eq!(r.tokens[0].reading, "ネコ");
+    }
+
+    #[test]
+    fn analyze_url_protected_token_passthrough() {
+        let f = Furigana::minimal().unwrap();
+        let input = "https://example.com";
+        let r = f.analyze(input);
+        assert_eq!(r.tokens.len(), 1);
+        assert_eq!(r.tokens[0].surface, input);
+        assert_eq!(r.tokens[0].reading, input); // passthrough
+    }
+
+    #[test]
+    fn analyze_alphabet_passthrough_returns_surface() {
+        let f = Furigana::minimal().unwrap();
+        let r = f.analyze("API");
+        assert_eq!(r.tokens.len(), 1);
+        assert_eq!(r.tokens[0].surface, "API");
+        assert_eq!(r.tokens[0].reading, "API"); // passthrough_only (lookup 無し)
+    }
+
+    #[test]
+    fn analyze_uncovered_input_yields_empty_tokens() {
+        // 辞書 / 保護 / 英字 のいずれにも該当しない char が混ざると path 構築不能
+        let f = Furigana::minimal().unwrap();
+        let r = f.analyze("猫が好き"); // dict 未投入、 ひらがな も対象外
+        assert!(r.tokens.is_empty());
+        assert!(r.path_indices.is_empty());
+    }
+
+    #[test]
+    fn analyze_emits_boundary_region_for_kanji_run() {
+        let mut f = Furigana::minimal().unwrap();
+        f.add_reading("灰桜", "ハイザクラ");
+        let r = f.analyze("灰桜");
+        // 漢字 2 字連続 region として検出される
+        assert_eq!(r.boundary_regions.len(), 1);
+        assert_eq!(r.boundary_regions[0], 0..6);
+    }
+
+    #[test]
+    fn analyze_strips_intonation_brackets_from_reading() {
+        let mut f = Furigana::minimal().unwrap();
+        // 0.2.0 forward compat: bracket marker は lib 側で strip される
+        f.add_reading("灰桜", "ハ[イザクラ");
+        let r = f.analyze("灰桜");
+        assert_eq!(r.tokens.len(), 1);
+        assert_eq!(r.tokens[0].reading, "ハイザクラ");
+    }
+
+    #[test]
+    fn analyze_expands_odoriji_with_rendaku() {
+        // 神々 → カミ + ガミ (連濁あり)
+        let mut f = Furigana::minimal().unwrap();
+        f.add_reading("神", "カミ");
+        let r = f.analyze("神々");
+        assert_eq!(r.tokens.len(), 2);
+        assert_eq!(r.tokens[0].surface, "神");
+        assert_eq!(r.tokens[0].reading, "カミ");
+        assert_eq!(r.tokens[1].surface, "々");
+        assert_eq!(r.tokens[1].reading, "ガミ");
+    }
+
+    #[test]
+    fn analyze_odoriji_falls_back_to_clone_for_non_voiceable() {
+        // 我々 → ワレ + ワレ (ワ 行は連濁対象外、 そのまま複製)
+        let mut f = Furigana::minimal().unwrap();
+        f.add_reading("我", "ワレ");
+        let r = f.analyze("我々");
+        assert_eq!(r.tokens.len(), 2);
+        assert_eq!(r.tokens[1].surface, "々");
+        assert_eq!(r.tokens[1].reading, "ワレ");
+    }
+
+    #[test]
+    fn analyze_odoriji_loses_to_jukugo_when_dict_has_explicit_entry() {
+        // dict に 「神々」 = カミガミ を登録すると、 jukugo (band 1000) が
+        // 「神」+「々」 (band 100 × 2) を上回り、 単一 token に
+        let mut f = Furigana::minimal().unwrap();
+        f.add_reading("神々", "カミガミ");
+        f.add_reading("神", "カミ");
+        let r = f.analyze("神々");
+        assert_eq!(r.tokens.len(), 1);
+        assert_eq!(r.tokens[0].surface, "神々");
+        assert_eq!(r.tokens[0].reading, "カミガミ");
+    }
+
+    #[test]
+    fn analyze_candidates_include_all_overlapping_entries() {
+        // 同位置で jukugo + unihan が両方候補に上がる (path 採択は jukugo 勝ち)
+        let mut f = Furigana::minimal().unwrap();
+        f.add_reading("灰桜", "ハイザクラ");
+        f.add_reading("灰", "ハイ");
+        let r = f.analyze("灰桜");
+        // 採択 path は 「灰桜」 1 token
+        assert_eq!(r.tokens.len(), 1);
+        // candidates[0] には dict 由来の 「灰桜」 + 「灰」 の両方が上がる
+        let pos0_surfaces: Vec<&str> = r.candidates[0].iter().map(|c| c.surface.as_str()).collect();
+        assert!(pos0_surfaces.contains(&"灰桜"));
+        assert!(pos0_surfaces.contains(&"灰"));
+    }
+
+    // ─── analyze() (C3) tests: NumberCandidateProvider 統合 ────────────────────
+
+    fn fixture_rules_dir() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests")
+            .join("fixtures")
+            .join("rules")
+    }
+
+    #[test]
+    fn analyze_number_counter_path_uses_band_950() {
+        // fixture rules 経由で counter regex が effective、 「3本」 が NumberProvider 経由で path に乗る
+        let f = Furigana::builder()
+            .rules_dir(fixture_rules_dir())
+            .build()
+            .expect("build with rules_dir");
+        let r = f.analyze("3本");
+        assert_eq!(r.tokens.len(), 1, "expected single counter token: {r:?}");
+        assert_eq!(r.tokens[0].surface, "3本");
+        assert_eq!(r.tokens[0].reading, "サンボン");
+    }
+
+    #[test]
+    fn analyze_number_si_unit_beats_alphabet_passthrough_for_mixed_surface() {
+        // 「100km」: AlphabetPassthrough が pure passthrough だと band 100 (miss)、
+        // NumberProvider の SI candidate (band 950) が勝つ
+        let f = Furigana::builder()
+            .rules_dir(fixture_rules_dir())
+            .build()
+            .expect("build with rules_dir");
+        let r = f.analyze("100km");
+        assert_eq!(r.tokens.len(), 1, "expected single SI token: {r:?}");
+        assert_eq!(r.tokens[0].surface, "100km");
+        assert!(
+            r.tokens[0].reading.contains("ヒャク") && r.tokens[0].reading.contains("キロメートル"),
+            "reading: {}",
+            r.tokens[0].reading,
+        );
+    }
+
+    #[test]
+    fn analyze_pure_digit_uses_number_provider_not_alphabet() {
+        // 「100」 のみ: AlphabetPassthrough miss は band 100、 NumberProvider digit は band 950 → 後者が勝つ
+        let f = Furigana::builder()
+            .rules_dir(fixture_rules_dir())
+            .build()
+            .expect("build with rules_dir");
+        let r = f.analyze("100");
+        assert_eq!(r.tokens.len(), 1);
+        assert_eq!(r.tokens[0].surface, "100");
+        assert_eq!(r.tokens[0].reading, "ヒャク");
+    }
+
+    #[test]
+    fn analyze_dict_entry_overrides_number_provider_for_counter_surface() {
+        // dict に 「3本」 = カスタム読み を入れると band 1000 で NumberProvider 950 を override
+        let mut f = Furigana::builder()
+            .rules_dir(fixture_rules_dir())
+            .build()
+            .expect("build with rules_dir");
+        f.add_reading("3本", "ミホン");
+        let r = f.analyze("3本");
+        assert_eq!(r.tokens.len(), 1);
+        assert_eq!(
+            r.tokens[0].reading, "ミホン",
+            "dict 1000 が special 950 に勝つ"
+        );
+    }
+
+    #[test]
+    fn analyze_date_full_pattern_emits_single_token() {
+        let f = Furigana::builder()
+            .rules_dir(fixture_rules_dir())
+            .build()
+            .expect("build with rules_dir");
+        let r = f.analyze("2025年10月30日");
+        assert_eq!(r.tokens.len(), 1);
+        assert_eq!(r.tokens[0].surface, "2025年10月30日");
+        assert!(
+            r.tokens[0].reading.contains("ジュウガツ"),
+            "reading: {}",
+            r.tokens[0].reading,
+        );
+    }
+
+    #[test]
+    fn analyze_minimal_has_no_path_for_counter_when_rules_empty() {
+        // minimal() = 空 RulesData → counter regex は None、 「3本」 の 「本」 を覆える
+        // provider が存在しない → path 構築不能 (tokens / candidates / path_indices 全 空)
+        let f = Furigana::minimal().unwrap();
+        let r = f.analyze("3本");
+        assert!(
+            r.tokens.is_empty(),
+            "expected empty tokens with no rules: {r:?}"
+        );
+        assert!(r.path_indices.is_empty());
+        // analyze() の candidates は adopted path の各 token 位置のみ集める仕様、
+        // path 不能なら空 Vec (= solve_path 戻り値が空 → path_indices 空)
+        assert!(r.candidates.is_empty());
     }
 }

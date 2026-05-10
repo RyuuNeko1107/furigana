@@ -123,48 +123,11 @@ fn expand_odoriji_inplace(tokens: &mut [ReadingToken]) {
     for i in 1..tokens.len() {
         if tokens[i].surface == "々" && tokens[i].reading.is_none() {
             if let Some(prev_reading) = tokens[i - 1].reading.clone() {
-                let voiced = voice_first_kana(&prev_reading).unwrap_or(prev_reading);
+                let voiced = crate::kana::voice_first_kana(&prev_reading).unwrap_or(prev_reading);
                 tokens[i].reading = Some(voiced);
             }
         }
     }
-}
-
-/// 全角カタカナ reading の **第 1 音を連濁化** する。
-///
-/// カ/サ/タ/ハ 行の清音 → 対応する濁音 / 半濁音前の濁音に変換。
-/// 連濁対象外 (ア/ナ/マ/ヤ/ラ/ワ 行 + 既に濁音 + ハ 行半濁音) は `None` を返し、
-/// 呼び出し側で「清音のまま複製」 にフォールバックする。
-fn voice_first_kana(reading: &str) -> Option<String> {
-    let mut chars = reading.chars();
-    let first = chars.next()?;
-    let voiced = match first {
-        'カ' => 'ガ',
-        'キ' => 'ギ',
-        'ク' => 'グ',
-        'ケ' => 'ゲ',
-        'コ' => 'ゴ',
-        'サ' => 'ザ',
-        'シ' => 'ジ',
-        'ス' => 'ズ',
-        'セ' => 'ゼ',
-        'ソ' => 'ゾ',
-        'タ' => 'ダ',
-        'チ' => 'ヂ',
-        'ツ' => 'ヅ',
-        'テ' => 'デ',
-        'ト' => 'ド',
-        'ハ' => 'バ',
-        'ヒ' => 'ビ',
-        'フ' => 'ブ',
-        'ヘ' => 'ベ',
-        'ホ' => 'ボ',
-        _ => return None,
-    };
-    let mut out = String::new();
-    out.push(voiced);
-    out.push_str(chars.as_str());
-    Some(out)
 }
 
 #[cfg(test)]

@@ -16,13 +16,14 @@
 use crate::scoring::boundary::BoundaryAnalysis;
 use crate::scoring::candidate::{Candidate, CandidateProvider};
 use crate::scoring::engine::solve_path;
+use serde::Serialize;
 use std::ops::Range;
 
 /// 採択 path 上の 1 つの token (= 採用された candidate edge を caller-friendly に)。
 ///
 /// `score` 等の internal info は持たず、 caller が必要なら `AnalyzeResult::candidates`
 /// から該当 candidate を引いて参照する。
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Token {
     /// surface 文字列
     pub surface: String,
@@ -52,7 +53,7 @@ impl Token {
 /// - `candidates`: 各 token 位置で 「考慮された候補一覧」 (`tokens[i].range.start` から始まる candidate 全列挙)
 /// - `path_indices`: 各 token の start byte 位置 (= `tokens[i].range.start` の copy、 caller の pos lookup 用)
 /// - `boundary_regions`: 検出された 漢字連続 region の byte range (= `BoundaryAnalysis::regions[i].range`)
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct AnalyzeResult {
     /// 採択 path 上の token 列
     pub tokens: Vec<Token>,
