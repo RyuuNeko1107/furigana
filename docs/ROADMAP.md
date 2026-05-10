@@ -96,22 +96,22 @@ ja-furigana の中長期計画。 **完了履歴は [CHANGELOG.md](../CHANGELOG.
 
 **lib 側 (ja-furigana、 0.1.0 stable)**
 
-- [ ] candidate scoring engine 実装 (Viterbi-like path 選択、 **精度 + 効率最適化**)
-- [ ] discrete band + lexicographic 比較 (連続値 score 不採用)
-- [ ] entry inline match parser (untagged enum で省略形 / inline / expanded を吸収)
-- [ ] `[[kanji]]` block parser
-- [ ] matcher vocabulary 実装 (literal / char_type のみ、 **品詞 matcher は不採用**)
-- [ ] (b) 漢字連続 boundary penalty + (c) 未知語 chunk 強化 penalty
-- [ ] (a) longest match (length lexicographic 比較で実現)
-- [ ] **特殊処理 (cross-cutting) 再設計実装**: 保護トークン抽出 (URL/絵文字) / **アルファベット passthrough** / 数字 + 助数詞 (band 950) / 漢数字 / 数字読み / 踊り字 「々」 自動展開 / postprocess
-- [ ] **bracket notation forward compat**: 読み込み時に `[`, `]`, `/` を strip、 reading 部分のみ使用
-- [ ] `Engine::Smart` (experimental flag、 default は `Engine::Strict`)、 切替は env var `JA_FURIGANA_ENGINE` のみ、 **CLI `--engine` flag は公開しない**
-- [ ] `Furigana::analyze()` debug API (★11 確定型: AnalyzeResult / Token / Candidate / Score)
-- [ ] **CLI `--mode analyze` 追加** (analyze 出力 mode、 ★12)
-- [ ] **HTTP server schema freeze**: 既存 endpoint + `mode=analyze` 時に extra field (★13)
-- [ ] 旧 format は parse error (`[meta] schema_version` 検証で v2 以上要求、 ★5)
-- [ ] Lindera 形態素分割 + reading は継続使用 (band 50 unihan injection、 品詞は使わない)
-- [ ] **`tools/diff_engines` (Smart vs Strict diff) 投入** (★6、 alpha.10 同時)
+- [x] candidate scoring engine 実装 (Viterbi-like path 選択、 **精度 + 効率最適化**)
+- [x] discrete band + lexicographic 比較 (連続値 score 不採用)
+- [x] entry inline match parser (untagged enum で省略形 / inline / expanded を吸収)
+- [x] `[[kanji]]` block parser
+- [x] matcher vocabulary 実装 (literal / char_type のみ、 **品詞 matcher は不採用**)
+- [x] (b) 漢字連続 boundary penalty + (c) 未知語 chunk 強化 penalty
+- [x] (a) longest match (length lexicographic 比較で実現)
+- [ ] **特殊処理 (cross-cutting) 再設計実装**: 保護トークン抽出 (URL/絵文字) ✅ / **アルファベット passthrough** ✅ / 数字 + 助数詞 (band 950) / 漢数字 / 数字読み / 踊り字 「々」 自動展開 ✅ (Smart engine post-pass 連濁) / postprocess ✅ (scoring-engine 独立性 doc 明示) (= C1/C2/C4 完了、 C3 残)
+- [x] **bracket notation forward compat**: 読み込み時に `[`, `]`, `/` を strip、 reading 部分のみ使用
+- [x] `Engine::Smart` (experimental flag、 default は `Engine::Strict`)、 切替は env var `JA_FURIGANA_ENGINE` のみ、 **CLI `--engine` flag は公開しない**
+- [x] `Furigana::analyze()` debug API (★11 確定型: AnalyzeResult / Token / Candidate / Score)
+- [x] **CLI `--mode analyze` 追加** (analyze 出力 mode、 ★12)
+- [x] **HTTP server schema freeze**: 既存 endpoint + `mode=analyze` 時に extra field (★13)
+- [ ] 旧 format は parse error (`[meta] schema_version` 検証で v2 以上要求、 ★5) (= validator は実装済、 各 caller への wire-up = A1b は dict v2 化と coordinated 待ち)
+- [ ] Lindera 形態素分割 + reading は継続使用 (band 50 unihan injection、 品詞は使わない) (= Smart engine の lindera-unihan provider は alpha.10 段階未統合、 alpha.10〜rc1 で追加予定)
+- [x] **`tools/diff_engines` (Smart vs Strict diff) 投入** (★6、 alpha.10 同時)
 - [ ] **benchmark 整備** (criterion、 ★14、 alpha.12+)、 数値 cut 要件なし、 0.1.0-rc1 で CHANGELOG 掲載
 - [ ] **既存機能 freeze 確認 test** (★16): portable 配置 / REPL / SI 単位 / ホットリロード / `furigana dict pull`
 - [ ] CHANGELOG `[Unreleased]` 蓄積 → 0.1.0 cut 時 finalize (★17)

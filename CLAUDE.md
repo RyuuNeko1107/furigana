@@ -1,0 +1,114 @@
+# ja-furigana lib (Rust)
+
+Japanese furigana / TTS-prep engine。 Lindera + IPADIC + TOML データ駆動。
+
+- **GitHub**: <https://github.com/RyuuNeko1107/ja-furigana>
+- **crates.io**: `ja-furigana` (lib) + `ja-furigana-cli` (bin: `furigana`)
+- **License**: MIT or Apache-2.0
+- **MSRV**: Rust 1.89+
+
+## 現 version + 進捗
+
+- **LIVE**: `0.1.0-alpha.9` (master + crates.io)
+- **開発中**: `0.1.0-alpha.10` (= scoring-engine 大規模 refactor、 16/18 tasks completed)
+- **target**: `0.1.0` stable (期日 driven ではなく lib readiness 駆動)
+
+## alpha.10 task 進捗 (2026-05-11)
+
+### ✅ completed (16)
+
+- A 系 (foundation): A1 schema_version validator + A1b caller wire-up (load_rules_dir / Dict / Loanwords / SingleOverrides の file load 経路に必須化、 lib fixture も `[meta] schema_version = "2"` 化、 dict 側の coordinate stamp は E1 / alpha.11 dict release 側責任) / A2 dict format 拡張 / A3 matcher
+- B 系 (Smart engine core): B1 Viterbi DP / B2 band lexicographic / B3 (b)(c) penalty / B4 Engine 切替
+- C 系 (cross-cutting):
+  - C1 保護トークン抽出 (`scoring/special.rs` の ProtectTokenProvider、 band 2000)
+  - C2 アルファベット passthrough (`scoring/special.rs` の AlphabetPassthroughProvider、 hit band 1000 / miss band 100)
+  - C3 数字 + 助数詞 / 大数スケール / SI 単位 / 日付 / 時刻 / 記号 / 素の数字 (`scoring/numbers.rs` の NumberCandidateProvider、 band 950) + Furigana::analyze 5 provider 構成に統合
+  - C4 踊り字 (`scoring/odoriji.rs` の OdorijiProvider + apply_rendaku post-pass、 既存 Strict 連濁 logic は kana::voice_first_kana に共通化) + postprocess 独立性 doc
+- D: bracket forward compat (lib strip)
+- F1: scoring/analyze.rs standalone API + Furigana::analyze() / CLI --mode analyze / HTTP mode=analyze (alpha.10 段階で ProtectToken / AlphabetPassthrough / DictBridge / NumberCandidate / Odoriji の 5 provider 構成、 loanwords / numeric_phrases 統合は今後)
+- F2: `furigana-diff-engines` CLI tool
+
+### ⏳ pending (2)
+
+- E1: migration script Python (**dict repo 側 work**)
+- H1: alpha.10 release prep (CHANGELOG / branch protection 復元 / **GitHub release のみ**)
+
+## 主要 module 構造
+
+```
+crates/furigana/src/
+├── api.rs                 — Furigana / FuriganaBuilder (公開 entry)
+├── analyzer.rs            — Lindera + IPADIC ラッパー
+├── chunks/                — NumberChunker (URL/email regex 含む)
+├── dict.rs                — jukugo / unihan 二段 HashMap
+├── kana.rs                — kanji/hiragana/katakana 判定
+├── loader.rs              — TOML loader (★ schema_version validate 追加済 alpha.10)
+├── loanwords.rs           — 外来語 (case-fold + 全角→半角 normalize)
+├── numbers/               — kansuji / 助数詞 logic
+├── reading/               — pipeline.rs::resolve_reading (= 既存 Strict engine の core 7-step)
+├── rules/                 — counters / context / days / scales / etc TOML data
+├── scoring/  ★alpha.10★  — 新 Smart engine module (詳細 別記)
+├── single_overrides.rs    — Issue #15 限定解 (1 字 surface override)
+└── tts.rs                 — TTS pre-processing (pause 整形 等)
+
+crates/furigana-cli/src/
+├── main.rs                — `furigana` バイナリ (CLI + HTTP server)
+├── commands/              — lookup / repl / serve / dict subcommands
+└── bin/diff_engines.rs ★  — `furigana-diff-engines` (Smart vs Strict diff tool)
+```
+
+## scoring/ module (alpha.10 新設)
+
+| sub module | 役割 |
+|---|---|
+| `format.rs` | Entry / EntryDetail / MatchBlock / MatchCondition / CharType / KanjiBlock の struct |
+| `matcher.rs` | MatchContext + matches_context() + classify_char() |
+| `candidate.rs` | Score / Candidate / CandidateProvider trait + Engine enum + band 定数 |
+| `engine.rs` | PathScore (weakest_band + edge_count agg) + solve_path Viterbi DP |
+| `boundary.rs` | KanjiRegion + BoundaryAnalysis (b)(c) penalty -300/-600 |
+| `special.rs` | ProtectTokenProvider (band 2000) + AlphabetPassthroughProvider (hit 1000 / miss 100) |
+| `numbers.rs` | NumberCandidateProvider (★C3、 band 950: 助数詞 / 大数スケール / SI 単位 / 日付 / 時刻 / 記号 / 素の数字) |
+| `odoriji.rs` | OdorijiProvider + apply_rendaku post-pass (々 の Smart engine 統合、 連濁 logic は kana::voice_first_kana 共通化) |
+| `bracket.rs` | strip_intonation_markers (forward compat for 0.2.0) |
+| `analyze.rs` | AnalyzeResult / Token + analyze() function (★11 freeze types) |
+
+## よく使うコマンド
+
+```powershell
+# build + test
+cargo test --lib                             # 427 lib test (alpha.10 A1b 完了時点)
+cargo test --lib scoring::                   # scoring module のみ
+cargo clippy --lib -- -D warnings            # clippy clean 確認
+cargo fmt                                    # フォーマット
+
+# CLI 動作確認
+cargo run --bin furigana -- lookup "猫が好き" --mode hiragana
+cargo run --bin furigana-diff-engines -- <corpus.toml>
+
+# benchmark
+cargo bench --bench lookup
+```
+
+## 重要設計指針
+
+- **既存挙動を壊さない**: alpha.10 の scoring module は **並走実装**、 既存 Furigana::to_* は currently Strict engine 経由 (Smart 選択時も内部実装は Strict と同等)
+- **Smart engine 真 wire-up は段階的**: C 系完了後に Furigana に統合、 0.1.0-rc1 で default 切替
+- **discrete band + lexicographic**: 連続値 score ではなく band/length/match_hits/penalty の 4 軸 lexicographic 比較 (= calibration 沼回避)
+- **品詞 matcher 不採用**: Lindera 撤廃路線と整合、 `prev_pos` / `next_pos` は無し、 literal + char_type のみ
+- **forward compat for intonation**: bracket notation `[` `]` `/` を 0.1.0 から dict 側で書ける、 lib は strip / 無視、 0.2.0 で活用
+
+## 主要 doc
+
+- `docs/PROPOSALS/scoring-engine.md` — 0.1.0 stable architecture 詳細
+- `docs/PROPOSALS/intonation.md` — 0.2.0 stable target (Postponed → Planned for 0.2.0)
+- `docs/ROADMAP.md` — phase + timeline
+- `docs/ARCHITECTURE.md` — 既存 4 層構造
+- `CHANGELOG.md` — 各 release 差分
+- `CONTRIBUTING.md` / `MAINTAINING.md` — contributor / maintainer ガイド
+
+## 注意点
+
+- **branch protection 一時 OFF** (master): alpha.7 → alpha.8 経緯、 stable cut 前に復元
+- **publish policy** (2026-05-11 更新): **alpha 期間中は crates.io publish しない** (= alpha.10 含めて全 alpha は GitHub release のみ)、 crates.io 再開は **0.1.0 stable** で。 既 publish 済 (`alpha.1` 〜 `alpha.9`) は metadata 不変のまま yank しない
+- **dict version compat**: alpha.10 lib は `[meta] schema_version = "2"` のみ accept、 旧 format dict は parse error (= dict v2 化と coordinated)
+- **既存 chunks/regex.rs の URL_RE / EMAIL_RE と scoring/special.rs の独立実装が併存**: 0.2.0+ で旧実装 deprecate / 削除予定

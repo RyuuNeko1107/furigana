@@ -436,7 +436,10 @@ let f = Furigana::builder()
 - engine 切替は server 起動時の env var のみ、 query param で切替不可 (= API surface 縮小)
 
 - **alpha.10**: `Engine::Smart` 投入 (experimental flag)、 default は `Engine::Strict`、 dict format 拡張 + matcher (品詞除く) 実装 + 特殊処理再設計 + bracket forward compat (dict 受け入れ + lib strip) + migration script 実装 + **`tools/diff_engines` 投入** (★6) + **dict 側 doc update** (`SCHEMA.md` / `CONTRIBUTING.md` 同時、 ★7) + **`[meta] schema_version`** field (★5)
-- **alpha.10 投入後**: **branch protection 復元** (★9)、 alpha.10 自体は **crates.io publish** する (= scoring-engine 投入の節目で dogfood、 ★8)
+- **alpha.10 投入後** (2026-05-11 policy 更新): **branch protection 復元** (★9)、
+  alpha.10 は **GitHub release のみ** で crates.io publish はしない (= alpha 期間中
+  は全 alpha が GitHub-only、 crates.io 再開は 0.1.0 stable で。 旧 plan の 「alpha.10
+  だけは crates.io publish」 は撤回、 ★8)
 - **alpha.11**: dict 完全再編成 PR series (機械変換 + entry purge + sub-dir 再構成)、 crates.io publish しない (GitHub release のみ)
 - **alpha.12〜N**: Smart engine bug fix loop + corpus calibration + dogfood + **既存機能 freeze 確認 test** (portable / REPL / SI 単位 / ホットリロード / `furigana dict pull`、 ★16) + **benchmark 整備** (criterion 等、 ★14)、 各 alpha は GitHub release のみ
 - **0.1.0-rc1**: corpus pass 100% 確認後、 Smart を default に切替、 最終 sanity check、 **benchmark 結果を CHANGELOG に掲載**

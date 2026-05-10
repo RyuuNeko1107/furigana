@@ -6,6 +6,165 @@
 
 ## [Unreleased]
 
+`0.1.0-alpha.10` 開発中 (16/18 tasks completed)。 主軸は **scoring engine 投入
+(新 Smart engine experimental)** + **新 dict format 受け入れ struct 定義** +
+**特殊処理 (cross-cutting) provider 化** + **`analyze()` debug API + CLI/HTTP
+analyze mode** + **`furigana-diff-engines` dev tool** + **`[meta]
+schema_version` validator + 各 caller 組込** + **bracket forward compat (lib strip)**。
+★ 番号は [`docs/PROPOSALS/scoring-engine.md`](./docs/PROPOSALS/scoring-engine.md)
+の確定 marker。
+
+公開 API は backwards compat 維持 — 既存 `to_hiragana` / `to_ruby` / `to_tts` /
+`to_romaji` の挙動は不変、 Smart engine は env var `JA_FURIGANA_ENGINE=smart`
+または `FuriganaBuilder::engine(Engine::Smart)` で opt-in する experimental flag。
+0.1.0-rc1 で Smart に default 切替予定 (期日 driven ではなく lib readiness 駆動)。
+
+**dict format breaking change** (★A1b、 alpha.10〜): `load_rules_dir` /
+`Dict::from_toml_file` / `Dict::from_toml_dir` / `Loanwords::from_toml_file` /
+`Loanwords::from_toml_dir` / `SingleOverrides::from_toml_file` で `[meta]
+schema_version = "2"` を **必須化**。 旧 alpha era format (= field 不在 or `"1"`)
+は明確 Validation error で reject、 caller / contributor に migration を促す
+(error message に `furigana-dict/tools/migrate_v2.py` の path 入り)。 dict 側の
+v2 stamp は coordinated に E1 / alpha.11 dict release で実施 (lib alpha.10 公開
+時点では shipped dict v2026.05.09 と非互換、 alpha.11 dict release との pair で
+利用想定)。
+
+残作業: E1 dict migration script (dict repo 側) / H1 release prep
+(CHANGELOG finalize / branch protection 復元 / **GitHub release のみ**、
+crates.io publish は 0.1.0 stable まで休止)。
+
+### Added (scoring engine: Smart engine 投入 + 新 dict format 受け入れ)
+
+- **`crate::scoring` module 新設** — 新 Smart engine の全 component を集約:
+  - `candidate.rs` — `Score` (4 軸 lexicographic 比較: band → length →
+    match_hits → boundary_penalty)、 `Candidate` (input 上 byte range +
+    reading + score の 1 edge)、 `CandidateProvider` trait (provider 各層が
+    `candidates_at(pos)` で候補列挙)、 `Engine` enum (Strict / Smart)、 band 定数
+    (`BAND_DICT_EXACT`=1000 / `BAND_SPECIAL`=950 / `BAND_PROTECTED`=2000 /
+    `BAND_KANJI`=100 / `BAND_LINDERA_UNIHAN`=50)。 ★B2
+  - `engine.rs` — `PathScore` (weakest_band + edge_count + total_match_hits +
+    total_boundary_penalty 集約) + `solve_path` Viterbi-like DP で input 全体の
+    最良 candidate path を解く。 longest match は edge_count 軸で表現 (= 純 sum
+    集約だと細分割 path が勝つ問題を回避)。 ★B1
+  - `boundary.rs` — `KanjiRegion` + `BoundaryAnalysis::analyze(input,
+    region_has_exact_match)` で漢字連続 region を検出、 (b) 完全一致 entry あり
+    = -300 / (c) 漢字 3 文字以上で完全一致なし = -600 ペナルティを割り当て。 ★B3
+  - `format.rs` — 新 dict format の struct 定義: `Entry` untagged enum で簡略形
+    (string) / inline (`{ reading=..., match=[...] }`) / expanded sub-table
+    の 3 形式併存、 `EntryDetail` + `MatchBlock` + `MatchCondition` (literal +
+    char_type のみ、 **品詞 matcher 不採用**) + `CharType` enum + `KanjiBlock`
+    first-class candidate generator + `EntriesData` / `KanjiData` wrapper。
+    Deserialize struct 定義のみ、 これら新 struct を実際の dict load 経路で使う
+    wire-up は dict v2 stamp が出揃った後 (alpha.11+) に実施。 ★A2
+  - `matcher.rs` — `MatchContext` + `matches_context()` + `classify_char()` で
+    literal + char_type 評価 (Lindera 撤廃路線整合、 `prev_pos` / `next_pos` 不採用)。 ★A3
+  - `bracket.rs` — `strip_intonation_markers` で reading 内 `[`、`]`、`/` を除去
+    (0.2.0 intonation 機能の forward compat、 dict は 0.1.0 から bracket 書き
+    OK、 lib は strip して reading のみ使用、 0.2.0 で activate 予定)。 ★D
+  - `special.rs` — `ProtectTokenProvider` (URL / Email / 絵文字を band 2000
+    candidate として透過、 reading = surface) + `AlphabetPassthroughProvider`
+    (英字 token を case-fold + 全角→半角 normalize 後 lookup map 完全一致 →
+    band 1000、 miss 時は surface passthrough を band 100 fallback で出す)。
+    miss が band 100 まで下がるのは `NumberCandidateProvider` (band 950) と
+    競合する `100km` のような alphanumeric mixed surface で SI reading を
+    勝たせるための調整 (proposal §5.6 「band 比較対象外」 を fallback と解釈)。 ★C1 / C2
+  - `numbers.rs` — `NumberCandidateProvider` で 数字 + 助数詞 / 大数スケール
+    (+ 末尾漢字 unit) / SI 単位 / 和式日付 (`YYYY年MM月DD日` / `MM月DD日`) /
+    和式時刻 (`H時M分S秒`) / 時刻 (`HH:MM(:SS)`) / 記号 1 文字 / 素の数字 を
+    band 950 candidate として供給。 既存 `NumberChunker::split` の per-position
+    再実装 (= chunker は左→右 greedy walk、 provider は各 byte 位置で全 pattern を
+    並列に candidate 化、 path 選択は Smart engine DP に委ねる)。 jukugo super-set
+    check は不要 (DP が band 1000 dict entry を自然に優先)、 「N日」 単独は期間
+    扱い (days.toml 特殊読み bypass)、 日付 pattern 内は days.toml 特殊読み採用、
+    漢数字 (一二三 等) の normalize は `DATE_NUM_PAT` 経由 (= 日付 pattern のみ
+    で発火)。 既存 `chunks/regex.rs` と独立 implementation (= URL_RE / EMAIL_RE
+    重複と同方針、 0.2.0+ で chunker 削除と coordinated に整理予定)。 ★C3
+  - `odoriji.rs` — `OdorijiProvider` (々 1 文字位置で band 100 placeholder
+    candidate、 reading = "々" plug) + `apply_rendaku_inplace` (path 確定後
+    token 列を walk、 直前 token reading + `kana::voice_first_kana` で連濁適用)。
+    既存 Strict engine の `reading::pipeline::expand_odoriji_inplace` と同じ
+    rule。 神々 → カミ + ガミ (連濁あり) / 我々 → ワレ + ワレ (連濁対象外で
+    そのまま複製) / dict 完全一致 entry (神々=カミガミ) なら band 1000 で勝つ。 ★C4
+  - `analyze.rs` — `AnalyzeResult` / `Token` (★11 0.1.0 freeze 型) +
+    `analyze(input, providers, boundary)` standalone function。 path 採択後の
+    token 列 + 各位置の候補一覧 + boundary region を返す debug / inspection API。 ★F1
+
+- **`Engine::Smart` experimental flag** — `FuriganaBuilder::engine(Engine::Smart)`
+  で明示指定、 または env var `JA_FURIGANA_ENGINE=smart` (定数 `ENGINE_ENV_VAR`
+  = `"JA_FURIGANA_ENGINE"`) で opt-in。 default は `Engine::Strict` (alpha
+  期間中)、 0.1.0-rc1 で Smart に default 切替予定。 `Furigana::engine()`
+  getter で確認可能。 ★B4
+
+- **`Furigana::analyze()` 公開 API** — caller が candidate scoring engine の
+  path 採択 / 候補 / boundary region を inspect する debug API。 alpha.10 段階
+  の provider 集合は `ProtectTokenProvider` + `AlphabetPassthroughProvider::
+  passthrough_only` + `DictBridgeProvider` (= 既存 `Dict` を `CandidateProvider`
+  化する transitional bridge、 jukugo→band 1000 / unihan→band 100、 reading は
+  intonation bracket strip) + `NumberCandidateProvider` (★C3、 band 950: 助数詞
+  / 大数スケール / SI 単位 / 日付 / 時刻 / 記号 / 素の数字) + `OdorijiProvider`
+  の 5 種、 path 確定後に `apply_rendaku_to_result` で 々 連濁適用。 loanwords
+  lookup と numeric_phrases (二十歳=ハタチ 等) は alpha.10 段階未統合 (今後の
+  continuous wire-up 予定)。 `engine()` setting に依らず 常に Smart engine
+  結果を返す (= caller が明示的に Smart 解析を要求している前提)。 ★F1 / ★11
+
+- **CLI `furigana lookup --mode analyze`** — `AnalyzeResult` を
+  `serde_json::to_string_pretty` で stdout に出力する experimental mode。
+  既存 mode (`tts` / `hiragana` / `ruby` / `kanji` / `romaji` / `romaji-kunrei`)
+  には影響なし、 `--mode` whitelist にのみ追加。 ★F1 / ★12
+
+- **HTTP `mode=analyze`** — `/furigana?mode=analyze` で `result` field に
+  Smart engine 採択 path の reading 連結、 新 field `analyze` に `AnalyzeResult`
+  全体 (tokens / candidates / path_indices / boundary_regions) を JSON で返す。
+  既存 mode の response shape は維持、 `analyze` field は `mode=analyze` 時
+  のみ含まれる (`#[serde(skip_serializing_if = "Option::is_none")]`)。 ★F1 / ★13
+
+- **`furigana-diff-engines` 新 bin** — corpus TOML (`[[case]]` array of
+  `input` / `mode` / `expected` / `note`) を入力に、 各 case を Strict / Smart
+  両 engine で実行、 出力差分を表示する dev tool。 alpha.10〜0.1.0-rc1 期間中
+  の dogfood / CI 監視用 (= 「Smart 投入で挙動破壊なし」 baseline 確認)、
+  user 向けではなく dev binary、 crates.io には publish しない。 exit code は
+  diff 検出時 / error 時 非 0。 ★F2 / ★6
+
+- **`[meta] schema_version` validator + 各 caller wire-up** — `crate::loader::
+  validate_schema_version(content, file)` + 定数 `SUPPORTED_SCHEMA_VERSIONS =
+  &["2"]`。 旧 alpha era format (= field 不在 or `"1"` or `"99"` 等) を
+  `FuriganaError::Validation` で明確 reject、 error message に migration script
+  path (`furigana-dict/tools/migrate_v2.py`) を含める。 caller wire-up (★A1b):
+  - `crate::loader::load_rules_dir` — rules dir 配下の全 file を validate
+  - `Dict::from_toml_file` / `Dict::from_toml_dir`
+  - `Loanwords::from_toml_file` / `Loanwords::from_toml_dir`
+  - `SingleOverrides::from_toml_file`
+  低 level の `from_toml_str` (= 直接 string を取る API) には validation を入れず、
+  file 経由の高 level API のみで強制する設計 (= internal test 等で raw TOML を
+  受ける経路を壊さない)。 malformed TOML (= 構文不正) は `validate_schema_version`
+  が silent pass し、 後段 `parse_toml` が proper な `Toml` error を返す UX 設計。
+  shipped dict (`furigana-dict v2026.05.09`) は v2 未 stamp なので alpha.10 lib
+  + alpha.11 dict release の pair で利用、 lib alpha.10 単独 release 時点では
+  shipped dict と非互換 (= breaking change、 release notes で明示)。 ★A1 / ★A1b / ★5
+
+- **`kana::voice_first_kana` を `pub` 化** — 全角カタカナ reading の第 1 音を
+  連濁化する helper (カ/サ/タ/ハ 行 → 濁音、 ナ/マ/ヤ/ラ/ワ/ア 行など連濁対象外
+  で `None`)。 Strict engine の `reading::pipeline::expand_odoriji_inplace`
+  と Smart engine の `scoring::odoriji::apply_rendaku_inplace` の両方が共有、
+  重複実装を削除。 ★C4 関連の整理。
+
+- **`AnalyzeResult` / `AnalyzeToken` re-export** — `lib.rs` から
+  `furigana::AnalyzeResult` / `furigana::AnalyzeToken` (= `scoring::analyze::Token`
+  のエイリアス) として直接 import 可能に。
+
+- **`AnalyzeResult` / `Token` / `Candidate` / `Score` に `derive(Serialize)`** —
+  CLI / HTTP の JSON 出力用、 ★11 freeze 型に additive 追加 (型構造 / field
+  名は変更なし、 SemVer 互換)。
+
+### Changed (postprocess の scoring engine 独立性を doc 明示)
+
+- **`rules::postprocess` および `scoring::mod` の module doc に scoring
+  engine 独立性を明示** — 「postprocess は scoring engine の score / candidate
+  logic と独立、 path 確定後の output 形式 layer」 を両 module doc に併記。
+  `Furigana::analyze` は postprocess を **適用しない** 方針も明文化 (= caller
+  は raw token reading を inspect、 postprocess は `to_hiragana` / `to_ruby` /
+  `to_tts` / `to_romaji` の本流 method のみで適用)。 ★C4 / scoring-engine.md §5.6 整合。
+
 ## [0.1.0-alpha.9] - 2026-05-08
 
 alpha.8 から積み上がっていた累積変更をまとめてリリース。 主な軸は

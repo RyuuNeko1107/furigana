@@ -9,6 +9,11 @@
 
 ## Release を打つ (binary 配布 + crates.io publish)
 
+> **publish policy** (2026-05-11 更新): **0.1.0 stable まで crates.io publish は
+> 休止**。 alpha 期間中 (alpha.10〜alpha.N / 0.1.0-rc1) は **GitHub release のみ**。
+> 既 publish 済 alpha (alpha.1〜alpha.9) は yank しない (metadata 不変)。
+> 以下手順のうち **step 6 (cargo publish) は 0.1.0 stable cut まで skip**。
+
 ### 前提
 - master が緑 (CI / lint / license audit すべて pass)
 - `CHANGELOG.md` の `[Unreleased]` セクションを新バージョン名にリネームし、
@@ -41,6 +46,8 @@ gh run watch --repo RyuuNeko1107/ja-furigana --workflow=release.yml
 gh release view v0.1.0-alpha.7 --repo RyuuNeko1107/ja-furigana
 
 # 6. crates.io にも publish (順序重要: lib → cli)
+#    ※ 0.1.0 stable cut まで step 6 は skip (= GitHub release のみ)。
+#       alpha 期間中の crates.io publish 休止 policy に従う。
 cargo publish -p ja-furigana
 # ↑ index 反映待ちで数十秒〜数分。完了を待ってから次。
 cargo publish -p ja-furigana-cli
