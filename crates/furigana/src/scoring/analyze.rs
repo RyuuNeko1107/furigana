@@ -1,0 +1,241 @@
+//! `analyze()` debug API — caller が candidate / score / path / boundary_regions を inspect 可能。
+//!
+//! 詳細仕様: `docs/PROPOSALS/scoring-engine.md` §7.2
+//!
+//! ## 0.1.0 freeze 対象 (★11)
+//!
+//! `AnalyzeResult` / `Token` の public field は SemVer freeze、 0.1.0 stable 以降は
+//! 後で additive 追加のみ可、 既存 field 削除は breaking。
+//!
+//! ## 用途
+//!
+//! - debug / 探索: 「なぜこの読みが選ばれたか」 trace
+//! - dict 改善判断: caller が path inspect、 PR 起こす材料
+//! - **lib は collect しない** (OSS ローカル完結方針)、 caller 任意で persist
+
+use crate::scoring::boundary::BoundaryAnalysis;
+use crate::scoring::candidate::{Candidate, CandidateProvider};
+use crate::scoring::engine::solve_path;
+use std::ops::Range;
+
+/// 採択 path 上の 1 つの token (= 採用された candidate edge を caller-friendly に)。
+///
+/// `score` 等の internal info は持たず、 caller が必要なら `AnalyzeResult::candidates`
+/// から該当 candidate を引いて参照する。
+#[derive(Debug, Clone)]
+pub struct Token {
+    /// surface 文字列
+    pub surface: String,
+    /// reading 文字列 (intonation bracket は strip 済)
+    pub reading: String,
+    /// input text 上の byte range
+    pub range: Range<usize>,
+}
+
+impl Token {
+    /// [`Candidate`] から [`Token`] へ変換 (score を捨てる)。
+    #[must_use]
+    pub fn from_candidate(c: &Candidate) -> Self {
+        Self {
+            surface: c.surface.clone(),
+            reading: c.reading.clone(),
+            range: c.range.clone(),
+        }
+    }
+}
+
+/// `analyze()` の戻り値型 (★11、 0.1.0 freeze)。
+///
+/// ## field 説明
+///
+/// - `tokens`: 採択 path 上の token 列 (= 順序保証、 input 全体を覆う)
+/// - `candidates`: 各 token 位置で 「考慮された候補一覧」 (`tokens[i].range.start` から始まる candidate 全列挙)
+/// - `path_indices`: 各 token の start byte 位置 (= `tokens[i].range.start` の copy、 caller の pos lookup 用)
+/// - `boundary_regions`: 検出された 漢字連続 region の byte range (= `BoundaryAnalysis::regions[i].range`)
+#[derive(Debug, Clone)]
+pub struct AnalyzeResult {
+    /// 採択 path 上の token 列
+    pub tokens: Vec<Token>,
+    /// 各 token 位置で考慮された候補一覧 (`candidates[i]` は `tokens[i]` の位置の全候補)
+    pub candidates: Vec<Vec<Candidate>>,
+    /// 各 token の start byte 位置 (= path lookup 用)
+    pub path_indices: Vec<usize>,
+    /// 検出された 漢字連続 region (byte range、 `boundary` を渡した場合のみ)
+    pub boundary_regions: Vec<Range<usize>>,
+}
+
+/// `input` を `providers` で analyze、 [`AnalyzeResult`] を返す。
+///
+/// `boundary` を渡すと `boundary_regions` field に regions を入れる (`None` なら空)。
+/// path 選択は [`solve_path`] 経由。
+///
+/// ## 戻り値の保証
+///
+/// - 入力空 → 全 field 空
+/// - path 構築不能 (= input 覆い切れない) → tokens / path_indices 空、 candidates / boundary_regions は計算結果残る
+/// - path 構築成功 → tokens / path_indices / candidates が同 length、 path_indices[i] = tokens[i].range.start
+pub fn analyze(
+    input: &str,
+    providers: &[&dyn CandidateProvider],
+    boundary: Option<&BoundaryAnalysis>,
+) -> AnalyzeResult {
+    // 1. solve_path で採択 path 取得
+    let path = solve_path(input, providers);
+
+    // 2. path → Token 列
+    let tokens: Vec<Token> = path.iter().map(Token::from_candidate).collect();
+
+    // 3. path_indices: 各 token の byte start 位置
+    let path_indices: Vec<usize> = tokens.iter().map(|t| t.range.start).collect();
+
+    // 4. candidates: 各 token 位置で 全 provider が返す候補を集約 (debug 用)
+    let candidates: Vec<Vec<Candidate>> = path_indices
+        .iter()
+        .map(|&pos| {
+            let mut all = Vec::new();
+            for provider in providers {
+                all.extend(provider.candidates_at(input, pos));
+            }
+            all
+        })
+        .collect();
+
+    // 5. boundary_regions: BoundaryAnalysis から range を抽出
+    let boundary_regions: Vec<Range<usize>> = boundary
+        .map(|b| b.regions.iter().map(|r| r.range.clone()).collect())
+        .unwrap_or_default();
+
+    AnalyzeResult {
+        tokens,
+        candidates,
+        path_indices,
+        boundary_regions,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::scoring::candidate::Score;
+
+    /// dummy provider: 指定 surface→reading mapping を 全位置で試行
+    struct DictProvider {
+        entries: Vec<(String, String, Score)>,
+    }
+
+    impl CandidateProvider for DictProvider {
+        fn candidates_at(&self, input: &str, pos: usize) -> Vec<Candidate> {
+            let mut out = Vec::new();
+            for (surface, reading, score) in &self.entries {
+                if input[pos..].starts_with(surface.as_str()) {
+                    out.push(Candidate::new(
+                        surface.clone(),
+                        reading.clone(),
+                        pos..pos + surface.len(),
+                        *score,
+                    ));
+                }
+            }
+            out
+        }
+    }
+
+    #[test]
+    fn analyze_empty_input() {
+        let dict = DictProvider { entries: vec![] };
+        let result = analyze("", &[&dict], None);
+        assert!(result.tokens.is_empty());
+        assert!(result.candidates.is_empty());
+        assert!(result.path_indices.is_empty());
+        assert!(result.boundary_regions.is_empty());
+    }
+
+    #[test]
+    fn analyze_basic_path() {
+        let dict = DictProvider {
+            entries: vec![("猫".into(), "ネコ".into(), Score::dict_exact(1))],
+        };
+        let result = analyze("猫", &[&dict], None);
+        assert_eq!(result.tokens.len(), 1);
+        assert_eq!(result.tokens[0].surface, "猫");
+        assert_eq!(result.tokens[0].reading, "ネコ");
+        assert_eq!(result.tokens[0].range, 0..3);
+        assert_eq!(result.path_indices, vec![0]);
+        // candidates[0] には 「猫」 candidate 1 つ
+        assert_eq!(result.candidates[0].len(), 1);
+        assert_eq!(result.candidates[0][0].reading, "ネコ");
+    }
+
+    #[test]
+    fn analyze_multi_token_path() {
+        let dict = DictProvider {
+            entries: vec![
+                ("魔理沙".into(), "マリサ".into(), Score::dict_exact(3)),
+                ("が".into(), "ガ".into(), Score::dict_exact(1)),
+                ("好き".into(), "スキ".into(), Score::dict_exact(2)),
+            ],
+        };
+        let result = analyze("魔理沙が好き", &[&dict], None);
+        assert_eq!(result.tokens.len(), 3);
+        assert_eq!(result.tokens[0].surface, "魔理沙");
+        assert_eq!(result.tokens[1].surface, "が");
+        assert_eq!(result.tokens[2].surface, "好き");
+        assert_eq!(result.path_indices, vec![0, 9, 12]);
+    }
+
+    #[test]
+    fn analyze_with_boundary_yields_regions() {
+        let dict = DictProvider {
+            entries: vec![("魔理沙".into(), "マリサ".into(), Score::dict_exact(3))],
+        };
+        let boundary = BoundaryAnalysis::analyze("魔理沙", |_| true); // exact match
+        let result = analyze("魔理沙", &[&dict], Some(&boundary));
+        assert_eq!(result.boundary_regions.len(), 1);
+        assert_eq!(result.boundary_regions[0], 0..9);
+    }
+
+    #[test]
+    fn analyze_without_boundary_yields_empty_regions() {
+        let dict = DictProvider {
+            entries: vec![("猫".into(), "ネコ".into(), Score::dict_exact(1))],
+        };
+        let result = analyze("猫", &[&dict], None);
+        assert!(result.boundary_regions.is_empty());
+    }
+
+    #[test]
+    fn analyze_unreachable_input_yields_empty_tokens() {
+        let dict = DictProvider {
+            entries: vec![("猫".into(), "ネコ".into(), Score::dict_exact(1))],
+        };
+        // 「が」 を覆える provider なし、 path 構築不能
+        let result = analyze("猫が", &[&dict], None);
+        assert!(result.tokens.is_empty());
+        assert!(result.path_indices.is_empty());
+    }
+
+    #[test]
+    fn token_from_candidate_drops_score() {
+        let cand = Candidate::new("猫", "ネコ", 0..3, Score::dict_exact(1));
+        let token = Token::from_candidate(&cand);
+        assert_eq!(token.surface, "猫");
+        assert_eq!(token.reading, "ネコ");
+        assert_eq!(token.range, 0..3);
+        // Token に score field がない (= 0.1.0 freeze の minimal scope)
+    }
+
+    #[test]
+    fn analyze_candidates_show_all_providers() {
+        // 同位置で複数 provider が candidate 出すと、 candidates[i] に全部入る
+        let dict_a = DictProvider {
+            entries: vec![("猫".into(), "ネコ".into(), Score::dict_exact(1))],
+        };
+        let dict_b = DictProvider {
+            entries: vec![("猫".into(), "ニャア".into(), Score::dict_exact(1))],
+        };
+        let result = analyze("猫", &[&dict_a, &dict_b], None);
+        // tokens は 1 つ (path 採択)、 candidates[0] には dict_a + dict_b 両方入る
+        assert_eq!(result.tokens.len(), 1);
+        assert_eq!(result.candidates[0].len(), 2);
+    }
+}

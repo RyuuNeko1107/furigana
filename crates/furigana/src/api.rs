@@ -11,10 +11,42 @@ use crate::error::Result;
 use crate::numbers::NumericPhraseMatcher;
 use crate::reading::{tokenize_text, tokens_to_hiragana, tokens_to_ruby, ReadingToken};
 use crate::rules::RulesData;
+use crate::scoring::candidate::Engine;
 use crate::single_overrides::SingleOverrides;
 use crate::tts::{self, TtsOptions};
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
+
+/// engine 切替の env var 名 (★12 確定)。 値: `"smart"` / `"strict"` (大小文字区別なし)。
+///
+/// alpha.10 期間中の Smart engine experimental 切替用。 0.1.0-rc1 で Smart default 切替後は
+/// Strict 復帰のための env var として残る。
+pub const ENGINE_ENV_VAR: &str = "JA_FURIGANA_ENGINE";
+
+/// `JA_FURIGANA_ENGINE` env var を解析して [`Engine`] を返す。
+///
+/// - `"smart"` (case insensitive) → `Engine::Smart`
+/// - `"strict"` (case insensitive) → `Engine::Strict`
+/// - 未設定 / 空文字列 → `Engine::default()` (= Strict、 alpha 期間中)
+/// - 不正値 → `Engine::default()` (= Strict)、 stderr に warning
+#[must_use]
+pub fn resolve_engine_from_env() -> Engine {
+    match std::env::var(ENGINE_ENV_VAR) {
+        Ok(s) if s.eq_ignore_ascii_case("smart") => Engine::Smart,
+        Ok(s) if s.eq_ignore_ascii_case("strict") => Engine::Strict,
+        Ok(s) if s.is_empty() => Engine::default(),
+        Ok(other) => {
+            eprintln!(
+                "warning: unknown {} value {:?}, using default ({:?})",
+                ENGINE_ENV_VAR,
+                other,
+                Engine::default()
+            );
+            Engine::default()
+        }
+        Err(_) => Engine::default(),
+    }
+}
 
 // ============================================================================
 // Furigana 本体
@@ -38,6 +70,16 @@ pub struct Furigana {
     chunker: NumberChunker,
     /// 単漢字 default override (issue #15 の限定解、 jukugo / Lindera より先に評価)
     single_overrides: SingleOverrides,
+    /// 使用 engine (alpha.10〜0.1.0-rc1 の experimental 期間中は env var or builder で切替)
+    ///
+    /// `Engine::Strict` (alpha 期間中の default) は既存 priority chain
+    /// (`reading::pipeline::resolve_reading`)、 `Engine::Smart` は新 candidate scoring engine
+    /// (`scoring::engine::solve_path`)。 0.1.0-rc1 で Smart に default 切替予定。
+    ///
+    /// **alpha.10 段階での挙動**: Smart 選択時も 各 method (to_hiragana 等) の内部実装は
+    /// currently Strict と同一 (= 真の Smart wire-up は C 系の特殊処理 + provider 実装後の
+    /// continuous work)。 `engine()` getter で確認可能。
+    engine: Engine,
 }
 
 impl Furigana {
@@ -59,6 +101,15 @@ impl Furigana {
     #[must_use]
     pub fn builder() -> FuriganaBuilder {
         FuriganaBuilder::new()
+    }
+
+    /// 現在使用中の engine を返す。
+    ///
+    /// alpha.10 期間中、 真の Smart wire-up は未完成 (= 内部実装は Strict 同等)、
+    /// この getter で 「caller がどちらを期待しているか」 を確認可能。
+    #[must_use]
+    pub fn engine(&self) -> Engine {
+        self.engine
     }
 
     /// 内部 [`Analyzer`] を取得 (必要なら初期化する)
@@ -235,6 +286,8 @@ pub struct FuriganaBuilder {
     loanwords_dirs: Vec<PathBuf>,
     /// 単漢字 default override file (複数指定可、 後勝ち merge)
     single_overrides_files: Vec<PathBuf>,
+    /// 明示指定された engine (None なら env var → default 順で resolve)
+    engine: Option<Engine>,
 }
 
 impl FuriganaBuilder {
@@ -298,6 +351,20 @@ impl FuriganaBuilder {
     #[must_use]
     pub fn single_overrides_file(mut self, p: impl AsRef<Path>) -> Self {
         self.single_overrides_files.push(p.as_ref().to_path_buf());
+        self
+    }
+
+    /// 使用 engine を明示指定 (alpha.10 experimental flag)。
+    ///
+    /// 指定しなかった場合は env var `JA_FURIGANA_ENGINE` を見て解決、 env var も
+    /// 未設定なら `Engine::default()` (= Strict、 alpha 期間中の default)。
+    ///
+    /// **alpha.10 段階での Smart engine 挙動**: 内部実装は currently Strict と同等
+    /// (= 真の wire-up は C 系の特殊処理 + provider 実装後)。 caller は
+    /// [`Furigana::engine`] で確認可能。
+    #[must_use]
+    pub fn engine(mut self, engine: Engine) -> Self {
+        self.engine = Some(engine);
         self
     }
 
@@ -391,6 +458,9 @@ impl FuriganaBuilder {
             }
         }
 
+        // engine 解決: builder 指定 > env var > default (Strict)
+        let engine = self.engine.unwrap_or_else(resolve_engine_from_env);
+
         Ok(Furigana {
             analyzer: OnceLock::new(),
             rules,
@@ -398,6 +468,7 @@ impl FuriganaBuilder {
             phrase_matcher,
             chunker,
             single_overrides,
+            engine,
         })
     }
 }
@@ -517,5 +588,44 @@ mod tests {
         // 一人 → ヒトリ (rules dir 経由でロードされる)
         let ruby = f.to_ruby("一人");
         assert!(ruby.contains("ひとり"));
+    }
+
+    // ─── engine plumbing (B4) tests ──────────────────────────────────────────
+
+    #[test]
+    fn default_engine_is_strict() {
+        // alpha.10 期間中の default は Strict
+        let f = Furigana::minimal().unwrap();
+        assert_eq!(f.engine(), Engine::Strict);
+    }
+
+    #[test]
+    fn builder_engine_method_overrides_default() {
+        let f = Furigana::builder().engine(Engine::Smart).build().unwrap();
+        assert_eq!(f.engine(), Engine::Smart);
+    }
+
+    #[test]
+    fn engine_smart_does_not_break_existing_behavior() {
+        // alpha.10 段階では Smart も Strict と同等動作 (= 真の wire-up は C 系完了後)、
+        // 既存挙動が壊れないことを確認
+        let f = Furigana::builder()
+            .engine(Engine::Smart)
+            .add_entry("灰桜", "ハイザクラ")
+            .build()
+            .unwrap();
+        let ruby = f.to_ruby("灰桜の道");
+        assert!(ruby.contains("はいざくら"), "ruby: {ruby}");
+        assert_eq!(f.engine(), Engine::Smart); // engine field 維持
+    }
+
+    // ─── resolve_engine_from_env tests ───────────────────────────────────────
+    // 注: env var test は global state を触るため serial 実行要 (default test harness は parallel)。
+    // ここでは pure function logic のみ test、 actual env var 動作は test しない (serial 化が
+    // 別 framework 要 / overkill)。 std::env::set_var は thread safety 上 unsafe マークも入る。
+
+    #[test]
+    fn engine_env_var_constant_is_correctly_named() {
+        assert_eq!(ENGINE_ENV_VAR, "JA_FURIGANA_ENGINE");
     }
 }

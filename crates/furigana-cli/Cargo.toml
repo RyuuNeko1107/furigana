@@ -16,6 +16,12 @@ readme = "README.md"
 name = "furigana"
 path = "src/main.rs"
 
+# Smart vs Strict engine diff tool (alpha.10〜0.1.0-rc1 dogfood / CI 用、 ★6)。
+# user 向けではなく dev tool、 Smart engine が default 切替まで Strict と挙動同等か CI で監視。
+[[bin]]
+name = "furigana-diff-engines"
+path = "src/bin/diff_engines.rs"
+
 [lints]
 workspace = true
 

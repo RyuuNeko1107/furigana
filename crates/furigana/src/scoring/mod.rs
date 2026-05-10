@@ -1,0 +1,33 @@
+//! Scoring engine (alpha.10〜0.1.0 stable で投入する新 architecture)。
+//!
+//! 「答えを持つ辞書」 から 「候補を出す辞書」 への転換、 Viterbi-like path 選択で
+//! 文全体の最良 path を採用する。 詳細仕様は
+//! `docs/PROPOSALS/scoring-engine.md` 参照。
+//!
+//! ## 構成 (alpha.10 で順次追加)
+//!
+//! - [`format`]: 新 dict format の struct + Deserialize (entry inline match /
+//!   `[[kanji]]` block / matcher conditions / 文字種列挙)
+//! - 今後追加予定:
+//!   - `matcher`: matcher 条件の評価 logic
+//!   - `candidate`: Candidate / Score (band lexicographic 比較)
+//!   - `engine`: Smart engine 本体 (Viterbi-like)
+//!   - `boundary`: (b)(c) 漢字連続 boundary penalty
+//!   - `special`: 保護トークン / 数字系 / 踊り字
+//!   - `analyze`: `AnalyzeResult` / `analyze()` debug API
+//!
+//! ## 既存 architecture (Strict engine) との関係
+//!
+//! 0.1.0 alpha 期間中は既存 [`crate::reading::pipeline::resolve_reading`] (= Strict
+//! engine) が default、 Smart engine は experimental flag (env var
+//! `JA_FURIGANA_ENGINE=smart` で切替可能)。 0.1.0-rc1 で Smart を default 切替、
+//! 0.2.0+ で Strict を削除予定。
+
+pub mod analyze;
+pub mod boundary;
+pub mod bracket;
+pub mod candidate;
+pub mod engine;
+pub mod format;
+pub mod matcher;
+pub mod special;

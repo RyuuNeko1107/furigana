@@ -46,11 +46,19 @@ use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
 
-// ─── [meta] role tag の取得 ──────────────────────────────────────────────────
+// ─── [meta] tag の取得 ───────────────────────────────────────────────────────
 //
-// 各 dict / rule TOML の冒頭に `[meta] role = "..."` を declare できる。
-// lib loader はこれを見て role 別に dispatch する。 role tag 無い file は
-// file 名から推定 (`infer_role_from_path`) して backwards compat 維持。
+// 各 dict / rule TOML の冒頭に `[meta]` block を declare できる:
+//
+// ```toml
+// [meta]
+// schema_version = "2"      # 0.1.0 から必須 (新 format)、 alpha era は不在 or "1" (旧)
+// role = "entries"          # role 駆動 dispatch tag
+// description = "..."
+// ```
+//
+// lib loader は schema_version で format version を判定、 role で dispatch。
+// schema_version "2" のみ accept、 それ以外 (旧 alpha era / 不在) は明確 error。
 
 #[derive(Deserialize, Default)]
 struct MetaWrapper {
@@ -62,7 +70,15 @@ struct MetaWrapper {
 struct MetaTag {
     #[serde(default)]
     role: Option<String>,
+    #[serde(default)]
+    schema_version: Option<String>,
 }
+
+/// 本 lib が accept する dict schema version の list。
+///
+/// alpha.10 以降は `"2"` のみ。 旧 alpha era 用 dict (= schema_version 不在 or `"1"`)
+/// は受け付けない、 [`validate_schema_version`] で明確 error reject。
+pub const SUPPORTED_SCHEMA_VERSIONS: &[&str] = &["2"];
 
 /// TOML 内の `[meta] role` を返す (無ければ None)。 失敗は None 扱い。
 #[must_use]
@@ -71,6 +87,51 @@ pub fn parse_meta_role(content: &str) -> Option<String> {
         .ok()
         .and_then(|w| w.meta)
         .and_then(|m| m.role)
+}
+
+/// TOML 内の `[meta] schema_version` を返す (無ければ None)。 失敗は None 扱い。
+#[must_use]
+pub fn parse_meta_schema_version(content: &str) -> Option<String> {
+    toml::from_str::<MetaWrapper>(content)
+        .ok()
+        .and_then(|w| w.meta)
+        .and_then(|m| m.schema_version)
+}
+
+/// TOML 内の `[meta] schema_version` を validate。 [`SUPPORTED_SCHEMA_VERSIONS`] のみ accept。
+///
+/// - `schema_version = "2"` → `Ok(())`
+/// - 不在 → `Err(Validation)` (= legacy format pre-0.1.0、 migration 要求)
+/// - その他 (= `"1"` 含む) → `Err(Validation)` (= unsupported version)
+///
+/// alpha.10 以降 lib は新 format (= schema_version "2") のみ受け付ける。
+/// 旧 format dict を読み込んだ場合は明確に reject、 caller に migration を促す。
+///
+/// # 使用例
+///
+/// ```ignore
+/// let content = std::fs::read_to_string("path/to/dict.toml")?;
+/// validate_schema_version(&content, "path/to/dict.toml")?;
+/// ```
+pub fn validate_schema_version(content: &str, file: &str) -> Result<()> {
+    let version = parse_meta_schema_version(content);
+    match version.as_deref() {
+        Some(v) if SUPPORTED_SCHEMA_VERSIONS.contains(&v) => Ok(()),
+        Some(v) => Err(FuriganaError::Validation(format!(
+            "{}: dict schema version {:?} not supported by ja-furigana 0.1.x \
+             (expected: {:?}). Migrate dict using `furigana-dict/tools/migrate_v2.py` \
+             or upgrade dict to v0.1.0+",
+            file,
+            v,
+            SUPPORTED_SCHEMA_VERSIONS.join(", ")
+        ))),
+        None => Err(FuriganaError::Validation(format!(
+            "{}: missing [meta] schema_version field (= legacy format pre-0.1.0). \
+             Migrate dict using `furigana-dict/tools/migrate_v2.py` \
+             or upgrade dict to v0.1.0+",
+            file
+        ))),
+    }
 }
 
 /// file path から role を推定 (role tag 無い file の互換 fallback)。
@@ -595,5 +656,91 @@ mod tests {
         let data = load_rules_dir(&dir).unwrap();
         assert!(data.counters.counter.contains_key("枚"));
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    // ─── schema_version validation tests ─────────────────────────────────────
+
+    #[test]
+    fn parse_meta_schema_version_returns_value_when_present() {
+        let content = "[meta]\nschema_version = \"2\"\nrole = \"entries\"\n";
+        assert_eq!(parse_meta_schema_version(content).as_deref(), Some("2"));
+    }
+
+    #[test]
+    fn parse_meta_schema_version_returns_none_when_absent() {
+        let content = "[meta]\nrole = \"entries\"\n";
+        assert!(parse_meta_schema_version(content).is_none());
+    }
+
+    #[test]
+    fn parse_meta_schema_version_returns_none_when_no_meta_block() {
+        let content = "[entries]\n\"猫\" = \"ネコ\"\n";
+        assert!(parse_meta_schema_version(content).is_none());
+    }
+
+    #[test]
+    fn validate_schema_version_accepts_v2() {
+        let content = "[meta]\nschema_version = \"2\"\n";
+        assert!(validate_schema_version(content, "test.toml").is_ok());
+    }
+
+    #[test]
+    fn validate_schema_version_rejects_v1_explicitly() {
+        let content = "[meta]\nschema_version = \"1\"\n";
+        let err = validate_schema_version(content, "test.toml").unwrap_err();
+        match err {
+            FuriganaError::Validation(msg) => {
+                assert!(msg.contains("not supported"), "msg: {msg}");
+                assert!(msg.contains("\"1\""), "msg: {msg}");
+                assert!(msg.contains("test.toml"), "msg: {msg}");
+                assert!(msg.contains("migrate_v2.py"), "msg: {msg}");
+            }
+            other => panic!("expected Validation error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn validate_schema_version_rejects_missing_field_as_legacy() {
+        let content = "[meta]\nrole = \"entries\"\n";
+        let err = validate_schema_version(content, "old_dict.toml").unwrap_err();
+        match err {
+            FuriganaError::Validation(msg) => {
+                assert!(msg.contains("legacy format pre-0.1.0"), "msg: {msg}");
+                assert!(msg.contains("missing"), "msg: {msg}");
+                assert!(msg.contains("old_dict.toml"), "msg: {msg}");
+                assert!(msg.contains("migrate_v2.py"), "msg: {msg}");
+            }
+            other => panic!("expected Validation error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn validate_schema_version_rejects_unknown_version() {
+        let content = "[meta]\nschema_version = \"99\"\n";
+        let err = validate_schema_version(content, "test.toml").unwrap_err();
+        match err {
+            FuriganaError::Validation(msg) => {
+                assert!(msg.contains("not supported"), "msg: {msg}");
+                assert!(msg.contains("\"99\""), "msg: {msg}");
+            }
+            other => panic!("expected Validation error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn validate_schema_version_rejects_no_meta_block() {
+        let content = "[entries]\n\"猫\" = \"ネコ\"\n";
+        let err = validate_schema_version(content, "no_meta.toml").unwrap_err();
+        match err {
+            FuriganaError::Validation(msg) => {
+                assert!(msg.contains("legacy format"), "msg: {msg}");
+            }
+            other => panic!("expected Validation error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn supported_schema_versions_contains_v2() {
+        assert!(SUPPORTED_SCHEMA_VERSIONS.contains(&"2"));
     }
 }
