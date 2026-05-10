@@ -1,3 +1,7 @@
+[meta]
+schema_version = "2"
+role = "symbols"
+
 # 記号読み
 [entries]
 "+" = "プラス"

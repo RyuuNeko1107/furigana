@@ -1,3 +1,7 @@
+[meta]
+schema_version = "2"
+role = "counters"
+
 # 助数詞ルール
 #
 # - [simple]       : 数値カナの後ろに値を連結するだけのシンプルな助数詞

@@ -1,3 +1,7 @@
+[meta]
+schema_version = "2"
+role = "latin"
+
 # ラテン文字 (アルファベット) 1 文字読み
 # 大文字キーで保存。lookup は case-insensitive。
 

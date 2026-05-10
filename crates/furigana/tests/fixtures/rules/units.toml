@@ -1,3 +1,7 @@
+[meta]
+schema_version = "2"
+role = "units"
+
 # SI / 一般単位
 # `ci = true` で case-insensitive lookup (大文字小文字を区別しない)
 

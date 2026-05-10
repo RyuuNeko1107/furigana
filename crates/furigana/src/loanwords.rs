@@ -107,12 +107,16 @@ impl Loanwords {
 
     /// TOML ファイルから辞書を構築
     ///
+    /// `[meta] schema_version = "2"` 必須 (alpha.10〜、 ★A1b)。
+    ///
     /// # Errors
-    /// I/O 失敗 / TOML パース失敗。
+    /// I/O 失敗 / TOML パース失敗 / schema_version validation 失敗。
     pub fn from_toml_file<P: AsRef<Path>>(path: P) -> Result<Self> {
         let path = path.as_ref();
         let content = std::fs::read_to_string(path)?;
-        Self::from_toml_str(&content, &path.display().to_string())
+        let from = path.display().to_string();
+        crate::loader::validate_schema_version(&content, &from)?;
+        Self::from_toml_str(&content, &from)
     }
 
     /// ディレクトリを再帰的に walk して `*.toml` を全て merge
@@ -140,6 +144,10 @@ impl Loanwords {
         let mut merged = Self::default();
         for f in &files {
             let content = std::fs::read_to_string(f)?;
+            let from = f.display().to_string();
+            // ★A1b: schema_version = "2" 必須 (alpha.10〜)。 loanwords dir 配下の全 file
+            // に適用 (= 他 role 混在 file もまず schema 確認、 後段で role 駆動 skip)。
+            crate::loader::validate_schema_version(&content, &from)?;
             let role = crate::loader::resolve_role(&content, f);
             // Loanwords に load するのは role = "loanwords" のみ。
             // role 不明 (None) かつ path も `loanwords/` dir 配下でない file は
@@ -147,7 +155,7 @@ impl Loanwords {
             if role.as_deref() != Some("loanwords") {
                 continue;
             }
-            merged.merge(Self::from_toml_str(&content, &f.display().to_string())?);
+            merged.merge(Self::from_toml_str(&content, &from)?);
         }
         Ok(merged)
     }
@@ -273,12 +281,12 @@ mod tests {
 
         std::fs::write(
             tmp.join("jukugo_file.toml"),
-            "[meta]\nrole = \"jukugo\"\n\n[entries]\n\"灰桜\" = \"ハイザクラ\"\n",
+            "[meta]\nschema_version = \"2\"\nrole = \"jukugo\"\n\n[entries]\n\"灰桜\" = \"ハイザクラ\"\n",
         )
         .unwrap();
         std::fs::write(
             tmp.join("loanwords_file.toml"),
-            "[meta]\nrole = \"loanwords\"\n\n[entries]\n\"Kubernetes\" = \"クバネティス\"\n",
+            "[meta]\nschema_version = \"2\"\nrole = \"loanwords\"\n\n[entries]\n\"Kubernetes\" = \"クバネティス\"\n",
         )
         .unwrap();
 
@@ -305,7 +313,7 @@ mod tests {
 
         std::fs::write(
             loan_dir.join("it.toml"),
-            "[entries]\n\"Kubernetes\" = \"クバネティス\"\n",
+            "[meta]\nschema_version = \"2\"\n\n[entries]\n\"Kubernetes\" = \"クバネティス\"\n",
         )
         .unwrap();
 
@@ -313,6 +321,29 @@ mod tests {
         assert_eq!(lw.lookup("Kubernetes"), Some("クバネティス"));
         assert_eq!(lw.len(), 1);
 
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn from_toml_file_rejects_legacy_format() {
+        // ★A1b: loanwords file も schema_version = "2" を必須化
+        let tmp = std::env::temp_dir().join(format!(
+            "loanwords_a1b_legacy_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&tmp).unwrap();
+        let path = tmp.join("legacy.toml");
+        std::fs::write(&path, "[entries]\n\"Kubernetes\" = \"クバネティス\"\n").unwrap();
+        let err = Loanwords::from_toml_file(&path).unwrap_err();
+        match err {
+            crate::error::FuriganaError::Validation(msg) => {
+                assert!(msg.contains("schema_version"), "msg: {msg}");
+            }
+            other => panic!("expected Validation, got {other:?}"),
+        }
         std::fs::remove_dir_all(&tmp).ok();
     }
 }

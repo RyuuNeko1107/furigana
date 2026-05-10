@@ -5,6 +5,7 @@
 # (が、安全のため 1〜31 全て明示する)
 
 [meta]
+schema_version = "2"
 role = "days"
 description = "1〜31 日の特殊読み (1→ツイタチ 等)"
 

@@ -74,12 +74,16 @@ impl SingleOverrides {
 
     /// TOML ファイルから構築
     ///
+    /// `[meta] schema_version = "2"` 必須 (alpha.10〜、 ★A1b)。
+    ///
     /// # Errors
-    /// I/O 失敗 / TOML パース失敗。
+    /// I/O 失敗 / TOML パース失敗 / schema_version validation 失敗。
     pub fn from_toml_file<P: AsRef<Path>>(path: P) -> Result<Self> {
         let path = path.as_ref();
         let content = std::fs::read_to_string(path)?;
-        Self::from_toml_str(&content, &path.display().to_string())
+        let from = path.display().to_string();
+        crate::loader::validate_schema_version(&content, &from)?;
+        Self::from_toml_str(&content, &from)
     }
 
     /// 件数
@@ -153,5 +157,49 @@ mod tests {
         assert_eq!(d.len(), 1);
         assert_eq!(d.lookup("土"), Some("ツチ"));
         assert_eq!(d.lookup("土地"), None);
+    }
+
+    #[test]
+    fn from_toml_file_rejects_legacy_format() {
+        // ★A1b: single_overrides file も schema_version = "2" を必須化
+        let tmp = std::env::temp_dir().join(format!(
+            "single_overrides_a1b_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&tmp).unwrap();
+        let path = tmp.join("legacy.toml");
+        std::fs::write(&path, "[entries]\n\"土\" = \"ツチ\"\n").unwrap();
+        let err = SingleOverrides::from_toml_file(&path).unwrap_err();
+        match err {
+            crate::error::FuriganaError::Validation(msg) => {
+                assert!(msg.contains("schema_version"), "msg: {msg}");
+            }
+            other => panic!("expected Validation, got {other:?}"),
+        }
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn from_toml_file_accepts_v2_format() {
+        let tmp = std::env::temp_dir().join(format!(
+            "single_overrides_v2_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&tmp).unwrap();
+        let path = tmp.join("v2.toml");
+        std::fs::write(
+            &path,
+            "[meta]\nschema_version = \"2\"\n\n[entries]\n\"土\" = \"ツチ\"\n",
+        )
+        .unwrap();
+        let d = SingleOverrides::from_toml_file(&path).expect("v2 should accept");
+        assert_eq!(d.lookup("土"), Some("ツチ"));
+        std::fs::remove_dir_all(&tmp).ok();
     }
 }

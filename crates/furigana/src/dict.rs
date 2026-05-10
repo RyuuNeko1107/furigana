@@ -137,12 +137,17 @@ impl Dict {
 
     /// 単一 TOML ファイルから辞書を構築
     ///
+    /// `[meta] schema_version = "2"` 必須 (alpha.10〜、 ★A1b)。 旧 format (= field 不在
+    /// or `"1"`) は [`FuriganaError::Validation`] で reject される。
+    ///
     /// # Errors
-    /// I/O 失敗 / TOML パース失敗。
+    /// I/O 失敗 / TOML パース失敗 / schema_version validation 失敗。
     pub fn from_toml_file<P: AsRef<Path>>(path: P) -> Result<Self> {
         let path = path.as_ref();
         let content = std::fs::read_to_string(path)?;
-        Self::from_toml_str(&content, &path.display().to_string())
+        let from = path.display().to_string();
+        crate::loader::validate_schema_version(&content, &from)?;
+        Self::from_toml_str(&content, &from)
     }
 
     /// ディレクトリ配下の `*.toml` 全てから辞書をマージ構築
@@ -188,6 +193,10 @@ impl Dict {
         let mut merged = Self::default();
         for f in files {
             let content = std::fs::read_to_string(&f)?;
+            let from = f.display().to_string();
+            // ★A1b: schema_version = "2" 必須 (alpha.10〜)。 dict dir 配下の全 file に
+            // 適用 (= role 不明 / 他 role の file が混在しても 「先に schema 確認」)。
+            crate::loader::validate_schema_version(&content, &from)?;
             let role = crate::loader::resolve_role(&content, &f);
             // Dict に load する role 一覧。 role 不明 (None) は backwards compat
             // で Dict として扱う (古い release で role tag が無い file を救う)。
@@ -198,7 +207,7 @@ impl Dict {
             if !load_into_dict {
                 continue;
             }
-            let part = Self::from_toml_str(&content, &f.display().to_string())?;
+            let part = Self::from_toml_str(&content, &from)?;
             merged.merge(part);
         }
         Ok(merged)
@@ -356,17 +365,25 @@ mod tests {
         path
     }
 
+    /// `[meta] schema_version = "2"` block を body の先頭に付ける test helper macro。
+    /// `concat!` 経由で literal `&'static str` を返す (= `std::fs::write` に直接渡せる)。
+    macro_rules! v2 {
+        ($body:expr) => {
+            concat!("[meta]\nschema_version = \"2\"\n\n", $body)
+        };
+    }
+
     #[test]
     fn from_toml_dir_loads_multiple_files() {
         let dir = fresh_temp_dir("dir_load");
         std::fs::write(
             dir.join("01_a.toml"),
-            "[entries]\n\"灰桜\" = \"ハイザクラ\"\n",
+            v2!("[entries]\n\"灰桜\" = \"ハイザクラ\"\n"),
         )
         .unwrap();
         std::fs::write(
             dir.join("02_b.toml"),
-            "[entries]\n\"黎明\" = \"レイメイ\"\n",
+            v2!("[entries]\n\"黎明\" = \"レイメイ\"\n"),
         )
         .unwrap();
 
@@ -383,12 +400,12 @@ mod tests {
         let dir = fresh_temp_dir("dir_priority");
         std::fs::write(
             dir.join("01_lower.toml"),
-            "[entries]\n\"灰桜\" = \"ハイザクラ\"\n",
+            v2!("[entries]\n\"灰桜\" = \"ハイザクラ\"\n"),
         )
         .unwrap();
         std::fs::write(
             dir.join("02_higher.toml"),
-            "[entries]\n\"灰桜\" = \"カイオウ\"\n",
+            v2!("[entries]\n\"灰桜\" = \"カイオウ\"\n"),
         )
         .unwrap();
 
@@ -412,16 +429,20 @@ mod tests {
         std::fs::create_dir_all(&sub).unwrap();
         std::fs::write(
             sub.join("general.toml"),
-            "[entries]\n\"灰桜\" = \"ハイザクラ\"\n",
+            v2!("[entries]\n\"灰桜\" = \"ハイザクラ\"\n"),
         )
         .unwrap();
         std::fs::write(
             sub.join("places.toml"),
-            "[entries]\n\"湯島\" = \"ユシマ\"\n",
+            v2!("[entries]\n\"湯島\" = \"ユシマ\"\n"),
         )
         .unwrap();
         // 直下のファイルもまだ拾えること
-        std::fs::write(dir.join("top.toml"), "[entries]\n\"黎明\" = \"レイメイ\"\n").unwrap();
+        std::fs::write(
+            dir.join("top.toml"),
+            v2!("[entries]\n\"黎明\" = \"レイメイ\"\n"),
+        )
+        .unwrap();
 
         let d = Dict::from_toml_dir(&dir).unwrap();
         assert_eq!(d.lookup("灰桜"), Some("ハイザクラ"));
@@ -440,7 +461,7 @@ mod tests {
         std::fs::create_dir_all(&deep).unwrap();
         std::fs::write(
             deep.join("touhou.toml"),
-            "[entries]\n\"霊夢\" = \"レイム\"\n\"魔理沙\" = \"マリサ\"\n",
+            v2!("[entries]\n\"霊夢\" = \"レイム\"\n\"魔理沙\" = \"マリサ\"\n"),
         )
         .unwrap();
         // 別の深い階層
@@ -448,7 +469,7 @@ mod tests {
         std::fs::create_dir_all(&deep2).unwrap();
         std::fs::write(
             deep2.join("placeholder.toml"),
-            "[entries]\n\"宵闇\" = \"ヨイヤミ\"\n",
+            v2!("[entries]\n\"宵闇\" = \"ヨイヤミ\"\n"),
         )
         .unwrap();
 
@@ -468,12 +489,12 @@ mod tests {
         let dir = fresh_temp_dir("dir_role_loanwords");
         std::fs::write(
             dir.join("jukugo.toml"),
-            "[meta]\nrole = \"jukugo\"\n\n[entries]\n\"灰桜\" = \"ハイザクラ\"\n",
+            "[meta]\nschema_version = \"2\"\nrole = \"jukugo\"\n\n[entries]\n\"灰桜\" = \"ハイザクラ\"\n",
         )
         .unwrap();
         std::fs::write(
             dir.join("loan.toml"),
-            "[meta]\nrole = \"loanwords\"\n\n[entries]\n\"Kubernetes\" = \"クバネティス\"\n",
+            "[meta]\nschema_version = \"2\"\nrole = \"loanwords\"\n\n[entries]\n\"Kubernetes\" = \"クバネティス\"\n",
         )
         .unwrap();
 
@@ -495,13 +516,13 @@ mod tests {
         let dir = fresh_temp_dir("dir_role_single");
         std::fs::write(
             dir.join("jukugo.toml"),
-            "[meta]\nrole = \"jukugo\"\n\n[entries]\n\"灰桜\" = \"ハイザクラ\"\n",
+            "[meta]\nschema_version = \"2\"\nrole = \"jukugo\"\n\n[entries]\n\"灰桜\" = \"ハイザクラ\"\n",
         )
         .unwrap();
         // 「single_overrides.toml」 という file 名以外で role tag だけで skip されるか
         std::fs::write(
             dir.join("custom_overrides_filename.toml"),
-            "[meta]\nrole = \"single_overrides\"\n\n[entries]\n\"土\" = \"ツチ\"\n",
+            "[meta]\nschema_version = \"2\"\nrole = \"single_overrides\"\n\n[entries]\n\"土\" = \"ツチ\"\n",
         )
         .unwrap();
 
@@ -521,18 +542,18 @@ mod tests {
         std::fs::create_dir_all(&loan).unwrap();
         std::fs::write(
             dir.join("jukugo.toml"),
-            "[entries]\n\"灰桜\" = \"ハイザクラ\"\n",
+            v2!("[entries]\n\"灰桜\" = \"ハイザクラ\"\n"),
         )
         .unwrap();
         std::fs::write(
             loan.join("it.toml"),
-            "[entries]\n\"Kubernetes\" = \"クバネティス\"\n",
+            v2!("[entries]\n\"Kubernetes\" = \"クバネティス\"\n"),
         )
         .unwrap();
         // single_overrides.toml も file 名で skip
         std::fs::write(
             dir.join("single_overrides.toml"),
-            "[entries]\n\"土\" = \"ツチ\"\n",
+            v2!("[entries]\n\"土\" = \"ツチ\"\n"),
         )
         .unwrap();
 
@@ -550,6 +571,48 @@ mod tests {
         );
         assert_eq!(d.len(), 1);
 
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    // ─── A1b: schema_version 強制 tests ──────────────────────────────────────
+
+    #[test]
+    fn from_toml_file_rejects_legacy_format_without_meta() {
+        // alpha.10〜 dict file も schema_version = "2" を必須化 (★A1b)。
+        let dir = fresh_temp_dir("a1b_dict_legacy");
+        let path = dir.join("legacy.toml");
+        std::fs::write(&path, "[entries]\n\"灰桜\" = \"ハイザクラ\"\n").unwrap();
+        let err = Dict::from_toml_file(&path).unwrap_err();
+        match err {
+            crate::error::FuriganaError::Validation(msg) => {
+                assert!(msg.contains("schema_version"), "msg: {msg}");
+            }
+            other => panic!("expected Validation, got {other:?}"),
+        }
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn from_toml_dir_rejects_legacy_file() {
+        // dir 配下に legacy file が混在する場合、 最初に見つけた legacy で fail
+        let dir = fresh_temp_dir("a1b_dict_dir_legacy");
+        std::fs::write(
+            dir.join("legacy.toml"),
+            "[entries]\n\"灰桜\" = \"ハイザクラ\"\n",
+        )
+        .unwrap();
+        let err = Dict::from_toml_dir(&dir).unwrap_err();
+        assert!(matches!(err, crate::error::FuriganaError::Validation(_)));
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn from_toml_file_accepts_v2_format() {
+        let dir = fresh_temp_dir("a1b_dict_v2");
+        let path = dir.join("v2.toml");
+        std::fs::write(&path, v2!("[entries]\n\"灰桜\" = \"ハイザクラ\"\n")).unwrap();
+        let d = Dict::from_toml_file(&path).expect("v2 format should accept");
+        assert_eq!(d.lookup("灰桜"), Some("ハイザクラ"));
         std::fs::remove_dir_all(&dir).ok();
     }
 }

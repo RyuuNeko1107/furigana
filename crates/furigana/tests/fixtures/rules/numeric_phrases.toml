@@ -1,3 +1,7 @@
+[meta]
+schema_version = "2"
+role = "numeric_phrases"
+
 # 数字を含む慣用語句 (形態素解析・助数詞ルールより先に確定する)
 
 [entries]

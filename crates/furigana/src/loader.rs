@@ -101,8 +101,11 @@ pub fn parse_meta_schema_version(content: &str) -> Option<String> {
 /// TOML 内の `[meta] schema_version` を validate。 [`SUPPORTED_SCHEMA_VERSIONS`] のみ accept。
 ///
 /// - `schema_version = "2"` → `Ok(())`
-/// - 不在 → `Err(Validation)` (= legacy format pre-0.1.0、 migration 要求)
+/// - 不在 (= 構文 valid だが `[meta] schema_version` field 無し) → `Err(Validation)`
+///   (legacy format pre-0.1.0、 migration 要求)
 /// - その他 (= `"1"` 含む) → `Err(Validation)` (= unsupported version)
+/// - **TOML 構文 invalid** → `Ok(())` (= 後段の `parse_toml` が proper な
+///   [`FuriganaError::Toml`] を返すことを期待、 validation 段階では silent pass)
 ///
 /// alpha.10 以降 lib は新 format (= schema_version "2") のみ受け付ける。
 /// 旧 format dict を読み込んだ場合は明確に reject、 caller に migration を促す。
@@ -114,7 +117,13 @@ pub fn parse_meta_schema_version(content: &str) -> Option<String> {
 /// validate_schema_version(&content, "path/to/dict.toml")?;
 /// ```
 pub fn validate_schema_version(content: &str, file: &str) -> Result<()> {
-    let version = parse_meta_schema_version(content);
+    // TOML 構文 invalid なら silent pass (= 後段 parser が proper な Toml error を出す責務)。
+    // この early-return が無いと 「壊れた TOML」 が "missing schema_version" Validation
+    // error として扱われ、 caller の error UX が劣化する (parse error の方が診断的に有用)。
+    let Ok(wrapper) = toml::from_str::<MetaWrapper>(content) else {
+        return Ok(());
+    };
+    let version = wrapper.meta.and_then(|m| m.schema_version);
     match version.as_deref() {
         Some(v) if SUPPORTED_SCHEMA_VERSIONS.contains(&v) => Ok(()),
         Some(v) => Err(FuriganaError::Validation(format!(
@@ -325,10 +334,15 @@ pub fn load_rules_dir<P: AsRef<Path>>(dir: P) -> Result<RulesData> {
     let mut postprocess_specs: Vec<(PathBuf, PostProcessSpec)> = Vec::new();
     for path in walk_rule_files(dir)? {
         let content = std::fs::read_to_string(&path)?;
+        let from = path.display().to_string();
+        // ★A1b: rules dir 配下の TOML は **全 file** に `[meta] schema_version = "2"`
+        // を必須化 (alpha.10〜)。 role 不明 / dict 系混在 file (jukugo / loanwords /
+        // works / single_overrides) も含めて validation する (= dir 配下の TOML は
+        // 全部新 format に揃える方針、 旧 alpha era format を silent skip させない)。
+        validate_schema_version(&content, &from)?;
         let role =
             parse_meta_role(&content).or_else(|| infer_role_from_path(&path).map(String::from));
         let role_str = role.as_deref();
-        let from = path.display().to_string();
         match role_str {
             Some("counters") => {
                 let part: CountersData = parse_toml(&content, &from)?;
@@ -522,15 +536,19 @@ mod tests {
         let dir = fresh_temp_dir("present");
         std::fs::write(
             dir.join(SCALES_FILE),
-            "[[entry]]\nkanji = \"万\"\nkana = \"マン\"\n",
+            "[meta]\nschema_version = \"2\"\n\n[[entry]]\nkanji = \"万\"\nkana = \"マン\"\n",
         )
         .unwrap();
         std::fs::write(
             dir.join(COUNTERS_FILE),
-            "[counter.\"本\"]\ndefault = \"ホン\"\n",
+            "[meta]\nschema_version = \"2\"\n\n[counter.\"本\"]\ndefault = \"ホン\"\n",
         )
         .unwrap();
-        std::fs::write(dir.join(COMPAT_FILE), "[map]\n\"髙\" = \"高\"\n").unwrap();
+        std::fs::write(
+            dir.join(COMPAT_FILE),
+            "[meta]\nschema_version = \"2\"\n\n[map]\n\"髙\" = \"高\"\n",
+        )
+        .unwrap();
 
         let data = load_rules_dir(&dir).unwrap();
         assert_eq!(data.scales.lookup("万"), Some("マン"));
@@ -549,6 +567,8 @@ mod tests {
     #[test]
     fn load_rules_dir_propagates_parse_errors() {
         let dir = fresh_temp_dir("parse_err");
+        // 壊れた TOML は validate_schema_version が silent pass し、 後段の
+        // parse_toml が proper な Toml error を返す (= ★A1b の UX 設計)。
         std::fs::write(dir.join(COUNTERS_FILE), "壊れた").unwrap();
         let err = load_rules_dir(&dir).unwrap_err();
         assert!(matches!(err, FuriganaError::Toml { .. }));
@@ -560,15 +580,19 @@ mod tests {
         let dir = fresh_temp_dir("counters_subdir");
         let sub = dir.join("counters");
         std::fs::create_dir_all(&sub).unwrap();
-        std::fs::write(sub.join("01_simple.toml"), "[simple]\n\"円\" = \"エン\"\n").unwrap();
+        std::fs::write(
+            sub.join("01_simple.toml"),
+            "[meta]\nschema_version = \"2\"\n\n[simple]\n\"円\" = \"エン\"\n",
+        )
+        .unwrap();
         std::fs::write(
             sub.join("02_objects.toml"),
-            "[counter.\"本\"]\ndefault = \"ホン\"\n",
+            "[meta]\nschema_version = \"2\"\n\n[counter.\"本\"]\ndefault = \"ホン\"\n",
         )
         .unwrap();
         std::fs::write(
             sub.join("03_time.toml"),
-            "[counter.\"時\"]\ndefault = \"ジ\"\n",
+            "[meta]\nschema_version = \"2\"\n\n[counter.\"時\"]\ndefault = \"ジ\"\n",
         )
         .unwrap();
 
@@ -601,12 +625,12 @@ mod tests {
         std::fs::create_dir_all(&sub).unwrap();
         std::fs::write(
             sub.join("01_a.toml"),
-            "[[rule]]\nsurface = \"一日\"\ndefault = \"イチニチ\"\n",
+            "[meta]\nschema_version = \"2\"\n\n[[rule]]\nsurface = \"一日\"\ndefault = \"イチニチ\"\n",
         )
         .unwrap();
         std::fs::write(
             sub.join("02_b.toml"),
-            "[[rule]]\nsurface = \"二日\"\ndefault = \"フツカ\"\n",
+            "[meta]\nschema_version = \"2\"\n\n[[rule]]\nsurface = \"二日\"\ndefault = \"フツカ\"\n",
         )
         .unwrap();
 
@@ -627,12 +651,12 @@ mod tests {
         std::fs::create_dir_all(&sub).unwrap();
         std::fs::write(
             dir.join(COUNTERS_FILE),
-            "[counter.\"本\"]\ndefault = \"ホン\"\n",
+            "[meta]\nschema_version = \"2\"\n\n[counter.\"本\"]\ndefault = \"ホン\"\n",
         )
         .unwrap();
         std::fs::write(
             sub.join("more.toml"),
-            "[counter.\"匹\"]\ndefault = \"ヒキ\"\n",
+            "[meta]\nschema_version = \"2\"\n\n[counter.\"匹\"]\ndefault = \"ヒキ\"\n",
         )
         .unwrap();
 
@@ -649,7 +673,7 @@ mod tests {
         std::fs::create_dir_all(dir.join("custom")).unwrap();
         std::fs::write(
             dir.join("custom").join("anywhere.toml"),
-            "[meta]\nrole = \"counters\"\n\n[counter.\"枚\"]\ndefault = \"マイ\"\n",
+            "[meta]\nschema_version = \"2\"\nrole = \"counters\"\n\n[counter.\"枚\"]\ndefault = \"マイ\"\n",
         )
         .unwrap();
 
@@ -737,6 +761,44 @@ mod tests {
             }
             other => panic!("expected Validation error, got {other:?}"),
         }
+    }
+
+    // ─── A1b: caller-side schema_version 強制 tests ─────────────────────────
+
+    #[test]
+    fn load_rules_dir_rejects_legacy_file_without_meta() {
+        // alpha.10〜 lib は schema_version = "2" を必須化 (★A1b)。
+        // [meta] 不在 = 旧 alpha era format → Validation error で reject。
+        let dir = fresh_temp_dir("a1b_legacy");
+        std::fs::write(
+            dir.join(SCALES_FILE),
+            "[[entry]]\nkanji = \"万\"\nkana = \"マン\"\n",
+        )
+        .unwrap();
+        let err = load_rules_dir(&dir).unwrap_err();
+        match err {
+            FuriganaError::Validation(msg) => {
+                assert!(
+                    msg.contains("schema_version"),
+                    "expected schema_version error: {msg}"
+                );
+            }
+            other => panic!("expected Validation error, got {other:?}"),
+        }
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn load_rules_dir_rejects_v1_format() {
+        let dir = fresh_temp_dir("a1b_v1");
+        std::fs::write(
+            dir.join(SCALES_FILE),
+            "[meta]\nschema_version = \"1\"\n\n[[entry]]\nkanji = \"万\"\nkana = \"マン\"\n",
+        )
+        .unwrap();
+        let err = load_rules_dir(&dir).unwrap_err();
+        assert!(matches!(err, FuriganaError::Validation(_)));
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]
