@@ -76,7 +76,7 @@ crates/furigana-cli/src/
 
 ```powershell
 # build + test
-cargo test --lib                             # 427 lib test (alpha.10 A1b 完了時点)
+cargo test --lib                             # 435 lib test (alpha.11 dict 完全再編成 完了時点)
 cargo test --lib scoring::                   # scoring module のみ
 cargo clippy --lib -- -D warnings            # clippy clean 確認
 cargo fmt                                    # フォーマット

@@ -78,20 +78,20 @@ ja-furigana の中長期計画。 **完了履歴は [CHANGELOG.md](../CHANGELOG.
 
 **dict 側 (ja-furigana-dict、 0.1.0 stable 同期)**
 
-- [ ] entry inline match notation (`[[entries."x".match]]` sub-table) 受け入れ
-- [ ] `[[kanji]]` block first-class candidate generator (`core/kanji/` 新設)
-- [ ] `rules/context/` 廃止、 中身は entry inline に migration
-- [ ] `core/single/` を `core/kanji/` に rename + format 変換
-- [ ] `SingleOverrides` (Issue #15) を `[[kanji.match]]` に統合
-- [ ] migration script `tools/migrate_v2.py` 実装、 機械変換 PR 1 本
-- [ ] **重複 / 古い / 出典なし entry の purge** (人手 PR series、 alpha.11)
-- [ ] **`core/jukugo/` 24 カテゴリ 再分類** (人手 PR series、 alpha.11)
-- [ ] **`core/works/` 作品単位 sub-dir 整理** (人手 PR series、 alpha.11)
-- [ ] **`core/loanwords/` 整理確認** (alpha.11)
-- [ ] validate.py 拡張 (matcher vocabulary check、 `default` 必須 check、 **bracket 構文 check** = forward compat、 **`[meta] schema_version`** 必須 check ★5)
-- [ ] reading に bracket notation (`[`, `]`, `/`) を許可 (forward compat、 0.1.0 から書ける)
-- [ ] **`SCHEMA.md` 全面 update** (alpha.10 同時、 ★7): 新 entry inline match notation / `[[kanji]]` block / matcher vocabulary / `[meta] schema_version`
-- [ ] **`CONTRIBUTING.md` 新規作成** (alpha.10 同時、 ★7): (e) 規律 + 出典明示 + bracket notation 書き方
+- [x] entry inline match notation (`[[entries."x".match]]` sub-table) 受け入れ (= alpha.11 機械変換完了)
+- [x] `[[kanji]]` block first-class candidate generator (`core/kanji/` 新設) (= alpha.11、 seed 1 件 = 「土」)
+- [x] `rules/context/` 廃止、 中身は entry inline に migration (= alpha.11、 51 surface)
+- [x] `SingleOverrides` (Issue #15) を `[[kanji]]` block に統合 (= alpha.11、 single_overrides.toml 削除済)
+- [x] migration script 実装 (= `tools/migrations/migrate_v2.py` + `migrate_v2_context.py` + `merge_migrated_context.py` + `migrate_kanji_format.py`)
+- [x] reading に bracket notation (`[`, `]`, `/`) を許可 (= alpha.10、 forward compat for 0.2.0)
+- [x] validate.py 拡張 (= schema_version + bracket syntax check 完了、 matcher vocabulary check は判定方針確定後)
+- [x] **`docs/SCHEMA.md` 全面 update** (= alpha.11、 新 format 対応)
+- [x] **`CONTRIBUTING.md` 更新** (= alpha.11、 detailed entry / bracket notation 入門追記)
+- [x] **`docs/RECIPES.md` 新規** (= alpha.11、 「やりたいこと → 書き方」 cookbook)
+- [ ] **重複 / 古い / 出典なし entry の purge** (人手 PR series、 alpha.12+ 漸進)
+- [ ] **`core/jukugo/` 24 カテゴリ 再分類** (人手 PR series、 alpha.12+ 漸進、 5024 entry の review なので multi-week)
+- [ ] **`core/works/` 作品単位 sub-dir 整理** (= 現状清潔、 必要時に拡充)
+- [ ] **`core/loanwords/` 整理確認** (= 現状清潔、 必要時に拡充)
 - [ ] **dict release pace Hybrid** (★15): SemVer (lib coordinated `v0.1.0` / `v0.2.0`) + CalVer (daily-release / 修正)、 daily-release.yml 再開は 0.1.0 cut 後 user 判断
 
 **lib 側 (ja-furigana、 0.1.0 stable)**

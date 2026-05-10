@@ -18,9 +18,9 @@ default では **実行ファイルと同じディレクトリ**:
 ├── repl_history                   # REPL の入力履歴 (自動生成)
 └── data/                          # `furigana dict pull` で展開、ユーザー追加もここに集約
     ├── unihan/*.toml              # 単漢字フォールバック (5 水準別、 43k+ 字)
+    ├── kanji/*.toml                # ★A2 alpha.11 単漢字 [[kanji]] block (default + 文脈分岐 reading)
     ├── compat.toml                # 異体字マップ (髙→高 等)
-    ├── single_overrides.toml      # 単漢字 default override (1 字 surface 限定)
-    ├── jukugo/                    # 熟語 / 固有名詞 / 文化系 (24 ファイル、カテゴリ別分割)
+    ├── jukugo/                    # 熟語 / 固有名詞 / 文化系 (24 ファイル、カテゴリ別分割、 文脈分岐は entry inline match)
     ├── works/                     # 作品単位辞書 (任意深度のサブディレクトリ)
     │   └── game/touhou.toml       #   例: 東方Project (公式読みのみ採録、 出典コメント必須)
     ├── loanwords/                 # 外来語 (IT 用語等の英字 surface 専用、 別 lookup 経路)
@@ -29,14 +29,16 @@ default では **実行ファイルと同じディレクトリ**:
     ├── scales.toml                # 万 / 億 / 兆 / 京 / 垓 ...
     ├── units.toml                 # SI 単位 + 「円」「%」
     ├── symbols.toml               # 記号読み (〜→から 等)
-    ├── latin.toml                 # ラテン文字読み (A→エー …)
     ├── numeric_phrases.toml       # 慣用語句 (二十歳→ハタチ 等)
     ├── counters/*.toml            # 助数詞ルール (年度 / 時間半 含む 7+ ファイル)
-    ├── context/*.toml             # 文脈ルール (3 ファイル: numbers / homonyms / special)
     ├── postprocess.toml           # 後処理 regex 置換
     ├── user/                      # ユーザー追加 (`furigana dict add` で自動生成)
     │   └── cli-added.toml
     └── overrides.toml              # 強制上書き用 (最優先、任意)
+
+# ★A2 alpha.11 で削除: single_overrides.toml (= core/kanji/overrides.toml に migrate) /
+#                       latin.toml (= dead code、 alpha.7 loanwords 投入で経路廃止) /
+#                       context/*.toml (= entry inline match に migrate)
 ```
 
 zip / tar.gz を解凍したフォルダごとコピーすれば持ち運べる **portable 配置**。

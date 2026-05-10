@@ -29,7 +29,6 @@ crates/
 │   │   ├── scales.rs         #   scales.toml (大数: 万 / 億 / 兆…)
 │   │   ├── units.rs          #   units.toml (km / kg / 円 / % …)
 │   │   ├── symbols.rs        #   symbols.toml (+/-/% etc)
-│   │   ├── latin.rs          #   latin.toml (A→エー…)
 │   │   ├── numeric_phrases.rs #  慣用句 (二十歳→ハタチ等)
 │   │   ├── compat.rs         #   compat.toml (異体字)
 │   │   └── postprocess.rs    #   postprocess.toml (Step 7 (mode 別後処理 regex) regex 置換)
