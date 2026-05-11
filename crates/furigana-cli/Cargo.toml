@@ -22,6 +22,12 @@ path = "src/main.rs"
 name = "furigana-corpus-check"
 path = "src/bin/corpus_check.rs"
 
+# 単一入力 analyze dump tool (★alpha.19)。 dict + rules mount 状態で AnalyzeResult
+# を JSON 出力、 candidate / score / boundary を inspect する dev / debug 用途。
+[[bin]]
+name = "furigana-analyze-one"
+path = "src/bin/analyze_one.rs"
+
 [lints]
 workspace = true
 
