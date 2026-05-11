@@ -4,6 +4,52 @@
 [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/) 形式に概ね従い、
 バージョニングは [Semantic Versioning](https://semver.org/lang/ja/) を採用。
 
+## [0.1.0-alpha.17] - 2026-05-11
+
+**UniDic feature flag 追加 + 自然文 corpus 拡充**。 ja-furigana が漢字ルビ振り
+用途で IPADIC / UniDic どちらでも tie で動作するか実証する experimental。
+
+### Added
+
+- `dict-unidic` feature flag (= `lindera-unidic` 経由で UniDic 現代書き言葉 cwj
+  embed)。 default は `dict-ipadic` (= 既存挙動維持)、 caller が build-time で選択可
+  ```bash
+  cargo build --release --features dict-unidic --no-default-features
+  ```
+- `kana::normalize_long_vowel`: UniDic 発音形 (= 「ガッコー」 「オオキー」) を
+  表記読み (= 「ガッコウ」 「オオキイ」) に正規化、 ア/イ/ウ/エ/オ 5 段全対応
+- `furigana-corpus-check` bin: corpus regression / 辞書比較用 dev tool。
+  expected match rate を集計、 IPADIC / UniDic 比較や dict 改善前後の精度比較に使う
+
+### Changed
+
+- `tokens_to_hiragana` / `tokens_to_ruby`: surface が **全部 kana** の場合は
+  surface をそのまま使う (= 「こんにちは」 + UniDic pron 「コンニチワ」 で
+  「は」 → 「わ」 と変換されない、 user の表記を尊重)
+
+### Validation 結果
+
+experimental corpus pass (lib furigana-corpus-check):
+
+| corpus | IPADIC | UniDic |
+|---|---|---|
+| should_read.toml (150) | 94.7% | 94.7% (±0) |
+| general.toml (33) | 97.0% | 97.0% (±0) |
+| touhou.toml (30) | 100% | 100% (±0) |
+| sentences.toml (49、 新設) | 71.4% | 67.3% (-4.1pt) |
+| **総計 (262)** | **91.2%** | **90.5%** (-0.7pt) |
+
+= **漢字ルビ振り用途では IPADIC ≈ UniDic で tie**。 自然文での -0.7pt は UniDic
+の 発音形 と corpus 期待値 (表記読み) のズレ。 0.2.0 intonation で UniDic の
+pitch accent (aType) を取りに行く時に再評価予定。
+
+### Notes
+
+- dict-unidic は **experimental feature**、 default に切り替える計画は 0.2.0+
+- corpus sentences.toml (49 cases) を新設、 dict 拡充 / engine 比較の baseline に
+- 残 failure は両 engine 共通の **jukugo coverage 不足** (来た / 学校 / 駅 / 会議 /
+  毎日 / 週末 / 勉強 / 綺麗 等)、 dict 拡充で解消可能
+
 ## [0.1.0-alpha.16] - 2026-05-11
 
 **alpha.15 (Strict 削除) 後の cleanup release**。

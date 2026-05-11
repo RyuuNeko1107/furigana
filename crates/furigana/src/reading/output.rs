@@ -30,12 +30,24 @@ fn reading_is_same_kana_as_surface(surface: &str, reading: &str) -> bool {
     kana::kata_to_hira(surface) == kana::kata_to_hira(reading)
 }
 
+/// surface が **全部 ひらがな or カタカナ** (= kanji / alphabet 等を含まない) かを判定。
+///
+/// user が既に kana で書いた surface は、 形態素解析の reading が異なっても
+/// (= 「は」 particle で UniDic が 「ワ」 を返す等) surface をそのまま使う方針。
+fn surface_is_all_kana(surface: &str) -> bool {
+    !surface.is_empty()
+        && surface
+            .chars()
+            .all(|c| kana::is_hiragana_char(c) || kana::is_katakana_char(c) || c == 'ー')
+}
+
 /// トークン列をひらがな文字列に変換 (TTS 等向け)
 ///
 /// - 読みあり + surface が漢字を含む → reading を **ひらがな化** (kata_to_hira)
-/// - 読みあり + surface == reading (kana 等価) → **surface をそのまま** (= 元の表記を保持、
-///   「の」 + reading 「ノ」 のような Lindera fallback の particle / okurigana case)
-/// - 読みあり + surface が漢字を含まない & reading != surface → reading を **カタカナに統一**
+/// - 読みあり + surface が **全部 kana** → **surface をそのまま** (= user が kana で書いた
+///   ものは reading で上書きしない、 「は」 particle 等の UniDic 発音 (「ワ」) を ignore)
+/// - 読みあり + surface == reading (kana 等価) → **surface をそのまま**
+/// - 読みあり + その他 (alphabet / 数字 / 記号) → reading を **カタカナに統一**
 ///   (hira_to_kata、 alphabet loanword 等の phonetic reading 用)
 /// - 読みなし → surface をそのまま
 #[must_use]
@@ -45,14 +57,16 @@ pub fn tokens_to_hiragana(tokens: &[ReadingToken]) -> String {
         if let Some(reading) = &t.reading {
             if surface_has_kanji(&t.surface) {
                 out.push_str(&kana::kata_to_hira(reading));
+            } else if surface_is_all_kana(&t.surface) {
+                // user が kana で書いた surface は reading 上書きしない
+                // (UniDic では 「は」 particle が pron 「ワ」 になる、 IPADIC では一致する)
+                out.push_str(&t.surface);
             } else if reading_is_same_kana_as_surface(&t.surface, reading) {
-                // 「の」 surface + 「ノ」 reading のように、 reading が surface の kana 表記
-                // 違いだけなら元 surface を保持 (= 入力ひらがなはひらがなのまま)
+                // (この branch は実質 surface_is_all_kana で覆われるが safety net として残す)
                 out.push_str(&t.surface);
             } else {
-                // ASCII 英字 / 数字 / 記号 surface に phonetic reading が付くケース
-                // (例: 「Kubernetes」+「クバネティス」、「C++」+「シープラスプラス」) は
-                // reading をカタカナに統一して出力。
+                // alphabet / 数字 / 記号 + phonetic reading → カタカナに統一
+                // (例: 「Kubernetes」+「クバネティス」、「C++」+「シープラスプラス」)
                 out.push_str(&kana::hira_to_kata(reading));
             }
         } else {
@@ -64,8 +78,9 @@ pub fn tokens_to_hiragana(tokens: &[ReadingToken]) -> String {
 
 /// トークン列を `{漢字|ひらがな}` 形式の ruby 文字列に変換
 ///
-/// - 読みあり & ひらがな化後 surface と異なる → `{surface|reading}`
-/// - 読みあり & ひらがな化後 surface と同じ → そのまま (ruby 不要)
+/// - 読みあり + surface が **全部 kana** → surface をそのまま (ruby 不要)
+/// - 読みあり + ひらがな化後 surface と一致 → surface をそのまま (ruby 不要)
+/// - 読みあり + その他 → `{surface|reading}`
 /// - 読みなし → surface をそのまま
 #[must_use]
 pub fn tokens_to_ruby(tokens: &[ReadingToken]) -> String {
@@ -73,6 +88,11 @@ pub fn tokens_to_ruby(tokens: &[ReadingToken]) -> String {
     for t in tokens {
         match &t.reading {
             Some(reading) => {
+                if surface_is_all_kana(&t.surface) {
+                    // user が kana で書いた surface は ruby 不要
+                    out.push_str(&t.surface);
+                    continue;
+                }
                 let hira = kana::kata_to_hira(reading);
                 if hira == t.surface {
                     out.push_str(&t.surface);

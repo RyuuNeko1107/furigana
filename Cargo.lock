@@ -1167,7 +1167,7 @@ checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
 
 [[package]]
 name = "ja-furigana"
-version = "0.1.0-alpha.16"
+version = "0.1.0-alpha.17"
 dependencies = [
  "aho-corasick",
  "criterion",
@@ -1184,7 +1184,7 @@ dependencies = [
 
 [[package]]
 name = "ja-furigana-cli"
-version = "0.1.0-alpha.16"
+version = "0.1.0-alpha.17"
 dependencies = [
  "anyhow",
  "axum",
@@ -1328,6 +1328,7 @@ dependencies = [
  "kanaria",
  "lindera-dictionary",
  "lindera-ipadic",
+ "lindera-unidic",
  "log",
  "once_cell",
  "percent-encoding",
@@ -1381,6 +1382,20 @@ name = "lindera-ipadic"
 version = "3.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "130c598519a40bbfb762c4c06d6ad29315331eb4c154fcb2d1d6b46776cee7d9"
+dependencies = [
+ "anyhow",
+ "byteorder",
+ "csv",
+ "lindera-dictionary",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "lindera-unidic"
+version = "3.0.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "25a0ad0f434cb8c3eff24e7867d9d6b41ad727cb3ac1359fc49bed40a18b1203"
 dependencies = [
  "anyhow",
  "byteorder",

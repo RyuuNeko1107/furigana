@@ -55,13 +55,45 @@ pub struct Analyzer {
     tokenizer: Mutex<Tokenizer>,
 }
 
+/// 埋め込み辞書の URI ★alpha.17。 feature flag (= `dict-ipadic` / `dict-unidic`) で
+/// 排他的に switch。 IPADIC と UniDic で details field の意味が違うので、
+/// reading / base_form の field 番号も合わせて切り替える。
+#[cfg(all(feature = "dict-ipadic", feature = "dict-unidic"))]
+compile_error!("Enable exactly one of `dict-ipadic` / `dict-unidic`, not both.");
+
+#[cfg(not(any(feature = "dict-ipadic", feature = "dict-unidic")))]
+compile_error!("Enable exactly one of `dict-ipadic` (default) / `dict-unidic` features.");
+
+#[cfg(all(feature = "dict-ipadic", not(feature = "dict-unidic")))]
+const EMBEDDED_DICT_URI: &str = "embedded://ipadic";
+#[cfg(all(feature = "dict-unidic", not(feature = "dict-ipadic")))]
+const EMBEDDED_DICT_URI: &str = "embedded://unidic";
+
+/// details field 番号: reading (= 表層形のカタカナ発音)。
+///
+/// - IPADIC: details[7] (カタカナ reading)
+/// - UniDic: details[9] (pron = 発音形出現形)
+#[cfg(all(feature = "dict-ipadic", not(feature = "dict-unidic")))]
+const FIELD_READING: usize = 7;
+#[cfg(all(feature = "dict-unidic", not(feature = "dict-ipadic")))]
+const FIELD_READING: usize = 9;
+
+/// details field 番号: base_form (= 原形 / 辞書形)。
+///
+/// - IPADIC: details[6] (原形)
+/// - UniDic: details[10] (orthBase = 書字形基本形)
+#[cfg(all(feature = "dict-ipadic", not(feature = "dict-unidic")))]
+const FIELD_BASE_FORM: usize = 6;
+#[cfg(all(feature = "dict-unidic", not(feature = "dict-ipadic")))]
+const FIELD_BASE_FORM: usize = 10;
+
 impl Analyzer {
-    /// 埋め込み IPADIC で初期化
+    /// 埋め込み辞書で初期化 (feature flag で IPADIC / UniDic 切替)
     ///
     /// # Errors
     /// 辞書ロードに失敗した場合 [`FuriganaError::AnalyzerInit`]。
     pub fn new() -> Result<Self> {
-        let dictionary = load_dictionary("embedded://ipadic")
+        let dictionary = load_dictionary(EMBEDDED_DICT_URI)
             .map_err(|e| FuriganaError::AnalyzerInit(format!("dictionary load: {e}")))?;
         let segmenter = Segmenter::new(Mode::Normal, dictionary, None);
         let tokenizer = Tokenizer::new(segmenter);
@@ -100,14 +132,19 @@ impl Analyzer {
                             .filter(|v| **v != "*" && !v.is_empty())
                             .map(ToString::to_string)
                     };
+                    // ★alpha.17: UniDic は pron が長音符 「ー」 で長音を表すので
+                    // (例: 「学校=ガッコー」)、 表記読み (「ガッコウ」) に正規化する。
+                    // IPADIC は元々 表記読み なので no-op (= ー が出ない pattern)。
+                    let reading =
+                        get_detail(FIELD_READING).map(|r| crate::kana::normalize_long_vowel(&r));
                     MorphToken {
                         surface,
-                        reading: get_detail(7),
+                        reading,
                         pos: details.first().map(ToString::to_string),
                         pos_detail: get_detail(1),
                         conjugation_type: get_detail(4),
                         conjugation_form: get_detail(5),
-                        base_form: get_detail(6),
+                        base_form: get_detail(FIELD_BASE_FORM),
                     }
                 })
                 .collect(),
