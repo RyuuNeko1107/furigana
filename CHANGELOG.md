@@ -4,6 +4,48 @@
 [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/) 形式に概ね従い、
 バージョニングは [Semantic Versioning](https://semver.org/lang/ja/) を採用。
 
+## [0.1.0-alpha.19] - 2026-05-12
+
+**band up trick 撤回、 dict-curated 路線 (= [[kanji]] block + next_starts match) に統一**。
+
+設計判断: alpha.18 の Lindera band up は **band hack** で、 「なぜこの読みか」 が
+opaque。 ja-furigana の scoring-engine.md 原則 「答えを持つ辞書」 「OSS curation
+loop」 「機械学習なし」 と整合しない。 user 指摘 「送り仮名は文脈ルールで書けば
+よくね」 への対応として、 declarative な dict context rule 路線に統一。
+
+### Changed
+
+- `LinderaFallbackProvider::candidates_at`: band up logic (= alpha.18 の
+  `is_kanji_okurigana_form` で band 100 に bump) を撤回、 一律 band 50 に
+  戻す。 Lindera fallback は 純粋な safety net (= 他 provider が一切覆わない
+  位置のみ採用) の責務に戻る
+
+### Notes (dict 側 commit に同期)
+
+- 動詞 / 形容詞 13 字を `[[kanji]] block` 化 (declarative context rule):
+  美 / 食 / 飲 / 走 / 高 / 楽 / 苦 / 早 / 古 / 低 / 忙 / 読 / 遅
+- 各 block は `default = on-yomi` + `[[kanji.match]] next_starts = "..."` で
+  okurigana 先頭文字を見て kun-yomi stem に分岐
+  - 例: 美 default ビ + next_starts "し" → ウツクシ (= 美しい / 美しかった / 美しさ)
+  - 例: 食 default ショク + next_starts "べ" → タベ (= 食べる / 食べた / 食べます)
+- 「来」 は ka 変動詞で活用ごとに母音変化 (キ/ク/コ) で alpha.18 既追加、 alpha.19
+  でも維持
+
+### Validation
+
+corpus (lib furigana-corpus-check):
+
+| corpus | IPADIC | UniDic |
+|---|---|---|
+| should_read.toml (150) | 98.7% | 97.3% |
+| general.toml (33) | 97.0% | 97.0% |
+| touhou.toml (30) | 100% | 100% |
+| sentences.toml (49) | 100% | 95.9% |
+| 計 (262) | 98.9% | 97.3% |
+
+= alpha.18 と同等以上の精度を、 band hack 抜きで実現。 「なぜこの読みか」 が
+dict TOML を見れば 1 行で確認可能、 contributor PR で改善可能。
+
 ## [0.1.0-alpha.18] - 2026-05-12
 
 **動詞 / 形容詞 活用形の 汎用解 (= LinderaFallbackProvider band up)**。
