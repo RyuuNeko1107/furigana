@@ -39,6 +39,7 @@ pub mod bracket;
 pub mod candidate;
 pub mod engine;
 pub mod format;
+pub mod inspect;
 pub mod lindera_fallback;
 pub mod matcher;
 pub mod numbers;
