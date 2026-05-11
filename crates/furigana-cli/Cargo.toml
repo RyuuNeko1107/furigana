@@ -16,19 +16,13 @@ readme = "README.md"
 name = "furigana"
 path = "src/main.rs"
 
-# Smart vs Strict engine diff tool (alpha.10〜0.1.0-rc1 dogfood / CI 用、 ★6)。
-# user 向けではなく dev tool、 Smart engine が default 切替まで Strict と挙動同等か CI で監視。
-[[bin]]
-name = "furigana-diff-engines"
-path = "src/bin/diff_engines.rs"
-
 [lints]
 workspace = true
 
 [dependencies]
 # crates.io 上の crate 名は `ja-furigana` (`furigana` は別 crate に取られているため)。
 # import 名は `furigana` のままにして CLI 内の `use furigana::...` を保つ (package alias)。
-furigana = { package = "ja-furigana", path = "../furigana", version = "=0.1.0-alpha.9" }
+furigana = { package = "ja-furigana", path = "../furigana", version = "=0.1.0-alpha.15" }
 clap = { version = "4", features = ["derive", "env"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "net"] }
 axum = "0.8"

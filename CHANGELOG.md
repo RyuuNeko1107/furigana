@@ -4,13 +4,54 @@
 [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/) 形式に概ね従い、
 バージョニングは [Semantic Versioning](https://semver.org/lang/ja/) を採用。
 
-## [Unreleased]
+## [0.1.0-alpha.15] - 2026-05-11
 
-`0.1.0-alpha.10` 開発中 (16/18 tasks completed)。 主軸は **scoring engine 投入
-(新 Smart engine experimental)** + **新 dict format 受け入れ struct 定義** +
-**特殊処理 (cross-cutting) provider 化** + **`analyze()` debug API + CLI/HTTP
-analyze mode** + **`furigana-diff-engines` dev tool** + **`[meta]
-schema_version` validator + 各 caller 組込** + **bracket forward compat (lib strip)**。
+**Smart engine 完全移行 + Strict engine 削除** (= alpha.10〜.14 work + alpha.15
+の Strict cleanup を bundled release)。 alpha.9 から飛ぶ場合は major breaking
+change — 既存 `Engine` enum / env var / Strict pipeline 関連 API 全削除、
+Smart engine が唯一の reading 解決経路となった。
+
+### Breaking changes (alpha.15 で投入)
+
+- **`Engine` enum 削除**: `scoring::candidate::Engine` (Strict / Smart variants)
+  を完全削除。 caller の `.engine(Engine::Smart)` / `.engine(Engine::Strict)` /
+  `Furigana::engine()` getter / `JA_FURIGANA_ENGINE` env var /
+  `resolve_engine_from_env` 関数 すべて削除。 Smart engine が唯一の path。
+- **Strict pipeline 関連 module 削除**:
+  - `reading::pipeline` (`resolve_reading`)
+  - `reading::merge`
+  - `reading::context` (`apply_context_rules`) — context match は dict 側の
+    `[entries."X".match]` / `[[kanji]] kanji.match` で表現する設計に移行済 (alpha.11+)
+  - `chunks` module (NumberChunker) — Smart の `NumberCandidateProvider` がカバー
+  - `loanwords` module — 0.2.0+ で `AlphabetPassthroughProvider` に統合予定
+  - `single_overrides` module — dict 側 `core/kanji/*.toml` の `[[kanji]]` block で代替
+  - `numbers::phrase` (NumericPhraseMatcher) — 既知の coverage gap、 0.2.0 で
+    Smart provider 化予定
+- **`FuriganaBuilder` API 簡素化**: `.engine()` / `.core_loanwords_dir()` /
+  `.single_overrides_file()` 削除。 `.rules_dir()` / `.core_dict_dir()` /
+  `.user_dict_dir()` / `.overrides_file()` / `.add_entry()` のみ残存。
+- **`furigana-diff-engines` bin 削除**: Strict vs Smart 比較が無意味になったため。
+
+### Migration (alpha.9 → alpha.15)
+
+```rust
+// 旧 (alpha.9 以前)
+let f = Furigana::builder().engine(Engine::Smart).build()?;
+
+// 新 (alpha.15+)
+let f = Furigana::builder().build()?;
+```
+
+env var `JA_FURIGANA_ENGINE=smart` を使っていた場合は削除可能 (= 常に Smart)。
+`JA_FURIGANA_ENGINE=strict` を使っていた場合は挙動が変わる (= Smart engine 強制、
+corpus 正解率は Smart 95.8% > Strict 93.9% で品質は上)。
+
+### alpha.10〜.14 累積 work (= 本 release で bundled)
+
+主軸は **scoring engine 投入 (Smart 一本化)** + **新 dict format 受け入れ
+(`[entries."X".match]` / `[[kanji]]` block)** + **特殊処理 (cross-cutting)
+provider 化** + **Lindera fallback (band 50 safety net)** + **`to_*` 経路を
+Smart engine に wire-up**。
 ★ 番号は [`docs/PROPOSALS/scoring-engine.md`](./docs/PROPOSALS/scoring-engine.md)
 の確定 marker。
 

@@ -5,16 +5,14 @@
 //! 高レベル変換メソッドを提供する。
 
 use crate::analyzer::Analyzer;
-use crate::chunks::NumberChunker;
 use crate::dict::Dict;
 use crate::error::Result;
-use crate::numbers::NumericPhraseMatcher;
-use crate::reading::{tokenize_text, tokens_to_hiragana, tokens_to_ruby, ReadingToken};
+use crate::reading::{tokens_to_hiragana, tokens_to_ruby, ReadingToken};
 use crate::rules::RulesData;
 use crate::scoring::analyze::{analyze as scoring_analyze, AnalyzeResult};
 use crate::scoring::boundary::BoundaryAnalysis;
 use crate::scoring::bracket::strip_intonation_markers;
-use crate::scoring::candidate::{Candidate, CandidateProvider, Engine, Score};
+use crate::scoring::candidate::{Candidate, CandidateProvider, Score};
 use crate::scoring::lindera_fallback::LinderaFallbackProvider;
 use crate::scoring::matcher::{
     next2_logical_token, next_logical_token, prev_logical_token, MatchContext,
@@ -22,41 +20,9 @@ use crate::scoring::matcher::{
 use crate::scoring::numbers::NumberCandidateProvider;
 use crate::scoring::odoriji::{apply_rendaku_to_result, OdorijiProvider};
 use crate::scoring::special::{AlphabetPassthroughProvider, ProtectTokenProvider};
-use crate::single_overrides::SingleOverrides;
 use crate::tts::{self, TtsOptions};
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
-
-/// engine 切替の env var 名 (★12 確定)。 値: `"smart"` / `"strict"` (大小文字区別なし)。
-///
-/// alpha.10 期間中の Smart engine experimental 切替用。 0.1.0-rc1 で Smart default 切替後は
-/// Strict 復帰のための env var として残る。
-pub const ENGINE_ENV_VAR: &str = "JA_FURIGANA_ENGINE";
-
-/// `JA_FURIGANA_ENGINE` env var を解析して [`Engine`] を返す。
-///
-/// - `"smart"` (case insensitive) → `Engine::Smart`
-/// - `"strict"` (case insensitive) → `Engine::Strict`
-/// - 未設定 / 空文字列 → `Engine::default()` (= Strict、 alpha 期間中)
-/// - 不正値 → `Engine::default()` (= Strict)、 stderr に warning
-#[must_use]
-pub fn resolve_engine_from_env() -> Engine {
-    match std::env::var(ENGINE_ENV_VAR) {
-        Ok(s) if s.eq_ignore_ascii_case("smart") => Engine::Smart,
-        Ok(s) if s.eq_ignore_ascii_case("strict") => Engine::Strict,
-        Ok(s) if s.is_empty() => Engine::default(),
-        Ok(other) => {
-            eprintln!(
-                "warning: unknown {} value {:?}, using default ({:?})",
-                ENGINE_ENV_VAR,
-                other,
-                Engine::default()
-            );
-            Engine::default()
-        }
-        Err(_) => Engine::default(),
-    }
-}
 
 // ============================================================================
 // Furigana 本体
@@ -76,25 +42,11 @@ pub struct Furigana {
     analyzer: OnceLock<Analyzer>,
     rules: RulesData,
     dict: Dict,
-    phrase_matcher: NumericPhraseMatcher,
-    chunker: NumberChunker,
-    /// Smart engine 用の数字系 candidate provider (alpha.10 C3、 band 950)
+    /// Smart engine 用の数字系 candidate provider (★C3、 band 950)
     ///
-    /// `analyze()` で 5 つ目の provider として使う。 既存 [`NumberChunker`] と独立 implementation、
-    /// 0.2.0+ で chunker 削除と coordinated に整理予定。
+    /// `analyze()` で provider として使う。 rules を pre-compile して保持、
+    /// 各 `analyze()` 呼び出しごとに regex compile しない。
     number_provider: NumberCandidateProvider,
-    /// 単漢字 default override (issue #15 の限定解、 jukugo / Lindera より先に評価)
-    single_overrides: SingleOverrides,
-    /// 使用 engine (alpha.10〜0.1.0-rc1 の experimental 期間中は env var or builder で切替)
-    ///
-    /// `Engine::Strict` (alpha 期間中の default) は既存 priority chain
-    /// (`reading::pipeline::resolve_reading`)、 `Engine::Smart` は新 candidate scoring engine
-    /// (`scoring::engine::solve_path`)。 0.1.0-rc1 で Smart に default 切替予定。
-    ///
-    /// **alpha.10 段階での挙動**: Smart 選択時も 各 method (to_hiragana 等) の内部実装は
-    /// currently Strict と同一 (= 真の Smart wire-up は C 系の特殊処理 + provider 実装後の
-    /// continuous work)。 `engine()` getter で確認可能。
-    engine: Engine,
 }
 
 impl Furigana {
@@ -116,15 +68,6 @@ impl Furigana {
     #[must_use]
     pub fn builder() -> FuriganaBuilder {
         FuriganaBuilder::new()
-    }
-
-    /// 現在使用中の engine を返す。
-    ///
-    /// alpha.10 期間中、 真の Smart wire-up は未完成 (= 内部実装は Strict 同等)、
-    /// この getter で 「caller がどちらを期待しているか」 を確認可能。
-    #[must_use]
-    pub fn engine(&self) -> Engine {
-        self.engine
     }
 
     /// 内部 [`Analyzer`] を取得 (必要なら初期化する)
@@ -160,38 +103,18 @@ impl Furigana {
 
     /// テキストをトークン化 (生 [`ReadingToken`] 列)
     ///
-    /// ★alpha.14 wire-up: [`Self::engine`] setting で dispatch。
-    /// - [`Engine::Strict`] (default、 alpha 期間中) → 既存 7-step pipeline
-    ///   ([`tokenize_text`] = `reading::pipeline::resolve_reading` 経由)
-    /// - [`Engine::Smart`] → [`Self::analyze`] 経由 (= scoring engine + Lindera fallback)、
-    ///   analyze の [`AnalyzeToken`] を [`ReadingToken`] に変換して返す
+    /// 内部で [`Self::analyze`] を呼び (= Smart engine path + Lindera fallback)、
+    /// [`AnalyzeToken`] を [`ReadingToken`] に変換して返す。
     ///
     /// `to_hiragana` / `to_ruby` / `to_tts` / `to_romaji` は内部で本 method を呼ぶので、
-    /// engine setting がそのまま `to_*` の出力動作を切り替える (= 0.1.0-rc1 で
-    /// Smart default 切替予定)。
+    /// production の reading 解決経路はすべて本 method 経由。
+    ///
+    /// analyze の reading は常に String (空ではあり得るが None ではない)、 一律
+    /// `Some(reading)` で包む。 reading が surface と kana 等価 (= 「の」 + 「ノ」) の
+    /// ケースは [`tokens_to_hiragana`] / [`tokens_to_ruby`] 側で 「surface そのまま」
+    /// と判定される。
     #[must_use]
     pub fn tokenize(&self, text: &str) -> Vec<ReadingToken> {
-        match self.engine {
-            Engine::Smart => self.tokenize_via_smart(text),
-            Engine::Strict => tokenize_text(
-                text,
-                self.analyzer(),
-                &self.rules,
-                &self.dict,
-                &self.phrase_matcher,
-                &self.chunker,
-                &self.single_overrides,
-            ),
-        }
-    }
-
-    /// Smart engine 経路: [`Self::analyze`] の [`AnalyzeToken`] 列を [`ReadingToken`] 化。
-    ///
-    /// analyze の reading は常に String (空ではあり得るが None ではない)、
-    /// 一律 `Some(reading)` で包む。 reading が surface と kana 等価
-    /// (= 「の」 + 「ノ」) のケースは [`tokens_to_hiragana`] / [`tokens_to_ruby`] 側で
-    /// 「surface そのまま」 と判定されるため、 ここでは何もしない。
-    fn tokenize_via_smart(&self, text: &str) -> Vec<ReadingToken> {
         let result = self.analyze(text);
         result
             .tokens
@@ -531,12 +454,6 @@ pub struct FuriganaBuilder {
     user_dict_dirs: Vec<PathBuf>,
     overrides_files: Vec<PathBuf>,
     extra_entries: Vec<(String, String)>,
-    /// 外来語辞書ディレクトリ (複数指定可、 後勝ち merge)
-    loanwords_dirs: Vec<PathBuf>,
-    /// 単漢字 default override file (複数指定可、 後勝ち merge)
-    single_overrides_files: Vec<PathBuf>,
-    /// 明示指定された engine (None なら env var → default 順で resolve)
-    engine: Option<Engine>,
 }
 
 impl FuriganaBuilder {
@@ -581,42 +498,6 @@ impl FuriganaBuilder {
         self
     }
 
-    /// 外来語辞書ディレクトリを追加 (`core/loanwords/**/*.toml` を recursive load)
-    ///
-    /// IT 用語 / OSS / クラウドサービス等の英単語に対する読み付与用。
-    /// chunks/split() 階層 4.7 で **完全一致 lookup** されるため、 substring 切断ゼロ。
-    #[must_use]
-    pub fn core_loanwords_dir(mut self, p: impl AsRef<Path>) -> Self {
-        self.loanwords_dirs.push(p.as_ref().to_path_buf());
-        self
-    }
-
-    /// 単漢字 default override ファイル (`core/single_overrides.toml`) を追加
-    ///
-    /// 1 字 surface に対する明示的な default 上書き。 `resolve_reading` の
-    /// Step 3.5 で評価され、 jukugo lookup の後、 Lindera reading の前。
-    /// `[entries]` 形式で `"土" = "ツチ"` のように書く。
-    /// 関連: [issue #15](https://github.com/RyuuNeko1107/ja-furigana/issues/15)
-    #[must_use]
-    pub fn single_overrides_file(mut self, p: impl AsRef<Path>) -> Self {
-        self.single_overrides_files.push(p.as_ref().to_path_buf());
-        self
-    }
-
-    /// 使用 engine を明示指定 (alpha.10 experimental flag)。
-    ///
-    /// 指定しなかった場合は env var `JA_FURIGANA_ENGINE` を見て解決、 env var も
-    /// 未設定なら `Engine::default()` (= Strict、 alpha 期間中の default)。
-    ///
-    /// **alpha.10 段階での Smart engine 挙動**: 内部実装は currently Strict と同等
-    /// (= 真の wire-up は C 系の特殊処理 + provider 実装後)。 caller は
-    /// [`Furigana::engine`] で確認可能。
-    #[must_use]
-    pub fn engine(mut self, engine: Engine) -> Self {
-        self.engine = Some(engine);
-        self
-    }
-
     /// [`Furigana`] を構築
     ///
     /// 形態素解析器 (Lindera + IPADIC) は **lazy init** — 構築時には初期化せず、
@@ -646,71 +527,7 @@ impl FuriganaBuilder {
             dict.insert(s, r);
         }
 
-        // jukugo の Aho-Corasick を 1 回 build → phrase_matcher と chunker で Arc 共有。
-        // homonyms (context rule を持つ surface) は AC patterns から除外し、
-        // reading pipeline の context rule (例: 「翡翠+が+水辺」 → カワセミ) が
-        // chunks / phrase 段階で bypass されないようにする。
-        let homonyms_exclude: std::collections::HashSet<String> = rules
-            .context
-            .rules
-            .iter()
-            .map(|r| r.surface.clone())
-            .collect();
-        // 2 字 jukugo は AC patterns から除外。 IPADIC が一語として返す長い複合語
-        // (例: 「烏賊墨」 → イカスミ、 「金平糖」 → コンペイトウ) を 2 字 jukugo
-        // (烏賊 / 金平) で先取りすると分断されて誤読になるため。
-        // ≥3 字の jukugo entry だけが、 「Lindera が分解しがちな複合語」 として
-        // AC 先取りに値する (例: 「千本桜」 「向日葵畑」 「義経千本桜」)。
-        let jukugo_filtered: std::collections::HashMap<String, String> = dict
-            .jukugo_iter()
-            .filter(|(k, _)| !homonyms_exclude.contains(*k))
-            .filter(|(k, _)| k.chars().count() >= 3)
-            .map(|(k, v)| (k.to_string(), v.to_string()))
-            .collect();
-        let jukugo_ac_arc: Option<std::sync::Arc<aho_corasick::AhoCorasick>> =
-            if jukugo_filtered.is_empty() {
-                None
-            } else {
-                aho_corasick::AhoCorasick::builder()
-                    .match_kind(aho_corasick::MatchKind::LeftmostLongest)
-                    .build(jukugo_filtered.keys())
-                    .ok()
-                    .map(std::sync::Arc::new)
-            };
-        let jukugo_map_arc = std::sync::Arc::new(jukugo_filtered);
-
-        let mut phrase_matcher = NumericPhraseMatcher::new(&rules.numeric_phrases);
-        let mut chunker = NumberChunker::new(&rules);
-        if let Some(ac) = jukugo_ac_arc.clone() {
-            phrase_matcher.set_jukugo(ac.clone(), jukugo_map_arc.clone());
-            chunker.set_jukugo(ac, jukugo_map_arc);
-        }
-
-        // 外来語辞書 (IT 用語等の英単語) を merge して chunker に Arc 渡し。
-        // chunks/split() 階層 4.7 で英単語 chunk 全体を完全一致 lookup に使う。
-        let mut loanwords = crate::loanwords::Loanwords::new();
-        for d in &self.loanwords_dirs {
-            loanwords.merge(crate::loanwords::Loanwords::from_toml_dir(d)?);
-        }
-        if !loanwords.is_empty() {
-            chunker.set_loanwords(std::sync::Arc::new(loanwords));
-        }
-
-        // 単漢字 default override (issue #15 の限定解): resolve_reading の Step 3.5
-        // で評価される。 file 単位で merge (後勝ち)。
-        let mut single_overrides = SingleOverrides::new();
-        for f in &self.single_overrides_files {
-            let s = SingleOverrides::from_toml_file(f)?;
-            // SingleOverrides に merge メソッドはないので map を直接統合
-            for (k, v) in s.iter() {
-                single_overrides.insert(k.to_string(), v.to_string());
-            }
-        }
-
-        // engine 解決: builder 指定 > env var > default (Strict)
-        let engine = self.engine.unwrap_or_else(resolve_engine_from_env);
-
-        // Smart engine 用の数字系 provider (alpha.10 C3): rules を pre-compile して保持。
+        // Smart engine 用の数字系 provider (★C3): rules を pre-compile して保持。
         // analyze() 呼び出しごとに rebuild すると regex compile cost が乗るので一度作る。
         let number_provider = NumberCandidateProvider::new(&rules);
 
@@ -718,11 +535,7 @@ impl FuriganaBuilder {
             analyzer: OnceLock::new(),
             rules,
             dict,
-            phrase_matcher,
-            chunker,
             number_provider,
-            single_overrides,
-            engine,
         })
     }
 }
@@ -839,65 +652,23 @@ mod tests {
             .rules_dir(&dir)
             .build()
             .expect("build with rules_dir failed");
-        // 一人 → ヒトリ (rules dir 経由でロードされる)
-        let ruby = f.to_ruby("一人");
-        assert!(ruby.contains("ひとり"));
+        // 3本 → サンボン (counters.toml 由来、 NumberCandidateProvider が hit)
+        let hira = f.to_hiragana("3本");
+        assert!(hira.contains("さんぼん"), "hiragana: {hira}");
     }
 
-    // ─── engine plumbing (B4) tests ──────────────────────────────────────────
+    // ─── Smart engine wire-up sanity tests ───────────────────────────────────
 
     #[test]
-    fn default_engine_is_strict() {
-        // alpha.10 期間中の default は Strict
-        let f = Furigana::minimal().unwrap();
-        assert_eq!(f.engine(), Engine::Strict);
-    }
-
-    #[test]
-    fn builder_engine_method_overrides_default() {
-        let f = Furigana::builder().engine(Engine::Smart).build().unwrap();
-        assert_eq!(f.engine(), Engine::Smart);
-    }
-
-    #[test]
-    fn engine_smart_to_ruby_uses_dict_then_lindera_fallback() {
-        // ★alpha.14 wire-up: Engine::Smart 選択で to_ruby() が Smart engine 経路を通る。
+    fn to_ruby_uses_dict_then_lindera_fallback() {
         // 「灰桜の道」 → 灰桜 (dict band 1000、 ハイザクラ) + の (Lindera band 50、 ノ)
         // + 道 (Lindera band 50、 ミチ) → "{灰桜|はいざくら}の{道|みち}"
         let f = Furigana::builder()
-            .engine(Engine::Smart)
             .add_entry("灰桜", "ハイザクラ")
             .build()
             .unwrap();
         let ruby = f.to_ruby("灰桜の道");
         assert!(ruby.contains("{灰桜|はいざくら}"), "expected ruby: {ruby}");
-        assert_eq!(f.engine(), Engine::Smart);
-    }
-
-    #[test]
-    fn engine_dispatch_is_observable_via_to_hiragana() {
-        // ★alpha.14 wire-up: Strict と Smart で同 input でも内部経路が違うことを
-        // observable に確認。 内容自体は両者で似た出力になるが、 engine setting が
-        // 単なる field stash ではなく実際の dispatch trigger になっていること。
-        let mut b_strict = Furigana::builder().engine(Engine::Strict);
-        b_strict = b_strict.add_entry("灰桜", "ハイザクラ");
-        let f_strict = b_strict.build().unwrap();
-        let mut b_smart = Furigana::builder().engine(Engine::Smart);
-        b_smart = b_smart.add_entry("灰桜", "ハイザクラ");
-        let f_smart = b_smart.build().unwrap();
-        // 両 engine で 「灰桜」 dict hit + okurigana を read できる minimal sanity
-        assert!(f_strict.to_hiragana("灰桜").contains("はいざくら"));
-        assert!(f_smart.to_hiragana("灰桜").contains("はいざくら"));
-    }
-
-    // ─── resolve_engine_from_env tests ───────────────────────────────────────
-    // 注: env var test は global state を触るため serial 実行要 (default test harness は parallel)。
-    // ここでは pure function logic のみ test、 actual env var 動作は test しない (serial 化が
-    // 別 framework 要 / overkill)。 std::env::set_var は thread safety 上 unsafe マークも入る。
-
-    #[test]
-    fn engine_env_var_constant_is_correctly_named() {
-        assert_eq!(ENGINE_ENV_VAR, "JA_FURIGANA_ENGINE");
     }
 
     // ─── analyze() (F1) tests ────────────────────────────────────────────────

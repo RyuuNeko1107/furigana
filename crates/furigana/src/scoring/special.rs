@@ -498,6 +498,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assertions_on_constants)]
     fn protected_band_higher_than_dict_exact() {
         // 保護 token は dict 完全一致より優先される必要がある
         use crate::scoring::candidate::BAND_DICT_EXACT;

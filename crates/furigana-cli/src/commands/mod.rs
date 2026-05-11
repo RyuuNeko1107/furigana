@@ -44,14 +44,9 @@ pub fn build_furigana(paths: &Paths) -> Result<Furigana> {
     if overrides.exists() {
         b = b.overrides_file(&overrides);
     }
-    let loanwords = paths.loanwords_dir();
-    if loanwords.exists() {
-        b = b.core_loanwords_dir(&loanwords);
-    }
-    let single_ov = paths.single_overrides_file();
-    if single_ov.exists() {
-        b = b.single_overrides_file(&single_ov);
-    }
+    // 旧 Strict-only path (= loanwords / single_overrides) は alpha.15 で撤廃済。
+    // loanwords は AlphabetPassthroughProvider に統合予定 (= 0.2.0+ work)。
+    // single_overrides 相当は dict 側 `core/kanji/overrides.toml` の [[kanji]] block に移行。
 
     if !data_loaded {
         tracing::warn!(

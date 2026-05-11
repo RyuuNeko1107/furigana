@@ -52,30 +52,33 @@
 //!
 //! 公開 API は [`Furigana`] / [`FuriganaBuilder`] で、内部は以下の module に分かれる:
 //!
-//! - [`analyzer`] : 形態素解析 (Lindera + IPADIC)
+//! - [`analyzer`] : 形態素解析 (Lindera + IPADIC、 Smart engine fallback として使用)
 //! - [`kana`]     : ひら⇄カタ + Unicode 正規化
-//! - [`numbers`]  : 数値処理 (digit / counter / phrase / extras / `kansuji_to_arabic`)
-//! - [`chunks`]   : テキスト全体の数値オーケストレーション (NumberChunker、漢数字日付対応)
-//! - [`reading`]  : 読み解決パイプライン (pipeline / merge / context / output)
+//! - [`numbers`]  : 数値処理 (digit / counter / extras / `kansuji_to_arabic`)
+//! - [`reading`]  : 出力 layer (= [`ReadingToken`] + tokens_to_hiragana / tokens_to_ruby)
 //! - [`tts`]      : TTS 整形 + segment
 //! - [`romaji`]   : ひらがな → ローマ字 (Hepburn / Kunrei)
-//! - [`dict`]     : surface → reading 辞書 (内部で **jukugo (≥2 文字) / unihan (1 文字) 分離**)
-//! - [`rules`]    : ルールデータ型 (counters / context / scales / units / **postprocess** / etc)
+//! - [`dict`]     : surface → reading 辞書 (内部で **jukugo (≥2 文字) / unihan (1 文字) /
+//!   `[[kanji]]` block / Detailed Entry 多重保持**)
+//! - [`rules`]    : ルールデータ型 (counters / scales / units / **postprocess** / etc)
 //! - [`loader`]   : TOML 汎用パーサ
+//! - [`scoring`]  : Smart engine (Viterbi DP + 6 provider band lexicographic)
 //!
-//! ### 読み解決の優先順位 (、0.1.0-alpha.3 以降)
+//! ### 読み解決パイプライン (alpha.15+、 Smart engine 一本化)
 //!
-//! [`reading::pipeline::resolve_reading`] (private) で各 token に対して以下の順で評価:
+//! [`Furigana::analyze`] で input を 6 provider に流し、 [`scoring::engine::solve_path`]
+//! で Viterbi-like path を解く。 各 provider が band 付きの candidate edge を emit:
 //!
-//! 1. 漢字を含まない → `None`
-//! 2. **context rule** (同形異音語の動的読み分け、`rules/context/*.toml`)
-//! 3. **熟語辞書 jukugo** ([`Dict::lookup_jukugo`]、surface ≥ 2 文字)
-//! 4. **Lindera reading** (動詞活用形などの自然な読み)
-//! 5. **単漢字 unihan** ([`Dict::lookup_unihan`]、surface = 1 文字)
-//! 6. fallback `None`
+//! 1. **ProtectTokenProvider** (band 2000): URL / Email / 絵文字
+//! 2. **AlphabetPassthroughProvider** (band 1000 / 100): 英字 passthrough
+//! 3. **DictBridgeProvider** (band 1000 / 100): dict surface (jukugo / unihan / `[[kanji]]`)
+//! 4. **NumberCandidateProvider** (band 950): 数字 + 助数詞 / 大数 / SI / 日付 / 時刻
+//! 5. **OdorijiProvider** (band 100): 踊り字 「々」 placeholder + post-pass 連濁
+//! 6. **LinderaFallbackProvider** (band 50): 上記 5 が一切覆わない位置の safety net
 //!
-//! 出力直前に `rules/postprocess.toml` の **mode 別 regex 置換** が適用される
-//! (Step 7 (mode 別後処理 regex)、0.1.0-alpha.3 で導入)。
+//! [`Furigana::tokenize`] (= `to_hiragana` / `to_ruby` / `to_tts` / `to_romaji` の基盤)
+//! は本 analyze 経路を通り、 [`AnalyzeToken`] を [`ReadingToken`] 化して返す。
+//! 出力直前に `rules/postprocess.toml` の **mode 別 regex 置換** が適用される。
 //!
 //! 詳細は [docs/ARCHITECTURE.md](https://github.com/RyuuNeko1107/ja-furigana/blob/master/docs/ARCHITECTURE.md) を参照。
 //!
@@ -88,18 +91,15 @@
 #![allow(clippy::tabs_in_doc_comments)]
 
 pub mod analyzer;
-pub mod chunks;
 pub mod dict;
 pub mod error;
 pub mod kana;
 pub mod loader;
-pub mod loanwords;
 pub mod numbers;
 pub mod reading;
 pub mod romaji;
 pub mod rules;
 pub mod scoring;
-pub mod single_overrides;
 pub mod tts;
 
 mod api;

@@ -7,7 +7,6 @@
 //! - [`Score`]: candidate edge の score tuple、 lexicographic 比較 (band → length → match_hits → boundary_penalty)
 //! - [`Candidate`]: input text 上の 1 つの候補 edge (surface + reading + range + score)
 //! - [`CandidateProvider`]: candidate を供給する trait (entry / kanji / Lindera / 特殊処理 各 layer 実装)
-//! - [`Engine`]: engine 選択 enum (Strict / Smart)
 //! - band 定数: 1000 = 単語辞書完全一致、 950 = 特殊処理、 100 = 漢字辞書、 50 = Lindera unihan injection
 
 use serde::Serialize;
@@ -172,19 +171,6 @@ pub trait CandidateProvider {
     fn candidates_at(&self, input: &str, pos: usize) -> Vec<Candidate>;
 }
 
-// ─── Engine 選択 ─────────────────────────────────────────────────────────────
-
-/// Engine 種別。 0.1.0 alpha 期間中は Strict が default、 0.1.0-rc1 で Smart に default 切替。
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Engine {
-    /// 既存 priority chain (`reading::pipeline::resolve_reading`)。
-    /// alpha.10: Strict が default、 Smart は env var or builder で opt-in。
-    #[default]
-    Strict,
-    /// 新 candidate scoring engine (Viterbi-like path 選択)。 alpha.10 で experimental flag。
-    Smart,
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -256,6 +242,7 @@ mod tests {
     // ─── band 値 sanity check ────────────────────────────────────────────────
 
     #[test]
+    #[allow(clippy::assertions_on_constants)]
     fn band_values_are_correctly_ordered() {
         assert!(BAND_DICT_EXACT > BAND_SPECIAL);
         assert!(BAND_SPECIAL > BAND_KANJI);
@@ -272,13 +259,5 @@ mod tests {
     fn candidate_surface_byte_len() {
         let c = Candidate::new("猫", "ネコ", 0..3, Score::dict_exact(1));
         assert_eq!(c.surface_byte_len(), 3); // "猫" in UTF-8 = 3 bytes
-    }
-
-    // ─── Engine default ──────────────────────────────────────────────────────
-
-    #[test]
-    fn engine_default_is_strict() {
-        // alpha.10 期間中は Strict が default。 0.1.0-rc1 で Smart に切替予定。
-        assert_eq!(Engine::default(), Engine::Strict);
     }
 }
