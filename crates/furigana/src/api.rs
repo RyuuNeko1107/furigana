@@ -15,6 +15,9 @@ use crate::scoring::analyze::{analyze as scoring_analyze, AnalyzeResult};
 use crate::scoring::boundary::BoundaryAnalysis;
 use crate::scoring::bracket::strip_intonation_markers;
 use crate::scoring::candidate::{Candidate, CandidateProvider, Engine, Score};
+use crate::scoring::matcher::{
+    next2_logical_token, next_logical_token, prev_logical_token, MatchContext,
+};
 use crate::scoring::numbers::NumberCandidateProvider;
 use crate::scoring::odoriji::{apply_rendaku_to_result, OdorijiProvider};
 use crate::scoring::special::{AlphabetPassthroughProvider, ProtectTokenProvider};
@@ -353,35 +356,70 @@ impl<'a> DictBridgeProvider<'a> {
 impl<'a> CandidateProvider for DictBridgeProvider<'a> {
     fn candidates_at(&self, input: &str, pos: usize) -> Vec<Candidate> {
         let mut out = Vec::new();
-
-        // jukugo (≥ 2 文字 surface): 全 entry を prefix match scan。
-        // input[pos..] は呼び出し元 (engine.rs solve_path) が char-aligned pos のみ
-        // 通す前提 (= dp[pos] が Some の位置は必ず char 境界)。
         let tail = &input[pos..];
-        for (surface, reading) in self.dict.jukugo_iter() {
-            if tail.starts_with(surface) {
-                let char_count = surface.chars().count();
-                let length = u8::try_from(char_count).unwrap_or(u8::MAX);
-                out.push(Candidate::new(
-                    surface.to_string(),
-                    strip_intonation_markers(reading),
-                    pos..pos + surface.len(),
-                    Score::dict_exact(length),
-                ));
+
+        // ★A2 alpha.12: rich_iter で 全 entry を walk、 prefix match した entry に
+        // ついて MatchCondition を評価 (= 文脈分岐 reading を Smart engine に乗せる)
+        let mut emitted_at_pos: std::collections::HashSet<String> =
+            std::collections::HashSet::new();
+        for (surface, entry) in self.dict.rich_iter() {
+            if !tail.starts_with(surface) {
+                continue;
             }
+            let surface_byte_len = surface.len();
+            let end_pos = pos + surface_byte_len;
+            let char_count = surface.chars().count();
+            let length = u8::try_from(char_count).unwrap_or(u8::MAX);
+
+            // MatchContext build: char-class-based pseudo-token segmentation
+            // (Lindera 不要、 Smart engine 経路で自前で context 取得)
+            let prev = prev_logical_token(input, pos);
+            let next = next_logical_token(input, end_pos);
+            let next2 = next2_logical_token(input, end_pos);
+            let ctx = MatchContext::with_all(
+                if prev.is_empty() { None } else { Some(prev) },
+                if next.is_empty() { None } else { Some(next) },
+                if next2.is_empty() { None } else { Some(next2) },
+            );
+
+            // match block 列を順次評価、 第一 hit の reading を採用
+            let reading = entry
+                .matches()
+                .iter()
+                .find(|m| m.condition.matches_context(&ctx))
+                .map(|m| m.reading.as_str())
+                .unwrap_or_else(|| entry.default_reading());
+
+            // band: 1 字 surface は band 100 (= kanji fallback)、 2+ 字 は band 1000 (= dict_exact)
+            let score = if char_count == 1 {
+                Score::kanji(length)
+            } else {
+                Score::dict_exact(length)
+            };
+
+            out.push(Candidate::new(
+                surface.to_string(),
+                strip_intonation_markers(reading),
+                pos..end_pos,
+                score,
+            ));
+            emitted_at_pos.insert(surface.to_string());
         }
 
-        // unihan (= 1 文字 surface): pos の 1 文字を lookup
+        // unihan fallback: rich に無い 1 文字 surface (= unihan/*.toml で flat 登録された entry)
+        // を band 100 で出す。 rich_iter で既に拾った surface は skip して duplicate 回避。
         if let Some(c) = tail.chars().next() {
             let char_len = c.len_utf8();
             let surface = &tail[..char_len];
-            if let Some(reading) = self.dict.lookup_unihan(surface) {
-                out.push(Candidate::new(
-                    surface.to_string(),
-                    strip_intonation_markers(reading),
-                    pos..pos + char_len,
-                    Score::kanji(1),
-                ));
+            if !emitted_at_pos.contains(surface) {
+                if let Some(reading) = self.dict.lookup_unihan(surface) {
+                    out.push(Candidate::new(
+                        surface.to_string(),
+                        strip_intonation_markers(reading),
+                        pos..pos + char_len,
+                        Score::kanji(1),
+                    ));
+                }
             }
         }
 
@@ -1012,5 +1050,98 @@ mod tests {
         // analyze() の candidates は adopted path の各 token 位置のみ集める仕様、
         // path 不能なら空 Vec (= solve_path 戻り値が空 → path_indices 空)
         assert!(r.candidates.is_empty());
+    }
+
+    // ─── analyze() (★A2 alpha.12) DictBridge MatchCondition 評価 tests ─────
+
+    /// Detailed entry を含む dict を temp file 経由で build する helper。
+    /// Furigana の内部 dict 構築経路は file load なので、 unit test で
+    /// rich field を inject するために temp TOML を書き出して dir 経由 load する。
+    fn build_with_dict_toml(toml_body: &str) -> Furigana {
+        let dir = std::env::temp_dir().join(format!(
+            "furigana_dict_bridge_test_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let dict_file = dir.join("test.toml");
+        std::fs::write(
+            &dict_file,
+            format!(
+                "[meta]\nschema_version = \"2\"\nrole = \"jukugo\"\n\n{}",
+                toml_body
+            ),
+        )
+        .unwrap();
+        Furigana::builder()
+            .core_dict_dir(&dir)
+            .build()
+            .expect("build with detailed entry")
+    }
+
+    #[test]
+    fn dict_bridge_evaluates_inline_match_default_reading() {
+        // 「上手」 単独 (= 文脈 「から」 無し) → default 「ジョウズ」
+        let f = build_with_dict_toml(
+            r#"[entries."上手"]
+reading = "ジョウズ"
+
+[[entries."上手".match]]
+next_eq = "から"
+reading = "カミテ"
+"#,
+        );
+        let r = f.analyze("上手");
+        assert_eq!(r.tokens.len(), 1);
+        assert_eq!(r.tokens[0].reading, "ジョウズ");
+    }
+
+    #[test]
+    fn dict_bridge_evaluates_inline_match_with_next_eq() {
+        // 「上手から」 → 文脈 「から」 match → reading 「カミテ」
+        // path 全 cover のため 「から」 も dict に Simple で追加
+        let f = build_with_dict_toml(
+            r#"[entries]
+"から" = "カラ"
+
+[entries."上手"]
+reading = "ジョウズ"
+
+[[entries."上手".match]]
+next_eq = "から"
+reading = "カミテ"
+"#,
+        );
+        let r = f.analyze("上手から");
+        let kamite_token = r.tokens.iter().find(|t| t.surface == "上手");
+        assert!(
+            kamite_token.is_some(),
+            "expected 「上手」 token in path: {r:?}"
+        );
+        assert_eq!(kamite_token.unwrap().reading, "カミテ");
+    }
+
+    #[test]
+    fn dict_bridge_evaluates_match_with_prev_eq() {
+        // 「下上手」 → 「下」 (= 単漢字 dict entry あり) + 「上手」 (= prev_eq "下" → シタテ)
+        let f = build_with_dict_toml(
+            r#"[entries]
+"下" = "シタ"
+
+[entries."上手"]
+reading = "ジョウズ"
+
+[[entries."上手".match]]
+prev_eq = "下"
+reading = "シタテ"
+"#,
+        );
+        let r = f.analyze("下上手");
+        let jouzu_token = r.tokens.iter().find(|t| t.surface == "上手");
+        assert!(jouzu_token.is_some(), "expected 「上手」 token: {r:?}");
+        assert_eq!(jouzu_token.unwrap().reading, "シタテ");
     }
 }

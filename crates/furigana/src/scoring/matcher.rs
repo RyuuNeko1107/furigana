@@ -216,6 +216,77 @@ impl MatchCondition {
     }
 }
 
+/// 文字種が連続する範囲を 「pseudo-token」 として切り出す helper。
+///
+/// Smart engine の `DictBridgeProvider` / `KanjiProvider` が path 構築中に
+/// MatchContext を build するために使う。 Lindera token segmentation を使わず
+/// **文字種境界** (= 漢字 / ひらがな / カタカナ / 英数 / 記号) で切る軽量実装。
+///
+/// 日本語の助詞 / 助動詞 (= ひらがな連続)、 漢字熟語 (= 漢字連続)、 数字
+/// (= 英数連続) は概ね同 char_type で連続するため、 token-level segmentation
+/// と概ね一致する。 完全一致が要る用途 (= POS-aware tokenization) には不適。
+///
+/// # 例
+///
+/// 「上手から登場」 の pos 6 (= 「上手」 の直後) から `next_logical_token` →
+/// `"から"` (= ひらがな連続、 「登」 漢字で切れる)。
+#[must_use]
+pub fn next_logical_token(input: &str, start: usize) -> &str {
+    let tail = &input[start..];
+    let mut first_class: Option<CharType> = None;
+    let mut end = start;
+    for (idx, c) in tail.char_indices() {
+        let class = classify_char(c);
+        match (first_class, class) {
+            (None, Some(cls)) => {
+                first_class = Some(cls);
+                end = start + idx + c.len_utf8();
+            }
+            (Some(fc), Some(cls)) if fc == cls => {
+                end = start + idx + c.len_utf8();
+            }
+            _ => break,
+        }
+    }
+    &input[start..end]
+}
+
+/// 「pseudo-token」 の **更にその次** を切り出す (= next_logical_token を 2 回適用)。
+///
+/// 「人気が無い」 で pos 0 (= 「人気」 後の文脈) → next = 「が」、 next2 = 「無い」 のような
+/// 1 飛ばし lookup 用。 next_logical_token と同じ char-class 境界 logic。
+#[must_use]
+pub fn next2_logical_token(input: &str, start: usize) -> &str {
+    let next1 = next_logical_token(input, start);
+    let next1_end = start + next1.len();
+    next_logical_token(input, next1_end)
+}
+
+/// 直前の pseudo-token を切り出す (= byte 位置 `end` の手前から **文字種が連続する範囲**)。
+///
+/// 「東方の上手」 の pos 9 (= 「上手」 の直前) から `prev_logical_token` → `"の"`
+/// (= ひらがな 1 文字、 「方」 漢字で切れる)。 行末 (= end が input.len()) でも動作。
+#[must_use]
+pub fn prev_logical_token(input: &str, end: usize) -> &str {
+    let head = &input[..end];
+    let mut last_class: Option<CharType> = None;
+    let mut start = end;
+    for (idx, c) in head.char_indices().rev() {
+        let class = classify_char(c);
+        match (last_class, class) {
+            (None, Some(cls)) => {
+                last_class = Some(cls);
+                start = idx;
+            }
+            (Some(lc), Some(cls)) if lc == cls => {
+                start = idx;
+            }
+            _ => break,
+        }
+    }
+    &input[start..end]
+}
+
 /// 月名 (一月〜十二月、 1月〜12月、 全角数字含む) で終わるか。
 ///
 /// scoring 用途の self-contained helper、 `crate::reading::context` の同名関数と
@@ -649,5 +720,66 @@ mod tests {
         assert!(!cond.matches_context(&MatchContext::with_next("一日"))); // 漢数字は false
         assert!(!cond.matches_context(&MatchContext::with_next("ABC")));
         assert!(!cond.matches_context(&MatchContext::empty()));
+    }
+
+    // ─── pseudo-token segmentation (= char-class-based) ─────────────────────
+
+    #[test]
+    fn next_logical_token_grabs_hiragana_run() {
+        // 「上手から登場」 の pos 6 (= 「上手」 後) → 「から」 (= ひらがな連続、 漢字 「登」 で切れる)
+        assert_eq!(next_logical_token("上手から登場", 6), "から");
+    }
+
+    #[test]
+    fn next_logical_token_grabs_kanji_run() {
+        // 「東方の上手」 の pos 9 (= 「の」 後) → 「上手」 (= 漢字連続、 EOF or 文字種境界で切れる)
+        assert_eq!(next_logical_token("東方の上手", 9), "上手");
+    }
+
+    #[test]
+    fn next_logical_token_empty_at_end() {
+        let s = "上手";
+        assert_eq!(next_logical_token(s, s.len()), "");
+    }
+
+    #[test]
+    fn next_logical_token_handles_digit() {
+        assert_eq!(next_logical_token("3本", 0), "3");
+        assert_eq!(next_logical_token("100km", 0), "100km"); // 英数 + ASCII 連続
+    }
+
+    #[test]
+    fn next2_logical_token_skips_one() {
+        // 「人気が無い」 の pos 6 (= 「人気」 後) → next = 「が」、 next2 = 「無」 (= 単独 1 字 kanji)
+        let s = "人気が無い";
+        // next1 = 「が」 (ひらがな)、 「無」 で切れる
+        assert_eq!(next_logical_token(s, 6), "が");
+        // next2 開始 = pos 6 + len("が") = 6 + 3 = 9
+        assert_eq!(next2_logical_token(s, 6), "無"); // 「無」 漢字単独、 「い」 ひらがなで切れる
+    }
+
+    #[test]
+    fn prev_logical_token_grabs_hiragana_run() {
+        // 「お上手」 の pos 3 (= 「上手」 の直前 = 「お」 の後) → 「お」 (= ひらがな単独)
+        assert_eq!(prev_logical_token("お上手", 3), "お");
+    }
+
+    #[test]
+    fn prev_logical_token_grabs_kanji_run() {
+        // 「中学校生」 の pos 9 (= 「生」 の直前 = 「中学校」 の後) → 「中学校」 (= 漢字連続)
+        assert_eq!(prev_logical_token("中学校生", 9), "中学校");
+    }
+
+    #[test]
+    fn prev_logical_token_empty_at_start() {
+        assert_eq!(prev_logical_token("上手", 0), "");
+    }
+
+    #[test]
+    fn prev_logical_token_with_month_pattern() {
+        // 「6月一日」 の pos 6 (= 「一日」 の前 = 「6月」 の後) → 「6月」 だが
+        // char-class は 英数 + 漢字 で boundary、 prev は 「月」 漢字 1 字 のみ
+        // (= 「6」 と 「月」 は class 違う = 英数 vs 漢字)
+        assert_eq!(prev_logical_token("6月一日", 4), "月"); // 1 ("6") + 3 ("月") = 4 bytes
     }
 }
