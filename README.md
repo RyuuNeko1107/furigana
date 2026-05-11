@@ -35,10 +35,18 @@ TTS 音声合成の前段やふりがな補助での使用を想定。
 「不確かなときは形態素解析の素朴な結果に fall back」「辞書 hit したものは確実に固定」 という
 **保守的な決定論**。 コミュニティ PR で精度が上がる設計。
 
-> **Status**: alpha (0.1.x)。 `context rule → jukugo → SingleOverrides → Lindera → unihan` の
-> 6 段階優先順位で読みを解決。 `chunks/split()` 段階で **jukugo prefix-match** + **loanwords
-> 完全一致** を独立階層で持つので、 助数詞 / 形態素解析より優先される。 詳細は
-> [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) / 中長期計画は [docs/ROADMAP.md](./docs/ROADMAP.md) /
+> **Status**: alpha (0.1.x、 alpha.19 で 0.1.0 stable cut 射程に入った)。
+> **Smart engine** (= candidate scoring + Viterbi-like path 選択 + band lexicographic 比較) で
+> 全 reading を解決 (alpha.15 で Strict pipeline 削除済)。 6 provider 構成:
+> ProtectToken (URL/Email/絵文字) / Alphabet passthrough / DictBridge (jukugo / unihan /
+> `[[kanji]]` block の match) / NumberCandidate (数字 + 助数詞 / 大数 / SI / 日付) /
+> Odoriji (踊り字 「々」 連濁) / LinderaFallback (band 50 safety net)。
+>
+> corpus 正解率 (262 case): **99.6%** (alpha.19 時点、 IPADIC default)。
+> 形態素辞書は **`dict-ipadic`** (default) / **`dict-unidic`** (cwj、 0.2.0 intonation 検討用) の
+> feature flag で build-time switch 可能。
+>
+> 詳細は [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) / 中長期計画は [docs/ROADMAP.md](./docs/ROADMAP.md) /
 > 変更履歴は [CHANGELOG.md](./CHANGELOG.md)。
 > `0.1.x` の間は公開 API / TOML スキーマ / CLI 引数 / HTTP レスポンス構造が予告なく変わりえる。
 
@@ -65,7 +73,9 @@ TTS 音声合成の前段やふりがな補助での使用を想定。
 ```toml
 # Cargo.toml
 [dependencies]
-ja-furigana = "0.1.0-alpha.9"
+ja-furigana = "0.1.0-alpha.19"
+# 形態素辞書を選びたい場合 (default = dict-ipadic):
+# ja-furigana = { version = "0.1.0-alpha.19", default-features = false, features = ["dict-unidic"] }
 ```
 
 ```rust
@@ -78,6 +88,30 @@ println!("{}", f.to_ruby("灰桜の散る道"));
 ```
 
 辞書 / ルールを mount する場合は builder API。 詳細は [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md#公開-api-lib)。
+
+### production logging で辞書改善 (★alpha.19+)
+
+production traffic から **dict 未登録 surface** を抽出して、 OSS curation loop に
+PR 入力として流す pure 関数 API:
+
+```rust
+use furigana::{Furigana, extract_dict_gap_candidates};
+
+let f = Furigana::builder().core_dict_dir("/path/to/data/core/jukugo").build()?;
+let result = f.analyze(&user_input);
+// band ≤ 100 (= unihan per-char or Lindera fallback) の漢字 token を context 込みで抽出
+let gaps = extract_dict_gap_candidates(&result, &user_input, 3, 100);
+for gap in gaps {
+    log::info!(
+        "dict-gap: surface={:?} reading={:?} band={} ctx=[{}|{}|{}]",
+        gap.surface, gap.reading, gap.band,
+        gap.context.before, gap.context.surface, gap.context.after,
+    );
+}
+```
+
+lib 自体は telemetry を持たない (= OSS ローカル完結方針)、 caller が log 形式 (JSON /
+SQLite / Loki / Prometheus 等) を自由に選ぶ。 サンプル: [`examples/analyze_inspect.rs`](./crates/furigana/examples/analyze_inspect.rs)。
 
 ### CLI として使う
 
@@ -114,7 +148,7 @@ docker run --rm -p 8000:8000 ghcr.io/ryuuneko1107/furigana:latest
 | [`docs/HTTP_API.md`](./docs/HTTP_API.md) | endpoints / `mode` / エラー応答 / 認証 / hot reload / 他言語クライアント |
 | [`docs/DATA_LAYOUT.md`](./docs/DATA_LAYOUT.md) | `<data_dir>` 構成 / `dict pull` の流れ / merge 順 |
 | [`docs/CONFIG.md`](./docs/CONFIG.md) | `config.toml` / 環境変数 / CLI フラグ |
-| [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) | crate 構成 / 内部モジュール / 8 段階パイプライン / 設計判断 |
+| [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) | crate 構成 / 内部モジュール / Smart engine 6 provider + Viterbi DP / 設計判断 |
 | [`docs/ROADMAP.md`](./docs/ROADMAP.md) | Phase 計画 (CHANGELOG とは別、 未来志向) |
 | [`CHANGELOG.md`](./CHANGELOG.md) | 完了履歴 (Keep a Changelog 形式) |
 | [`CONTRIBUTING.md`](./CONTRIBUTING.md) | engine (Rust) PR ガイド |

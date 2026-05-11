@@ -5,10 +5,17 @@ ja-furigana の中長期計画。 **完了履歴は [CHANGELOG.md](../CHANGELOG.
 
 > 戻る: [README](../README.md)
 
-## ステータス概観
+## ステータス概観 (2026-05-12 更新)
 
-**v0.1.x (alpha)**: Phase 1〜5 機能はすべて動作。 alpha.9 を最終 alpha として、
-**0.1.0 正式版** を直近目標としている。
+**v0.1.x (alpha)**: alpha.10〜.19 で **Smart engine 投入 + Strict 削除 + dict format
+完全再編成 + dict-curated context rule 路線統一** 完了。 corpus 正解率 99.6%
+(262 case、 IPADIC default)、 **0.1.0 stable cut 射程に入った**。
+
+残作業 (= release blocker):
+- API freeze (= `Furigana` / `FuriganaBuilder` / `AnalyzeResult` / `Score` 等の SemVer 約束)
+- benchmark 再計測 (alpha.13 以降、 alpha.19 state で未計測)
+- 0.1.0 cut オペレーション (= version bump / git tag / crates.io publish 再開 /
+  branch protection 復元)
 
 `0.1.x` の間は以下が予告なく変更されうる:
 
@@ -146,18 +153,26 @@ ja-furigana の中長期計画。 **完了履歴は [CHANGELOG.md](../CHANGELOG.
   (現在 108 件)
 - [ ] **branch protection 復元** — alpha 期間中の loose rule から stable 体制へ
 
-#### timeline 見込み
+#### timeline 実績 + 見込み (2026-05-12 更新)
 
-「stable は 0.1.0」 + 「stable まで時間あり」 + **辞書完全再編成 + 特殊処理再設計** を含む大規模 refactor Plan X (2026-05-10 確定):
+実績 (alpha.10〜.19 完了):
+- **alpha.10〜.12**: scoring-engine 投入 + dict format 拡張 + [[kanji]] block loader
+- **alpha.13**: Lindera fallback provider + Smart engine が corpus で実用域へ (82% match)
+- **alpha.14**: Smart engine を `to_*` API に wire-up (= production path)
+- **alpha.15**: Strict engine 完全削除 (-3000 行)、 Smart engine 一本化
+- **alpha.16〜.17**: dict 拡充 + UniDic feature flag (`dict-unidic`)
+- **alpha.18**: ↓ (= alpha.19 で撤回されたが lib band hack 試行)
+- **alpha.19**: dict-curated context rule 路線統一 (= 動詞 / 形容詞 1 字 [[kanji]] block化)
+  + inspect API (= dict gap log helper)、 corpus 99.6%
 
-- **alpha.9 → alpha.10**: scoring-engine 投入 (Smart experimental) + dict format 拡張 + matcher (品詞除く) 実装 + 特殊処理再設計 + migration script 実装 + bracket forward compat
-- **alpha.10 → alpha.11**: dict 完全再編成 PR series (機械変換 + entry purge + sub-dir 再構成)
-- **alpha.11 → alpha.12〜N**: Smart bug fix + corpus calibration + dogfood (実時間 数ヶ月規模)
-- **alpha.N → 0.1.0-rc1**: Smart default 切替、 corpus pass 100% 確認
-- **0.1.0-rc1 → 0.1.0 stable**: 最終 sanity check 後、 full scoring-engine + 完全再編成済 dict で SemVer 開始
+見込み (= 残作業):
+- **alpha.19 → 0.1.0-rc1**: API freeze + benchmark 再計測 + docs / examples 整備
+- **0.1.0-rc1 → 0.1.0 stable**: 最終 sanity check 後、 full scoring-engine + 完全
+  再編成済 dict で SemVer 開始 (= **dict 0.1.0 coordinated release**)
 - **0.1.0 → 0.1.x patch**: dict 漸進拡充 / corpus 増強 / bug fix (additive only)
-- **0.1.x → 0.2.0 stable**: intonation + 辞書側韻律対応投入 (bracket parse / `--mode=accent` / tts mode に accent 機能追加)
-- **0.2.0 → 0.3.0+**: Strict 削除、 Lindera 信頼度再評価、 連濁 / 動詞活用 accent shift 等
+- **0.1.x → 0.2.0 stable**: intonation + 辞書側韻律対応 (bracket parse / `--mode=accent` /
+  tts mode に accent 機能追加)、 numeric_phrases を Smart provider 化
+- **0.2.0 → 0.3.0+**: UniDic csj (= 現代話し言葉)、 連濁 / 動詞活用 accent shift 等
 
 stable cut までの実時間見積もり: **半年〜1 年規模**、 完成度優先 (期日 driven ではない)。
 

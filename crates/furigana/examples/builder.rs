@@ -22,6 +22,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     fs::write(
         core.join("ja.toml"),
         r#"
+[meta]
+schema_version = "2"
+role = "jukugo"
+
 [entries]
 "灰桜" = "ハイザクラ"
 "黎明" = "レイメイ"
@@ -32,6 +36,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     fs::write(
         user.join("custom.toml"),
         r#"
+[meta]
+schema_version = "2"
+role = "jukugo"
+
 [entries]
 "灰桜" = "カイオウ"
 "#,
@@ -41,6 +49,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     fs::write(
         &overrides,
         r#"
+[meta]
+schema_version = "2"
+role = "jukugo"
+
 [entries]
 "黎明" = "クライセンス"
 "#,

@@ -23,7 +23,11 @@ use std::ops::Range;
 ///
 /// `score` 等の internal info は持たず、 caller が必要なら `AnalyzeResult::candidates`
 /// から該当 candidate を引いて参照する。
+///
+/// `#[non_exhaustive]`: 0.2.0+ で field 追加余地 (例: `pos: Option<String>` / `accent_phrases`
+/// for intonation 等)、 SemVer 互換維持のため caller の literal struct 構築は禁止。
 #[derive(Debug, Clone, Serialize)]
+#[non_exhaustive]
 pub struct Token {
     /// surface 文字列
     pub surface: String,
@@ -53,7 +57,11 @@ impl Token {
 /// - `candidates`: 各 token 位置で 「考慮された候補一覧」 (`tokens[i].range.start` から始まる candidate 全列挙)
 /// - `path_indices`: 各 token の start byte 位置 (= `tokens[i].range.start` の copy、 caller の pos lookup 用)
 /// - `boundary_regions`: 検出された 漢字連続 region の byte range (= `BoundaryAnalysis::regions[i].range`)
+///
+/// `#[non_exhaustive]`: 0.2.0+ で field 追加余地 (例: timing metadata、 alternative paths)、
+/// SemVer 互換維持のため caller の literal struct 構築は禁止 (= lib が return するのみ)。
 #[derive(Debug, Clone, Serialize)]
+#[non_exhaustive]
 pub struct AnalyzeResult {
     /// 採択 path 上の token 列
     pub tokens: Vec<Token>,

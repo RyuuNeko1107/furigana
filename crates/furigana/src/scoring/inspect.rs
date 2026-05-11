@@ -41,7 +41,11 @@ pub struct ContextWindow {
 /// 漢字を含む surface を抽出する。 これらは:
 /// - jukugo dict に未登録 (band 1000 で勝てなかった)
 /// - 専門用語 / 固有名詞 / 人名 が多い (= dict 改善 PR の input)
+///
+/// `#[non_exhaustive]`: 0.2.0+ で field 追加余地 (= alternative readings、 confidence
+/// score 等)、 SemVer 互換維持のため caller の literal struct 構築は禁止。
 #[derive(Debug, Clone, Serialize)]
+#[non_exhaustive]
 pub struct DictGapCandidate {
     /// 採択 surface (= input の該当範囲)
     pub surface: String,

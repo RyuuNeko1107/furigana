@@ -4,6 +4,83 @@
 [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/) 形式に概ね従い、
 バージョニングは [Semantic Versioning](https://semver.org/lang/ja/) を採用。
 
+## [Unreleased] — 0.1.0 stable cut 準備
+
+alpha.10〜.19 の累積 work を 0.1.0 stable として release する射程に入った
+(corpus 正解率 262 case で 99.6%)。 0.1.0 では:
+
+### 主要 milestone (= alpha.10〜.19 累積)
+
+- **Smart engine 投入 + Strict 削除** (alpha.10〜.15、 -3000 行): 旧 priority chain
+  pipeline を撤廃、 6 provider + Viterbi DP + band lexicographic 比較 で全 reading 解決
+- **dict format 完全再編成** (alpha.10〜.11): `[meta] schema_version = "2"` 必須化、
+  `[entries."X".match]` (inline match) + `[[kanji]]` block (= 文脈分岐 reading) の
+  declarative format に統一
+- **Lindera fallback** (alpha.13): band 50 の safety net、 helper / okurigana / dict 未登録の
+  surface を救う
+- **dict-curated 路線統一** (alpha.19): lib 側 band hack を撤回、 動詞 / 形容詞 1 字を
+  [[kanji]] block + next_starts match で declarative に書く方針 (= OSS curation loop)
+- **UniDic feature flag** (alpha.17): `dict-ipadic` (default) / `dict-unidic` (cwj、
+  0.2.0 intonation 用 pitch accent base data) を build-time switch
+- **inspect API** (alpha.19): `extract_dict_gap_candidates` で production traffic から
+  dict 未登録 surface を抽出する pure 関数群 (lib は telemetry を持たず caller に委譲)
+
+### Breaking changes (= 0.1.0 で alpha.9 → 0.1.0 移行時)
+
+- `Engine` enum / `JA_FURIGANA_ENGINE` env var / `Furigana::engine()` / builder `.engine()`
+  全削除 (alpha.15)、 Smart engine が唯一の path
+- 旧 `reading::pipeline` / `reading::context` / `chunks` / `loanwords` / `single_overrides` /
+  `numbers::phrase` modules を削除
+- `FuriganaBuilder::core_loanwords_dir()` / `.single_overrides_file()` 削除
+- `furigana-diff-engines` bin 削除 (= Strict vs Smart 比較が無意味化)
+- `rules::context` data type 削除 (= dict 側 [[kanji]] / [[entries]] match で代替)
+
+### corpus 正解率 (alpha.19 末)
+
+| corpus | IPADIC | UniDic |
+|---|---|---|
+| should_read.toml (150) | 100% | ~99% |
+| general.toml (33) | 97.0% | 97.0% |
+| touhou.toml (30) | 100% | 100% |
+| sentences.toml (49) | 100% | ~96% |
+| **計 (262)** | **99.6%** | ~97% |
+
+### API stability policy (= 0.1.0 stable で約束)
+
+0.1.0 stable cut 後、 以下の **public API は SemVer 互換維持** (= 0.1.x patch で
+breaking change なし、 0.2.0+ で additive 拡張のみ):
+
+**主要 public 型 (= lib が return する output 型)**:
+- `Furigana` / `FuriganaBuilder` — method 削除 / signature 変更なし
+- `AnalyzeResult` / `AnalyzeToken` — `#[non_exhaustive]`、 field 追加可
+- `Candidate` / `Score` — construction は `::new()` 経由のみ stable
+- `ContextWindow` / `DictGapCandidate` — `#[non_exhaustive]` (= 後者のみ)
+- `ReadingToken` — field 構成 fix
+- `RomajiStyle` / `TtsOptions` — variant 追加可 (= `#[non_exhaustive]` enum 想定)
+
+**主要 public 関数**:
+- `Furigana::analyze` / `tokenize` / `to_hiragana` / `to_ruby` / `to_tts` / `to_romaji`
+- `extract_dict_gap_candidates` / `surface_with_context` / `token_band`
+- `tokens_to_hiragana` / `tokens_to_ruby` / `hiragana_to_romaji`
+
+**unstable surface (= 0.1.x で変更余地あり)**:
+- `pub mod` で再エクスポートしている内部 module (`scoring::engine`, `scoring::format` 等)
+- dev tool bin (`furigana-corpus-check` / `furigana-analyze-one`)
+- 内部 helper 関数 (= 上記の 「主要」 リストにないもの)
+
+### benchmark (alpha.19、 Windows 11、 IPADIC default)
+
+| input | `analyze()` raw | `to_ruby()` full pipeline |
+|---|---|---|
+| short (18 B) | 9.6 µs | 10.4 µs |
+| short_phrase (27 B) | 9.7 µs | 9.5 µs |
+| medium (110 B) | 60.4 µs | 63.0 µs |
+| long (400 B) | 287 µs | ~290 µs |
+
+= alpha.13 で測った baseline (= Strict 切替前) と同等の latency。 dict-curated
+context rule 路線 (= 30+ [[kanji]] block 追加) で path scoring overhead は起こらず、
+0.1.0 stable cut で latency target を維持。
+
 ## [0.1.0-alpha.19] - 2026-05-12
 
 **band up trick 撤回、 dict-curated 路線 (= [[kanji]] block + next_starts match) に統一**。
