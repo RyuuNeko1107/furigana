@@ -23,12 +23,20 @@
 //! - Lindera surface byte 累積が input byte 長と不一致なら、 edge 生成中止
 //!   (defensive、 通常は Normal mode で一致するはず)
 //!
-//! ## なぜ band 50 で十分か
+//! ## band の構造 (★alpha.20 で 2 段化)
 //!
 //! [`crate::scoring::engine::PathScore`] は `weakest_band` (= path 中の最低 band)
-//! で path を比較する。 path に Lindera edge が混じれば weakest=50、 全て dict /
-//! kanji なら weakest≥100、 高 band 側勝ち。 つまり Lindera は 「他 provider が
-//! 完全に空のとき」 だけ採用される (= safety net 動作)。
+//! で path を比較する。 Lindera fallback は surface 形状で band を 2 段に分ける:
+//!
+//! - **band 150** (= [`Score::lindera_compound`]): surface 2 字以上 + 全 char 漢字。
+//!   dict 未登録の純漢字熟語 (= 最近 / 風邪 / 海外 等) を、 単漢字 default 合成
+//!   (band 100 × 2) で破壊せず形態素エンジン 1 token を優先する。
+//! - **band 50** (= [`Score::lindera`]): それ以外 (= 単漢字 / 漢字+okurigana 混在 /
+//!   助詞 / kana のみ)。 単漢字 default + `[[kanji]]` block match の方が信頼できる
+//!   ため、 最終 safety net 位置に留める。
+//!
+//! いずれも dict 完全一致 (1000) / 特殊処理 (950) / `[[kanji]]` block (1000) には
+//! 常に負ける = dict 整備が source of truth、 Lindera は形態素 fallback 専任。
 //!
 //! ## 注意点
 //!
@@ -44,6 +52,22 @@
 use crate::analyzer::Analyzer;
 use crate::scoring::bracket::strip_intonation_markers;
 use crate::scoring::candidate::{Candidate, CandidateProvider, Score};
+
+/// band-up 対象の判定: 「CJK 統合漢字範囲のみ」 で 々/〆/ヶ は除外する。
+///
+/// `is_kanji_char` (= kana.rs) は 々/〆/ヶ を含むが、 これらは専用 provider
+/// (OdorijiProvider / NumberCandidateProvider) が担当する範囲で、 Lindera が
+/// 横取りすると path 構造が壊れる (例: 我々 → 1 token band 150 vs dict 我 +
+/// 々 odoriji band 100 で前者が勝ってしまう)。 そのため band-up 判定では
+/// real CJK ideograph のみ対象とする。
+fn is_real_cjk_ideograph(c: char) -> bool {
+    matches!(
+        c,
+        '\u{3400}'..='\u{4DBF}' |   // CJK 拡張 A
+        '\u{4E00}'..='\u{9FFF}' |   // CJK 統合漢字
+        '\u{F900}'..='\u{FAFF}'     // CJK 互換
+    )
+}
 
 /// Lindera tokenize 結果を edge 配列で保持する fallback provider。
 ///
@@ -71,21 +95,21 @@ impl LinderaFallbackProvider {
         let mut byte_pos = 0usize;
         for tok in tokens {
             let surface_len = tok.surface.len();
-            // input 範囲外 (= 累積ズレ) なら edges 中断
-            if byte_pos + surface_len > input.len() {
+            let end = byte_pos + surface_len;
+            // 範囲外 / char boundary 不一致 (= Lindera が空白 / 制御文字を吸って
+            // byte offset がズレるケース、 例: input `( ・∇・)`) は edges 全廃して
+            // safety net 自体 disable (= 後段 provider に任せる)
+            let Some(slice) = input.get(byte_pos..end) else {
                 return Self { edges: Vec::new() };
-            }
-            // surface と input 該当 slice が一致しない (= tokenize で文字捨て or
-            // normalize が起こった) なら edges 中断、 safety net 自体 disable
-            let slice = &input[byte_pos..byte_pos + surface_len];
+            };
             if slice != tok.surface {
                 return Self { edges: Vec::new() };
             }
             // reading: Lindera details[7] (= カタカナ)、 無ければ surface fallback
             // (= 記号 / 未知語、 reading = surface で 「読まない」 扱い)
             let reading = tok.reading.unwrap_or_else(|| tok.surface.clone());
-            edges.push((byte_pos, byte_pos + surface_len, reading));
-            byte_pos += surface_len;
+            edges.push((byte_pos, end, reading));
+            byte_pos = end;
         }
         Self { edges }
     }
@@ -106,15 +130,23 @@ impl CandidateProvider for LinderaFallbackProvider {
                 let surface = &input[*start..*end];
                 let char_count = surface.chars().count();
                 let length = u8::try_from(char_count).unwrap_or(u8::MAX);
-                // Lindera fallback は一律 band 50 (= safety net)。 動詞 / 形容詞
-                // 活用形は dict 側で 1 字 [[kanji]] block + next_starts match を
-                // declarative に書くことで対応する設計 (★alpha.19 で band up trick
-                // を撤回、 dict-curated 路線に統一)。
+                // ★alpha.20: 「2 字以上 + 全 char 漢字」 の surface に限り band 150 に
+                // 格上げ。 dict 未登録の純漢字熟語 (= 最近 / 風邪 / 海外 等) で 単漢字
+                // default 合成 (band 100 × 2) より形態素 1 token を優先する。
+                //
+                // 単漢字 (例: 私) は 50 のまま (= overrides.toml の `[[kanji]]` context
+                // match で制御)、 漢字+okurigana 混在 (例: 来た) も 50 のまま
+                // (= `[[kanji]]` block の `next_char_type` match で declarative 解決)。
+                let score = if char_count >= 2 && surface.chars().all(is_real_cjk_ideograph) {
+                    Score::lindera_compound(length)
+                } else {
+                    Score::lindera(length)
+                };
                 Candidate::new(
                     surface.to_string(),
                     strip_intonation_markers(reading),
                     *start..*end,
-                    Score::lindera(length),
+                    score,
                 )
             })
             .collect()
@@ -164,6 +196,63 @@ mod tests {
         let lindera = Score::lindera(2);
         let kanji = Score::kanji(2);
         assert!(kanji > lindera);
+    }
+
+    #[test]
+    fn band_150_beats_kanji_band_100_for_compound() {
+        // ★alpha.20: 2 字以上純漢字 surface は band 150 で 単漢字 default (100) を上回る。
+        let compound = Score::lindera_compound(2);
+        let kanji = Score::kanji(1);
+        assert!(compound > kanji);
+        // ただし dict / 特殊処理 には依然負ける
+        assert!(compound < Score::dict_exact(2));
+        assert!(compound < Score::special(2));
+    }
+
+    #[test]
+    fn kanji_compound_surface_gets_band_150() {
+        // 「最近」 (= 2 字純漢字 surface) の Lindera token → band 150 になることを確認。
+        // dict に 「最近」 が未登録の前提 (= IPADIC 形態素解析だけが頼り)。
+        let a = analyzer();
+        let input = "最近の話";
+        let p = LinderaFallbackProvider::new(&a, input);
+        let cands_at_0 = p.candidates_at(input, 0);
+        let saikin = cands_at_0.iter().find(|c| c.surface == "最近");
+        if let Some(c) = saikin {
+            assert_eq!(
+                c.score.band, 150,
+                "「最近」 (2 字純漢字) は band 150 (= lindera_compound) を期待"
+            );
+        }
+    }
+
+    #[test]
+    fn single_kanji_surface_stays_band_50() {
+        // 単漢字 surface (= 1 字) は band 50 のまま (= overrides.toml に譲る)。
+        let a = analyzer();
+        let input = "私";
+        let p = LinderaFallbackProvider::new(&a, input);
+        let cands = p.candidates_at(input, 0);
+        if let Some(c) = cands.iter().find(|c| c.surface == "私") {
+            assert_eq!(c.score.band, 50, "単漢字 surface は band 50 維持");
+        }
+    }
+
+    #[test]
+    fn kanji_okurigana_mixed_stays_band_50() {
+        // 漢字 + ひらがな混在 surface (= 「来た」) は band 50 (= [[kanji]] block 経路に譲る)。
+        let a = analyzer();
+        let input = "来た";
+        let p = LinderaFallbackProvider::new(&a, input);
+        // Lindera が 「来」 + 「た」 と 2 token に分ける場合、 各々 1 字 → 50。
+        // 仮に 1 token (「来た」) で返した場合も混在で band 50。
+        for c in p.candidates_at(input, 0) {
+            assert_eq!(
+                c.score.band, 50,
+                "漢字+okurigana 混在 surface は band 50 維持 ({:?})",
+                c.surface
+            );
+        }
     }
 
     #[test]

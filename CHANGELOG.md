@@ -6,8 +6,26 @@
 
 ## [Unreleased] — 0.1.0 stable cut 準備
 
-alpha.10〜.19 の累積 work を 0.1.0 stable として release する射程に入った
-(corpus 正解率 262 case で 99.6%)。 0.1.0 では:
+alpha.10〜.20 の累積 work を 0.1.0 stable として release する射程に入った
+(主要 corpus 99.2%、 stress test corpus 73.4% で形態素信頼版 band 150 導入)。 0.1.0 では:
+
+### alpha.20 (= 形態素信頼 band-up、 dict 未登録の純漢字熟語救済)
+
+- `BAND_LINDERA_COMPOUND = 150` を新設 (= `Score::lindera_compound(length)` constructor)、
+  Lindera が **2 字以上 + 全 char 純 CJK 統合漢字** の surface を 1 token で返したとき band を
+  50 → 150 に格上げ。 単漢字 default (band 100) 合成より形態素 1 token を優先する
+- 適用範囲は厳格に絞り: 単漢字 surface (= 「私」) / 漢字+okurigana 混在 (= 「来た」) /
+  々/〆/ヶ を含む surface (= 「我々」、 OdorijiProvider 担当) は band 50 維持
+- band 序列: `1000 (dict) > 950 (special) > 150 (lindera_compound) > 100 (kanji default) > 50 (lindera)`、
+  dict / 特殊処理 (数字 / 助数詞) には常に負ける = dict 整備が source of truth
+- 効果: extended.toml stress corpus で **56.4% → 73.4% (+17 pt)**、 主要 4 corpus
+  (should_read / general / sentences / touhou) は 99.2% を維持 (= 既知 2 件 fail
+  は連濁 / 助数詞 related で band-up と無関係)
+- alpha.18 で試した 「漢字+okurigana の band-up trick」 を撤回した経緯と整合: あれは
+  送り仮名読みを context rule で書くべき問題、 今回は dict 未登録 2 字熟語で 単漢字
+  default が形態素 1 token を握り潰す現象への対症 = 動機 / 適用範囲ともに別問題
+
+
 
 ### 主要 milestone (= alpha.10〜.19 累積)
 
@@ -35,15 +53,20 @@ alpha.10〜.19 の累積 work を 0.1.0 stable として release する射程に
 - `furigana-diff-engines` bin 削除 (= Strict vs Smart 比較が無意味化)
 - `rules::context` data type 削除 (= dict 側 [[kanji]] / [[entries]] match で代替)
 
-### corpus 正解率 (alpha.19 末)
+### corpus 正解率 (alpha.20 末)
 
 | corpus | IPADIC | UniDic |
 |---|---|---|
-| should_read.toml (150) | 100% | ~99% |
+| should_read.toml (150) | 99.3% | ~99% |
 | general.toml (33) | 97.0% | 97.0% |
 | touhou.toml (30) | 100% | 100% |
 | sentences.toml (49) | 100% | ~96% |
-| **計 (262)** | **99.6%** | ~97% |
+| **小計 (主要 262)** | **99.2%** | ~97% |
+| extended.toml (94、 stress) | **73.4%** (alpha.19 末 56.4%) | — |
+
+参考: production reference (ryuuneko.com) は extended.toml で 75.5%、 残 2 件差
+まで肉薄。 「両方不正解」 ≒ 共通 dict gap (= 慣用句 / 古文系) は OSS curation で
+漸進的に詰める射程。
 
 ### API stability policy (= 0.1.0 stable で約束)
 

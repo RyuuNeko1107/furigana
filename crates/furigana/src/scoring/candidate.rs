@@ -24,6 +24,21 @@ pub const BAND_DICT_EXACT: u16 = 1000;
 /// dict に意図的 entry を書けば 1000 で override 可能。
 pub const BAND_SPECIAL: u16 = 950;
 
+/// Lindera が **2 字以上 + 全 char 漢字** の surface を 1 token として返したときの band 値
+/// (★alpha.20、 形態素信頼版)。
+///
+/// 単漢字 default (band 100) を上回るが、 dict / 特殊処理 / `[[kanji]]` block (band 1000)
+/// には常に負ける。 「dict 未登録の純漢字熟語 (例: 最近 / 風邪 / 宿題 / 海外)」 を
+/// 単漢字 default の合成 (= もっとも + ちかい 等) で破壊せず、 形態素エンジン
+/// (= IPADIC / UniDic) の reading を信頼するための trick。
+///
+/// 適用範囲を 「2 字以上 + 全漢字」 に絞る理由:
+/// - 単漢字 surface (= 「私」 「彼」 等) は overrides.toml の `[[kanji]]` context match で
+///   制御したい (= Lindera が default 訓読みを返すと困る case 多数)
+/// - 漢字 + okurigana の混在 (= 「来た」 等) は `[[kanji]]` block の `next_char_type` match
+///   で declarative に解決する設計 (= alpha.18 band-up trick を撤回した経緯)
+pub const BAND_LINDERA_COMPOUND: u16 = 150;
+
 /// 漢字辞書 (`[[kanji]]`) の band 値。 dict 完全一致 / 特殊処理 がない時の前段 fallback。
 pub const BAND_KANJI: u16 = 100;
 
@@ -94,6 +109,15 @@ impl Score {
     #[must_use]
     pub const fn lindera(length: u8) -> Self {
         Self::new(BAND_LINDERA_UNIHAN, length, 0, 0)
+    }
+
+    /// Lindera 2 字以上純漢字 surface 用 score (band 150、 length 指定、 ★alpha.20)。
+    ///
+    /// 単漢字 default 合成より形態素 1 token を優先する場面で使う。
+    /// caller は 「surface 文字数 ≥ 2 かつ 全 char が漢字」 を確認してから呼ぶこと。
+    #[must_use]
+    pub const fn lindera_compound(length: u8) -> Self {
+        Self::new(BAND_LINDERA_COMPOUND, length, 0, 0)
     }
 }
 
@@ -245,10 +269,12 @@ mod tests {
     #[allow(clippy::assertions_on_constants)]
     fn band_values_are_correctly_ordered() {
         assert!(BAND_DICT_EXACT > BAND_SPECIAL);
-        assert!(BAND_SPECIAL > BAND_KANJI);
+        assert!(BAND_SPECIAL > BAND_LINDERA_COMPOUND);
+        assert!(BAND_LINDERA_COMPOUND > BAND_KANJI);
         assert!(BAND_KANJI > BAND_LINDERA_UNIHAN);
         assert_eq!(BAND_DICT_EXACT, 1000);
         assert_eq!(BAND_SPECIAL, 950);
+        assert_eq!(BAND_LINDERA_COMPOUND, 150);
         assert_eq!(BAND_KANJI, 100);
         assert_eq!(BAND_LINDERA_UNIHAN, 50);
     }
