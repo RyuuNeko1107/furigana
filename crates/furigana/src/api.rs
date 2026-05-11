@@ -406,8 +406,49 @@ impl<'a> CandidateProvider for DictBridgeProvider<'a> {
             emitted_at_pos.insert(surface.to_string());
         }
 
-        // unihan fallback: rich に無い 1 文字 surface (= unihan/*.toml で flat 登録された entry)
-        // を band 100 で出す。 rich_iter で既に拾った surface は skip して duplicate 回避。
+        // ★A2 alpha.12: [[kanji]] block (= core/kanji/*.toml) を walk して
+        // 1 文字 surface に文脈分岐 reading を提供。 rich_iter / unihan と異なり
+        // ファイル毎の per-char default + match 配列を持つので、 rich で拾い損ねた
+        // 1 字 surface はここで MatchCondition 評価ありで band 100 candidate 化。
+        if let Some(c) = tail.chars().next() {
+            let char_len = c.len_utf8();
+            let surface = &tail[..char_len];
+            let end_pos = pos + char_len;
+            let prev = prev_logical_token(input, pos);
+            let next = next_logical_token(input, end_pos);
+            let next2 = next2_logical_token(input, end_pos);
+            let ctx = MatchContext::with_all(
+                if prev.is_empty() { None } else { Some(prev) },
+                if next.is_empty() { None } else { Some(next) },
+                if next2.is_empty() { None } else { Some(next2) },
+            );
+            for block in self.dict.kanji_iter() {
+                if block.char != surface {
+                    continue;
+                }
+                if emitted_at_pos.contains(surface) {
+                    // rich 側で既に同 surface を band 100 で emit している
+                    // (= [[kanji]] と entries の重複登録 ケース)、 skip して duplicate 回避
+                    continue;
+                }
+                let reading = block
+                    .matches
+                    .iter()
+                    .find(|m| m.condition.matches_context(&ctx))
+                    .map(|m| m.reading.as_str())
+                    .unwrap_or(block.default.as_str());
+                out.push(Candidate::new(
+                    surface.to_string(),
+                    strip_intonation_markers(reading),
+                    pos..end_pos,
+                    Score::kanji(1),
+                ));
+                emitted_at_pos.insert(surface.to_string());
+            }
+        }
+
+        // unihan fallback: rich / [[kanji]] block 両方に無い 1 文字 surface
+        // (= unihan/*.toml で flat 登録された entry) を band 100 で出す。
         if let Some(c) = tail.chars().next() {
             let char_len = c.len_utf8();
             let surface = &tail[..char_len];
@@ -1143,5 +1184,74 @@ reading = "シタテ"
         let jouzu_token = r.tokens.iter().find(|t| t.surface == "上手");
         assert!(jouzu_token.is_some(), "expected 「上手」 token: {r:?}");
         assert_eq!(jouzu_token.unwrap().reading, "シタテ");
+    }
+
+    // ─── analyze() (★A2 alpha.12) [[kanji]] block 評価 tests ───────────────
+
+    /// [[kanji]] block (role = "kanji") を含む dict を temp file 経由で build する helper。
+    fn build_with_kanji_toml(toml_body: &str) -> Furigana {
+        let dir = std::env::temp_dir().join(format!(
+            "furigana_kanji_block_test_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let dict_file = dir.join("test.toml");
+        std::fs::write(
+            &dict_file,
+            format!(
+                "[meta]\nschema_version = \"2\"\nrole = \"kanji\"\n\n{}",
+                toml_body
+            ),
+        )
+        .unwrap();
+        Furigana::builder()
+            .core_dict_dir(&dir)
+            .build()
+            .expect("build with [[kanji]] block")
+    }
+
+    #[test]
+    fn dict_bridge_evaluates_kanji_block_default_reading() {
+        // 「生」 単独 → default 「セイ」 (= 文脈 「じる」 無し / prev 漢字ではない)
+        let f = build_with_kanji_toml(
+            r#"[[kanji]]
+char = "生"
+default = "セイ"
+
+[[kanji.match]]
+next_eq = "じる"
+reading = "ショウ"
+"#,
+        );
+        let r = f.analyze("生");
+        assert_eq!(r.tokens.len(), 1);
+        assert_eq!(r.tokens[0].reading, "セイ");
+    }
+
+    #[test]
+    fn dict_bridge_evaluates_kanji_block_with_next_eq() {
+        // 「生じる」 → 「生」 が next_eq "じる" match → 「ショウ」
+        // path 全 cover のため 「じる」 を Simple entry で追加
+        let f = build_with_kanji_toml(
+            r#"[entries]
+"じる" = "ジル"
+
+[[kanji]]
+char = "生"
+default = "セイ"
+
+[[kanji.match]]
+next_eq = "じる"
+reading = "ショウ"
+"#,
+        );
+        let r = f.analyze("生じる");
+        let sei_token = r.tokens.iter().find(|t| t.surface == "生");
+        assert!(sei_token.is_some(), "expected 「生」 token in path: {r:?}");
+        assert_eq!(sei_token.unwrap().reading, "ショウ");
     }
 }

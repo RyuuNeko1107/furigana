@@ -31,7 +31,7 @@
 //! 単漢字 unihan の保守的読みが横取りすることがなくなる。
 
 use crate::error::{FuriganaError, Result};
-use crate::scoring::format::{Entry, EntryDetail};
+use crate::scoring::format::{Entry, EntryDetail, KanjiBlock};
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -86,6 +86,10 @@ fn collect_toml_files_recursive(dir: &Path, out: &mut Vec<PathBuf>) -> std::io::
 struct DictFile {
     #[serde(default)]
     entries: HashMap<String, toml::Value>,
+    /// ★A2 alpha.12: `[[kanji]]` block 配列 (= core/kanji/*.toml の new format)
+    /// 単漢字単独 default reading + 文脈分岐を持つ 「first-class candidate generator」
+    #[serde(default)]
+    kanji: Vec<KanjiBlock>,
 }
 
 /// 単純 HashMap ベースの surface→reading 辞書
@@ -107,6 +111,10 @@ pub struct Dict {
     /// Detailed variant)。 surface 長で振り分けず全 entry をここに保持、
     /// alpha.11+ で Smart engine が `MatchCondition` 評価に使う想定。
     rich: HashMap<String, Entry>,
+    /// `[[kanji]]` block 配列 (★A2 alpha.12、 `core/kanji/*.toml` の新 format)。
+    /// 単漢字単独 default + 文脈分岐 reading を持つ first-class candidate generator、
+    /// Smart engine から `kanji_iter()` で walk して `MatchCondition` 評価する想定。
+    kanji: Vec<KanjiBlock>,
 }
 
 impl Dict {
@@ -176,6 +184,26 @@ impl Dict {
                 continue;
             }
             // 3) その他 (= bool / array / etc) は silent skip
+        }
+
+        // ★A2 alpha.12: `[[kanji]]` block の取り込み (= core/kanji/*.toml 等)
+        for block in parsed.kanji {
+            // char validate (= 1 字 surface 必須)
+            if block.validate().is_err() {
+                continue; // invalid block は silent skip (= validate.py で CI 側 reject 想定)
+            }
+            // sanitize: char (= surface) と default + 各 match reading
+            crate::sanitize::sanitize_dict_value("kanji char", &block.char)
+                .map_err(|e| FuriganaError::Validation(format!("{file}: {e}")))?;
+            crate::sanitize::sanitize_dict_value("kanji default reading", &block.default)
+                .map_err(|e| FuriganaError::Validation(format!("{file}: {e}")))?;
+            for m in &block.matches {
+                crate::sanitize::sanitize_dict_value("kanji match reading", &m.reading)
+                    .map_err(|e| FuriganaError::Validation(format!("{file}: {e}")))?;
+            }
+            // unihan map にも default reading を inject (= Strict engine 後方互換 + 単純 lookup 用)
+            d.unihan.insert(block.char.clone(), block.default.clone());
+            d.kanji.push(block);
         }
         Ok(d)
     }
@@ -247,7 +275,7 @@ impl Dict {
             // で Dict として扱う (古い release で role tag が無い file を救う)。
             let load_into_dict = matches!(
                 role.as_deref(),
-                Some("jukugo") | Some("unihan") | Some("works") | None
+                Some("jukugo") | Some("unihan") | Some("works") | Some("kanji") | None
             );
             if !load_into_dict {
                 continue;
@@ -302,6 +330,9 @@ impl Dict {
         self.jukugo.extend(other.jukugo);
         self.unihan.extend(other.unihan);
         self.rich.extend(other.rich);
+        // ★A2 alpha.12: [[kanji]] block も merge (= append、 重複 char は両方残るので
+        // 「後勝ち」 ではなく order 依存。 同 char の重複は validate.py で reject 想定)
+        self.kanji.extend(other.kanji);
     }
 
     /// surface に対応する完全 [`Entry`] を返す (★A2、 alpha.11)。
@@ -321,6 +352,15 @@ impl Dict {
     /// 区別なく全 entry を返す。
     pub fn rich_iter(&self) -> impl Iterator<Item = (&str, &Entry)> {
         self.rich.iter().map(|(k, v)| (k.as_str(), v))
+    }
+
+    /// [[kanji]] block 配列を iter 公開 (★A2、 alpha.12、 `core/kanji/*.toml` 由来)。
+    ///
+    /// Smart engine 側 provider が単漢字単位の default + 文脈分岐 reading を
+    /// 評価するために walk する。 entries (= rich) と独立して並走、 同 char
+    /// surface が両方にある場合は scoring engine path 選択で勝者決定。
+    pub fn kanji_iter(&self) -> impl Iterator<Item = &KanjiBlock> {
+        self.kanji.iter()
     }
 
     /// 件数 (jukugo + unihan の合計)
