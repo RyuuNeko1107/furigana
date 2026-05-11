@@ -85,9 +85,10 @@ struct Case {
     input: String,
     #[serde(default = "default_mode")]
     mode: String,
-    /// 参照 reference (diff_engines は使わない、 caller の note 用)
+    /// expected reading (= 各 engine の出力と照合、 正解率 summary に集計)。
+    /// 旧: diff_engines は engine 間比較のみで expected を使わなかったが、
+    /// alpha.14 wire-up 後は Smart vs expected の絶対正解率も測れる。
     #[serde(default)]
-    #[allow(dead_code)]
     expected: Option<String>,
     #[serde(default)]
     note: Option<String>,
@@ -177,6 +178,10 @@ fn run() -> Result<ExitCode> {
     let mut diff_count = 0usize;
     let mut error_count = 0usize;
     let mut uncovered_count = 0usize;
+    // ★ expected との照合カウンタ (= corpus に expected 付き case の正解率)
+    let mut expected_total = 0usize;
+    let mut strict_correct = 0usize;
+    let mut smart_correct = 0usize;
 
     for (i, case) in corpus.cases.iter().enumerate() {
         let strict_out = match run_case(&strict, &case.input, &case.mode) {
@@ -212,6 +217,17 @@ fn run() -> Result<ExitCode> {
             uncovered_count += 1;
         }
 
+        // expected との照合 (= case に expected がある場合のみ)
+        if let Some(expected) = &case.expected {
+            expected_total += 1;
+            if strict_out == *expected {
+                strict_correct += 1;
+            }
+            if smart_out == *expected {
+                smart_correct += 1;
+            }
+        }
+
         if strict_out != smart_out {
             diff_count += 1;
             let label = if is_uncovered { "UNCOV" } else { "DIFF " };
@@ -233,6 +249,13 @@ fn run() -> Result<ExitCode> {
     println!("=== Summary ===");
     println!("Total cases: {}", corpus.cases.len());
     println!("Diffs:       {diff_count}");
+    if expected_total > 0 {
+        let strict_pct = (strict_correct * 100) as f64 / expected_total as f64;
+        let smart_pct = (smart_correct * 100) as f64 / expected_total as f64;
+        println!("Expected match (expected 付き {} case):", expected_total);
+        println!("  Strict: {strict_correct}/{expected_total} ({strict_pct:.1}%)");
+        println!("  Smart : {smart_correct}/{expected_total} ({smart_pct:.1}%)");
+    }
     if args.via_analyze {
         println!("  ├ Uncovered (Smart path 構築不能): {uncovered_count}");
         println!(
