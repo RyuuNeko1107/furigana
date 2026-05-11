@@ -21,12 +21,22 @@ fn surface_has_kanji(surface: &str) -> bool {
     surface.chars().any(kana::is_kanji_char)
 }
 
+/// surface と reading が **同音 (= kana 表記が一致)** かを判定。
+///
+/// 「の」 + 「ノ」 のように reading が surface の単純な kata/hira 違いだけの場合に true。
+/// Smart engine の Lindera fallback が hiragana 助詞 / okurigana に reading=カタカナ
+/// を付けて返すケースで、 surface (= 元のひらがな) を保持するため使う。
+fn reading_is_same_kana_as_surface(surface: &str, reading: &str) -> bool {
+    kana::kata_to_hira(surface) == kana::kata_to_hira(reading)
+}
+
 /// トークン列をひらがな文字列に変換 (TTS 等向け)
 ///
 /// - 読みあり + surface が漢字を含む → reading を **ひらがな化** (kata_to_hira)
-/// - 読みあり + surface が漢字を含まない → reading を **カタカナに統一** (hira_to_kata)
-///   - アルファベット / 数字 / 記号 / 既存カタカナ surface は元 reading の表記を問わず
-///     カタカナで出力 (例: `rules/symbols.toml` の 「〜=から」 もカタカナ「カラ」 に揃える)
+/// - 読みあり + surface == reading (kana 等価) → **surface をそのまま** (= 元の表記を保持、
+///   「の」 + reading 「ノ」 のような Lindera fallback の particle / okurigana case)
+/// - 読みあり + surface が漢字を含まない & reading != surface → reading を **カタカナに統一**
+///   (hira_to_kata、 alphabet loanword 等の phonetic reading 用)
 /// - 読みなし → surface をそのまま
 #[must_use]
 pub fn tokens_to_hiragana(tokens: &[ReadingToken]) -> String {
@@ -35,10 +45,14 @@ pub fn tokens_to_hiragana(tokens: &[ReadingToken]) -> String {
         if let Some(reading) = &t.reading {
             if surface_has_kanji(&t.surface) {
                 out.push_str(&kana::kata_to_hira(reading));
+            } else if reading_is_same_kana_as_surface(&t.surface, reading) {
+                // 「の」 surface + 「ノ」 reading のように、 reading が surface の kana 表記
+                // 違いだけなら元 surface を保持 (= 入力ひらがなはひらがなのまま)
+                out.push_str(&t.surface);
             } else {
-                // ASCII 英字 / 数字 / 記号 / カタカナ / ひらがな のみの surface は
-                // reading をカタカナに統一して出力 (アルファベット由来 / 数字・記号系を
-                // 一貫してカタカナ表記にする)。
+                // ASCII 英字 / 数字 / 記号 surface に phonetic reading が付くケース
+                // (例: 「Kubernetes」+「クバネティス」、「C++」+「シープラスプラス」) は
+                // reading をカタカナに統一して出力。
                 out.push_str(&kana::hira_to_kata(reading));
             }
         } else {

@@ -15,6 +15,7 @@ use crate::scoring::analyze::{analyze as scoring_analyze, AnalyzeResult};
 use crate::scoring::boundary::BoundaryAnalysis;
 use crate::scoring::bracket::strip_intonation_markers;
 use crate::scoring::candidate::{Candidate, CandidateProvider, Engine, Score};
+use crate::scoring::lindera_fallback::LinderaFallbackProvider;
 use crate::scoring::matcher::{
     next2_logical_token, next_logical_token, prev_logical_token, MatchContext,
 };
@@ -277,7 +278,7 @@ impl Furigana {
     /// `engine()` setting に依らず Smart 結果を返す (= caller が明示的に
     /// Smart 解析を要求している前提)。
     ///
-    /// ## 構成 provider (alpha.10 段階)
+    /// ## 構成 provider (alpha.10 段階 + alpha.13 追加)
     ///
     /// - [`ProtectTokenProvider`] (URL / Email / 絵文字、 band 2000)
     /// - [`AlphabetPassthroughProvider`] (英字 passthrough、 hit は band 1000 / miss は band 100)
@@ -285,6 +286,8 @@ impl Furigana {
     /// - [`NumberCandidateProvider`] (数字 + 助数詞 / 大数スケール / SI 単位 / 日付 / 時刻 /
     ///   記号 / 素の数字、 band 950)
     /// - [`OdorijiProvider`] (々 placeholder edge、 band 100、 post-pass で連濁適用)
+    /// - [`LinderaFallbackProvider`] (★alpha.13、 Lindera + IPADIC、 band 50): 他 provider が
+    ///   一切覆わない位置 (= 助詞 / okurigana / dict 未登録 単語) を埋める safety net
     ///
     /// loanwords 検索は alpha.10 では未統合 (= AlphabetPassthrough は lookup 無しの passthrough_only)。
     /// `numeric_phrases` (二十歳=ハタチ 等) も別 provider 化が望ましいが C3 scope 外。
@@ -304,12 +307,16 @@ impl Furigana {
         let alphabet = AlphabetPassthroughProvider::passthrough_only(input);
         let dict_bridge = DictBridgeProvider::new(&self.dict);
         let odoriji = OdorijiProvider::new();
-        let providers: [&dyn CandidateProvider; 5] = [
+        // ★alpha.13: Lindera fallback (band 50) = 他 provider が一切覆わない位置の safety net。
+        // construction で input 全体を tokenize、 各 candidates_at は edge 配列 lookup のみ。
+        let lindera = LinderaFallbackProvider::new(self.analyzer(), input);
+        let providers: [&dyn CandidateProvider; 6] = [
             &protect,
             &alphabet,
             &dict_bridge,
             &self.number_provider,
             &odoriji,
+            &lindera,
         ];
 
         let boundary =
@@ -912,12 +919,20 @@ mod tests {
     }
 
     #[test]
-    fn analyze_uncovered_input_yields_empty_tokens() {
-        // 辞書 / 保護 / 英字 のいずれにも該当しない char が混ざると path 構築不能
+    fn analyze_falls_back_to_lindera_when_no_other_provider_covers() {
+        // alpha.13 以前: 「猫が好き」 のような ひらがな混在 input は dict / 保護 /
+        // 英字 のどれも cover せず path 構築不能だった。
+        // alpha.13+ : Lindera fallback (band 50) が input 全体を tokenize、
+        // 他 provider が空の位置を埋めるので path が必ず構築される (safety net)。
         let f = Furigana::minimal().unwrap();
-        let r = f.analyze("猫が好き"); // dict 未投入、 ひらがな も対象外
-        assert!(r.tokens.is_empty());
-        assert!(r.path_indices.is_empty());
+        let r = f.analyze("猫が好き");
+        assert!(
+            !r.tokens.is_empty(),
+            "Lindera fallback should cover input: {r:?}"
+        );
+        // path 全体を Lindera で覆ったので token 列が input を完全に span するはず
+        let total_len: usize = r.tokens.iter().map(|t| t.range.end - t.range.start).sum();
+        assert_eq!(total_len, "猫が好き".len());
     }
 
     #[test]
@@ -1078,19 +1093,18 @@ mod tests {
     }
 
     #[test]
-    fn analyze_minimal_has_no_path_for_counter_when_rules_empty() {
-        // minimal() = 空 RulesData → counter regex は None、 「3本」 の 「本」 を覆える
-        // provider が存在しない → path 構築不能 (tokens / candidates / path_indices 全 空)
+    fn analyze_minimal_falls_back_to_lindera_for_counter_when_rules_empty() {
+        // alpha.13 以前: minimal() = 空 RulesData → counter regex None で 「3本」 の
+        // 「本」 を覆える provider 無し、 path 構築不能だった。
+        // alpha.13+ : Lindera fallback が「3」「本」 を band 50 で edge 化、 path 構築成功。
         let f = Furigana::minimal().unwrap();
         let r = f.analyze("3本");
         assert!(
-            r.tokens.is_empty(),
-            "expected empty tokens with no rules: {r:?}"
+            !r.tokens.is_empty(),
+            "Lindera fallback should provide edges: {r:?}"
         );
-        assert!(r.path_indices.is_empty());
-        // analyze() の candidates は adopted path の各 token 位置のみ集める仕様、
-        // path 不能なら空 Vec (= solve_path 戻り値が空 → path_indices 空)
-        assert!(r.candidates.is_empty());
+        let total_len: usize = r.tokens.iter().map(|t| t.range.end - t.range.start).sum();
+        assert_eq!(total_len, "3本".len());
     }
 
     // ─── analyze() (★A2 alpha.12) DictBridge MatchCondition 評価 tests ─────
