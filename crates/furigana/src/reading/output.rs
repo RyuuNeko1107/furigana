@@ -41,12 +41,17 @@ fn surface_is_all_kana(surface: &str) -> bool {
             .all(|c| kana::is_hiragana_char(c) || kana::is_katakana_char(c) || c == 'ー')
 }
 
-/// トークン列をひらがな文字列に変換 (TTS 等向け)
+/// トークン列をひらがな文字列に変換 (TTS / 読み上げ向け)
+///
+/// **読み上げ用途**: 形態素解析が pron (= 発音) を返したらそれを採用する。
+/// UniDic 経路では 助詞 「は」 → 「ワ」、 「へ」 → 「エ」 等が自動的に発音形に
+/// 展開される。 IPADIC 経路では reading が表記読みなので 「は」 のまま (= TTS
+/// 用には postprocess.toml の regex で別途補完が必要)。
 ///
 /// - 読みあり + surface が漢字を含む → reading を **ひらがな化** (kata_to_hira)
-/// - 読みあり + surface が **全部 kana** → **surface をそのまま** (= user が kana で書いた
-///   ものは reading で上書きしない、 「は」 particle 等の UniDic 発音 (「ワ」) を ignore)
-/// - 読みあり + surface == reading (kana 等価) → **surface をそのまま**
+/// - 読みあり + surface == reading (kana 等価) → **surface をそのまま** (=「ねこ」+「ネコ」)
+/// - 読みあり + surface が全 kana で reading と非等価 → reading を **ひらがな化**
+///   (= 助詞 「は」 + 発音 「ワ」 → 「わ」、 読み上げ向け)
 /// - 読みあり + その他 (alphabet / 数字 / 記号) → reading を **カタカナに統一**
 ///   (hira_to_kata、 alphabet loanword 等の phonetic reading 用)
 /// - 読みなし → surface をそのまま
@@ -57,13 +62,14 @@ pub fn tokens_to_hiragana(tokens: &[ReadingToken]) -> String {
         if let Some(reading) = &t.reading {
             if surface_has_kanji(&t.surface) {
                 out.push_str(&kana::kata_to_hira(reading));
-            } else if surface_is_all_kana(&t.surface) {
-                // user が kana で書いた surface は reading 上書きしない
-                // (UniDic では 「は」 particle が pron 「ワ」 になる、 IPADIC では一致する)
-                out.push_str(&t.surface);
             } else if reading_is_same_kana_as_surface(&t.surface, reading) {
-                // (この branch は実質 surface_is_all_kana で覆われるが safety net として残す)
+                // 「ねこ」 + 「ネコ」 / 「の」 + 「ノ」 のように surface と reading が
+                // kana 等価 → surface 維持 (= 入力表記を尊重)
                 out.push_str(&t.surface);
+            } else if surface_is_all_kana(&t.surface) {
+                // 全 kana surface だが reading が異なる (= 助詞 「は」 + UniDic 発音 「ワ」)
+                // → 読み上げ用に reading のひらがな化を採用
+                out.push_str(&kana::kata_to_hira(reading));
             } else {
                 // alphabet / 数字 / 記号 + phonetic reading → カタカナに統一
                 // (例: 「Kubernetes」+「クバネティス」、「C++」+「シープラスプラス」)
