@@ -6,7 +6,6 @@
 //! 集約型 [`RulesData`] が全ルールをまとめて保持する。
 
 pub mod compat;
-pub mod context;
 pub mod counters;
 pub mod days;
 pub mod numeric_phrases;
@@ -16,7 +15,6 @@ pub mod symbols;
 pub mod units;
 
 pub use compat::CompatData;
-pub use context::{ContextData, ContextMatch, ContextRule};
 pub use counters::{CounterMode, CounterRule, CountersData, EuphonicRule, KanaReplacement};
 pub use days::DaysData;
 pub use numeric_phrases::NumericPhrasesData;
@@ -26,12 +24,14 @@ pub use symbols::SymbolsData;
 pub use units::{UnitEntry, UnitsData};
 
 /// 全ルールを束ねるトップレベル構造体
+///
+/// 旧 `context` field (= rules/context/*.toml 由来の文脈分岐 reading) は
+/// alpha.15 で削除。 context match は dict 側 `[entries."X".match]` /
+/// `[[kanji]]` block で表現する設計に移行済 (alpha.11+)。
 #[derive(Debug, Default, Clone)]
 pub struct RulesData {
     /// 助数詞 (counters.toml)
     pub counters: CountersData,
-    /// 文脈依存読み (context.toml)
-    pub context: ContextData,
     /// 1〜31 日の特殊読み (days.toml)
     pub days: DaysData,
     /// 大数スケール: 万/億/兆/京… (scales.toml)

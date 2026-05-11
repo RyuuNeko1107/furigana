@@ -94,10 +94,10 @@ fn bench_tokenize(c: &mut Criterion) {
     g.finish();
 }
 
-/// ★alpha.13: Smart engine `analyze()` の latency benchmark。
-/// to_ruby (= Strict pipeline) と同 input で比較し、 wire-up 前の go/no-go gate
-/// 用 baseline を取る。 Lindera fallback 投入後、 analyze は input を 1 回
-/// tokenize するコストが入るが、 既存 Strict tokenize_text と同等以下を期待。
+/// `analyze()` raw API と `to_ruby()` 全段 pipeline (= analyze + ReadingToken
+/// 変換 + tokens_to_ruby + postprocess) の latency 比較。 alpha.15 で Strict が
+/// 削除されたので、 旧 Smart vs Strict 比較は無くなり、 raw analyze vs full
+/// to_ruby のオーバーヘッド計測に役割が変化。
 fn bench_analyze(c: &mut Criterion) {
     let f = build_furigana_with_seed_dict();
     let inputs: &[(&str, &str)] = &[
@@ -118,10 +118,10 @@ fn bench_analyze(c: &mut Criterion) {
     let mut g = c.benchmark_group("analyze");
     for (label, text) in inputs {
         g.throughput(Throughput::Bytes(text.len() as u64));
-        g.bench_with_input(BenchmarkId::new("Smart::analyze", label), text, |b, t| {
+        g.bench_with_input(BenchmarkId::new("raw_analyze", label), text, |b, t| {
             b.iter(|| black_box(f.analyze(t)));
         });
-        g.bench_with_input(BenchmarkId::new("Strict::to_ruby", label), text, |b, t| {
+        g.bench_with_input(BenchmarkId::new("to_ruby_full", label), text, |b, t| {
             b.iter(|| black_box(f.to_ruby(t)));
         });
     }

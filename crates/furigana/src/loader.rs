@@ -40,7 +40,7 @@
 //! ディレクトリ全体を読み込む高レベル API は [`load_rules_dir`]。
 
 use crate::error::{FuriganaError, Result};
-use crate::rules::{ContextData, CountersData, PostProcessData, PostProcessSpec, RulesData};
+use crate::rules::{CountersData, PostProcessData, PostProcessSpec, RulesData};
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
@@ -345,8 +345,9 @@ pub fn load_rules_dir<P: AsRef<Path>>(dir: P) -> Result<RulesData> {
                 data.counters.merge(part);
             }
             Some("context") => {
-                let part: ContextData = parse_toml(&content, &from)?;
-                data.context.merge(part);
+                // ★alpha.15: context.toml は dict 側 [entries."X".match] / [[kanji]]
+                // block で代替され、 lib 側では使われない。 古い release dict 互換のため
+                // role を認識するが load せず silent skip。
             }
             Some("days") => {
                 data.days = parse_toml(&content, &from)?;
@@ -519,7 +520,6 @@ mod tests {
         let data = load_rules_dir(&dir).unwrap();
         assert!(data.counters.simple.is_empty());
         assert!(data.scales.is_empty());
-        assert!(data.context.rules.is_empty());
         assert!(data.compat.is_empty());
         std::fs::remove_dir_all(&dir).ok();
     }
@@ -608,29 +608,6 @@ mod tests {
                 .and_then(|c| c.default.as_deref()),
             Some("ジ")
         );
-        std::fs::remove_dir_all(&dir).ok();
-    }
-
-    #[test]
-    fn load_rules_dir_merges_context_subdir_in_filename_order() {
-        let dir = fresh_temp_dir("context_subdir");
-        let sub = dir.join("context");
-        std::fs::create_dir_all(&sub).unwrap();
-        std::fs::write(
-            sub.join("01_a.toml"),
-            "[meta]\nschema_version = \"2\"\n\n[[rule]]\nsurface = \"一日\"\ndefault = \"イチニチ\"\n",
-        )
-        .unwrap();
-        std::fs::write(
-            sub.join("02_b.toml"),
-            "[meta]\nschema_version = \"2\"\n\n[[rule]]\nsurface = \"二日\"\ndefault = \"フツカ\"\n",
-        )
-        .unwrap();
-
-        let data = load_rules_dir(&dir).unwrap();
-        assert_eq!(data.context.rules.len(), 2);
-        assert_eq!(data.context.rules[0].surface, "一日");
-        assert_eq!(data.context.rules[1].surface, "二日");
         std::fs::remove_dir_all(&dir).ok();
     }
 

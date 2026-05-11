@@ -1,10 +1,25 @@
 # Proposal: Scoring Engine (candidate-based reading resolution)
 
-**Status**: Draft (2026-05-10)
-**Target**: 0.1.0 stable (alpha.10 投入 → alpha.11+ dogfood → 0.1.0 stable)
+**Status**: **Implemented and shipped in alpha.15** (2026-05-11)
+**Target**: 0.1.0 stable (alpha.10 投入 → alpha.15 で Strict 削除 + Smart 一本化 → 0.1.0 stable)
 **Scope**: ルビ振り精度向上のための architecture refactor、 0.1.0 stable で SemVer 開始時点から full new architecture
 
 > 関連: [ROADMAP.md](../ROADMAP.md) / [ARCHITECTURE.md](../ARCHITECTURE.md) / [intonation.md](./intonation.md) (Postponed)
+
+## 0. 実装状況 (2026-05-11)
+
+本 proposal の **大部分は alpha.10〜.15 で実装完了**。 残作業は別 doc (= [ROADMAP.md](../ROADMAP.md))
+で追跡する。 本 doc は **設計の意図 / 経緯** を残す archive として参照可能、
+最新の挙動 / API は [`crate ドキュメント`](https://docs.rs/ja-furigana) / [ARCHITECTURE.md](../ARCHITECTURE.md)
+を参照。
+
+主要 milestone:
+- ✅ alpha.10: scoring module 投入 (5 provider + Viterbi DP + band lexicographic)
+- ✅ alpha.11: dict format 完全移行 (`[entries."X".match]` / `[[kanji]]` block)
+- ✅ alpha.12: `[[kanji]]` block loader + DictBridge MatchCondition 評価
+- ✅ alpha.13: Lindera fallback provider (band 50 safety net、 corpus uncov 62% → 1%)
+- ✅ alpha.14: Smart engine を `to_*` API に wire-up
+- ✅ alpha.15: Strict pipeline 完全削除、 Smart 一本化 (-3000 行)
 
 ## 1. 動機
 

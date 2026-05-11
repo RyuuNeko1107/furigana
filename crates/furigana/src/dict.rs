@@ -43,10 +43,10 @@ use std::path::{Path, PathBuf};
 ///
 /// 集めた後の **role 駆動 dispatch** は caller 側 ([`Dict::from_toml_dir`]) が
 /// 行う:
-/// - `[meta] role = "jukugo" / "unihan" / "works"` の file → Dict に load
+/// - `[meta] role = "jukugo" / "unihan" / "works" / "kanji"` の file → Dict に load
 /// - `[meta] role = "loanwords" / "single_overrides" / "compat"` の file → SKIP
-///   (それぞれ [`crate::loanwords::Loanwords`] / [`crate::single_overrides::
-///   SingleOverrides`] / rules loader 側で別管理)
+///   (loanwords / single_overrides は alpha.15 で削除済、 SKIP のまま無視。
+///   compat は rules loader 側で別管理)
 /// - role tag が無い file → path-based 推定 ([`crate::loader::resolve_role`])
 ///   で fallback、 推定不能なら Dict にも load (backwards compat)
 ///
@@ -236,12 +236,13 @@ impl Dict {
     /// - `"jukugo"` (≥2 字 surface)
     /// - `"unihan"` (1 字 surface フォールバック)
     /// - `"works"` (作品造語)
+    /// - `"kanji"` (`[[kanji]]` block 形式、 文脈分岐 reading 持ち単漢字)
     /// - role 不明 (= `[meta]` 無し + path 推定不能) → backwards compat で
     ///   Dict に load (古い release との互換性維持)
     ///
-    /// 以下の role は **skip** (それぞれ別経路で別データ構造に load):
-    /// - `"loanwords"` → [`crate::loanwords::Loanwords::from_toml_dir`]
-    /// - `"single_overrides"` → [`crate::single_overrides::SingleOverrides::from_toml_file`]
+    /// 以下の role は **skip** (= 別経路で別データ構造に load、 または alpha.15 で削除済):
+    /// - `"loanwords"` → alpha.15 で削除済、 SKIP のまま (0.2.0 で再統合予定)
+    /// - `"single_overrides"` → alpha.15 で削除済、 [[kanji]] block で代替
     /// - `"compat"` → rules loader (`load_rules_dir`)
     /// - rules 系 (`"counters"` / `"context"` / 等) も skip
     ///

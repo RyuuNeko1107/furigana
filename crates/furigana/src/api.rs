@@ -433,7 +433,7 @@ impl std::fmt::Debug for Furigana {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Furigana")
             .field("dict_size", &self.dict.len())
-            .field("context_rules", &self.rules.context.rules.len())
+            .field("counters", &self.rules.counters.counter.len())
             .finish_non_exhaustive()
     }
 }

@@ -4,6 +4,36 @@
 [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/) 形式に概ね従い、
 バージョニングは [Semantic Versioning](https://semver.org/lang/ja/) を採用。
 
+## [0.1.0-alpha.16] - 2026-05-11
+
+**alpha.15 (Strict 削除) 後の cleanup release**。
+
+### Removed (= dead code 削除)
+
+- `rules::context` module + `RulesData::context` field — context match は alpha.11+ で
+  dict 側 `[entries."X".match]` / `[[kanji]]` block に移行済、 lib 側は読み込んで
+  いただけで未使用だった
+- loader の `Some("context") =>` 分岐: `ContextData::merge` 呼び出しを削除、
+  silent skip に変更 (= 古い release dict 互換のため role 認識は維持)
+- bench `Strict::to_ruby` ラベル → `to_ruby_full` にリネーム (= Strict はもう無い)
+- `furigana-cli/paths.rs` の `loanwords_dir` / `single_overrides_file` 未使用 method 削除
+
+### Changed
+
+- `Furigana::fmt` (Debug impl) の `context_rules` field → `counters` 数を出すよう変更
+- `docs/PROPOSALS/scoring-engine.md`: Status を 「Implemented and shipped in
+  alpha.15」 に更新、 実装 milestone 一覧を追加
+- `docs/ARCHITECTURE.md`: lib 構成図 + パイプライン詳細を Smart engine 一本化後の
+  状態に更新 (= 8 段階 → 6 provider + Viterbi DP)
+- `dict.rs` の doc comment: 削除済 module への dead リンクを修正
+
+### Notes
+
+- Strict 削除 (alpha.15) で見落としていた dead code を一掃。 lib test 379 passed /
+  clippy clean / build 通る。
+- 0.2.0+ で再統合予定: `loanwords` (AlphabetPassthrough 統合)、 `numeric_phrases`
+  (Smart provider 化)、 `single_overrides` 相当 (= 既に dict 側 `[[kanji]]` block で代替済)
+
 ## [0.1.0-alpha.15] - 2026-05-11
 
 **Smart engine 完全移行 + Strict engine 削除** (= alpha.10〜.14 work + alpha.15

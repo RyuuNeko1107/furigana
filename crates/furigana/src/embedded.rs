@@ -32,7 +32,6 @@ mod tests {
         let r = rules().expect("default rules");
         assert!(r.counters.simple.is_empty());
         assert!(r.counters.counter.is_empty());
-        assert!(r.context.rules.is_empty());
         assert_eq!(r.days.len(), 0);
         assert!(r.scales.is_empty());
         assert!(r.units.is_empty());

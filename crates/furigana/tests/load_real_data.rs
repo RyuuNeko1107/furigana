@@ -50,23 +50,9 @@ fn load_all_rules_succeeds() {
     assert_eq!(me.suffix.as_deref(), Some("メ"));
 
     // ─── Context ───────────────────────────────────────────────────────
-    assert!(!data.context.rules.is_empty(), "context rules empty");
-    let ichinichi = data
-        .context
-        .rules
-        .iter()
-        .find(|r| r.surface == "一日")
-        .expect("一日 not found");
-    assert_eq!(ichinichi.matches.len(), 3);
-    assert!(ichinichi.matches[0].prev_month);
-
-    let ichigatsu = data
-        .context
-        .rules
-        .iter()
-        .find(|r| r.surface == "一月")
-        .expect("一月 not found");
-    assert!(ichigatsu.matches.iter().any(|m| m.next_digit));
+    // alpha.15 で rules::context は削除済 (= 文脈分岐 reading は dict 側の
+    // [entries."X".match] / [[kanji]] block で表現)。 旧 context.toml が読み
+    //込まれても silent skip される。
 
     // ─── Days ──────────────────────────────────────────────────────────
     assert_eq!(data.days.get(1), Some("ツイタチ"));
