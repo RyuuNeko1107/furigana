@@ -94,5 +94,45 @@ fn bench_tokenize(c: &mut Criterion) {
     g.finish();
 }
 
-criterion_group!(benches, bench_init, bench_lookup_mode, bench_tokenize);
+/// ★alpha.13: Smart engine `analyze()` の latency benchmark。
+/// to_ruby (= Strict pipeline) と同 input で比較し、 wire-up 前の go/no-go gate
+/// 用 baseline を取る。 Lindera fallback 投入後、 analyze は input を 1 回
+/// tokenize するコストが入るが、 既存 Strict tokenize_text と同等以下を期待。
+fn bench_analyze(c: &mut Criterion) {
+    let f = build_furigana_with_seed_dict();
+    let inputs: &[(&str, &str)] = &[
+        ("short", "灰桜の散る道"),
+        ("short_phrase", "一期一会と四面楚歌"),
+        (
+            "medium",
+            "今日は北海道の鹿児島と秋葉原で一期一会の出会いがあった。明日は仲人の家に行く。",
+        ),
+        (
+            "long",
+            "今日は北海道の鹿児島と秋葉原で一期一会の出会いがあった。明日は仲人の家に行く。\
+             灰桜の散る道を歩きながら、四面楚歌の状況をどう乗り越えるか考えた。\
+             3冊の本と猫5匹を抱えて、5KMの距離を30分で走破した。\
+             一日中、黎明から曙光が射すまで、テキストにふりがなを付けるという地味な作業を続けた。",
+        ),
+    ];
+    let mut g = c.benchmark_group("analyze");
+    for (label, text) in inputs {
+        g.throughput(Throughput::Bytes(text.len() as u64));
+        g.bench_with_input(BenchmarkId::new("Smart::analyze", label), text, |b, t| {
+            b.iter(|| black_box(f.analyze(t)));
+        });
+        g.bench_with_input(BenchmarkId::new("Strict::to_ruby", label), text, |b, t| {
+            b.iter(|| black_box(f.to_ruby(t)));
+        });
+    }
+    g.finish();
+}
+
+criterion_group!(
+    benches,
+    bench_init,
+    bench_lookup_mode,
+    bench_tokenize,
+    bench_analyze
+);
 criterion_main!(benches);
