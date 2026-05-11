@@ -4,6 +4,49 @@
 [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/) 形式に概ね従い、
 バージョニングは [Semantic Versioning](https://semver.org/lang/ja/) を採用。
 
+## [0.1.0-alpha.18] - 2026-05-12
+
+**動詞 / 形容詞 活用形の 汎用解 (= LinderaFallbackProvider band up)**。
+alpha.17 で hand-coded した 9 個の活用形 entry (= 来た / 来る / 大きい / 等) を
+削除、 lib 側 1 行 logic で全動詞 / 全形容詞 活用に汎用対応。
+
+設計判断: ja-furigana の主用途 = 漢字ルビ振り で、 個別 entry を手書きするのは
+**スケーラブル ではない**:
+- 全動詞 × 全活用形 (10+ forms) = 数万 entry 増殖
+- 辞書メモリ / 探索効率を圧迫
+- dict 編集の負担増
+
+代わりに **LinderaFallbackProvider で 「漢字 + okurigana」 surface に band up** を
+追加 (★alpha.18)。 Lindera が 1 token として返す活用形 (= 大きい / 美しい /
+食べる 等) は band 100 で出て unihan per-char fallback (band 100) に length で勝つ。
+
+### Added
+
+- `LinderaFallbackProvider::is_kanji_okurigana_form` 判定: surface が 漢字始まり +
+  ひらがな終わり ( ≥2 char) なら band 100 で emit、 それ以外は band 50 のまま
+- 効果: 全動詞 / 全形容詞 / 全副詞 活用形が dict 個別 entry 不要で正しく読まれる
+
+### Notes
+
+- 来 のみ ka 変動詞で活用ごとに母音変化 (キ / ク / コ)、 Lindera が一貫した
+  1 token を返さないため [[kanji]] block で個別対応 (dict 側 commit)
+- alpha.17 で追加した 9 個の活用形 entry を削除、 dict 側 commit で同期
+
+### Validation
+
+corpus (lib furigana-corpus-check):
+
+| corpus | IPADIC | UniDic |
+|---|---|---|
+| should_read.toml (150) | 98.7% | 97.3% |
+| general.toml (33) | 97.0% | 97.0% |
+| touhou.toml (30) | 100% | 100% |
+| sentences.toml (49) | 100% | 95.9% |
+| 計 (262) | 98.9% | 97.3% |
+
+= alpha.17 末と同等以上の精度を、 dict -9 entries で実現。 「汎用性なさすぎ」
+user 指摘への直接対応。
+
 ## [0.1.0-alpha.17] - 2026-05-11
 
 **UniDic feature flag 追加 + 自然文 corpus 拡充**。 ja-furigana が漢字ルビ振り

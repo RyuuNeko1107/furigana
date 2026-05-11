@@ -106,15 +106,48 @@ impl CandidateProvider for LinderaFallbackProvider {
                 let surface = &input[*start..*end];
                 let char_count = surface.chars().count();
                 let length = u8::try_from(char_count).unwrap_or(u8::MAX);
+                // ★alpha.18: 漢字 + okurigana 形式 (= 動詞 / 形容詞 活用形) は
+                // Lindera が 1 token として正しく reading 返すので、 band を 100 に
+                // bump (= unihan kanji と同 band、 length で勝負)。 これで 「来た」
+                // 「大きい」 等の活用形は unihan per-char fallback (= 来 = くる kun)
+                // に勝ち、 dict に活用形 entry を個別追加する必要がない (汎用解)。
+                //
+                // 対象外 (= band 50 のまま):
+                // - 漢字 only surface (= 「翡翠」 等の jukugo、 dict 側で context
+                //   match 評価したい)
+                // - hiragana only / katakana only / alphabet 等の non-conjugation
+                let score = if is_kanji_okurigana_form(surface) {
+                    Score::kanji(length)
+                } else {
+                    Score::lindera(length)
+                };
                 Candidate::new(
                     surface.to_string(),
                     strip_intonation_markers(reading),
                     *start..*end,
-                    Score::lindera(length),
+                    score,
                 )
             })
             .collect()
     }
+}
+
+/// surface が 「漢字 + okurigana」 (= 動詞 / 形容詞 活用形) 形式かを判定。
+///
+/// 先頭が漢字、 末尾がひらがな で、 2 文字以上の surface を活用形と扱う:
+/// - 「来た」 「来る」 「食べた」 「行きます」 ✓ (= 動詞活用)
+/// - 「大きい」 「美しい」 「楽しかった」 ✓ (= 形容詞活用)
+/// - 「翡翠」 「学校」 ✗ (= 漢字 only、 dict 側に任せる)
+/// - 「こんにちは」 ✗ (= ひらがな only)
+/// - 「Kubernetes」 ✗ (= alphabet)
+fn is_kanji_okurigana_form(surface: &str) -> bool {
+    let chars: Vec<char> = surface.chars().collect();
+    if chars.len() < 2 {
+        return false;
+    }
+    let first_is_kanji = crate::kana::is_kanji_char(chars[0]);
+    let last_is_hira = crate::kana::is_hiragana_char(*chars.last().unwrap());
+    first_is_kanji && last_is_hira
 }
 
 #[cfg(test)]
