@@ -331,6 +331,16 @@ impl CandidateProvider for AlphabetPassthroughProvider {
                 continue;
             }
             let surface = &input[range.clone()];
+
+            // ★alpha.19: surface が全て数字 (= 「2」「100」 等) なら skip。
+            // 数字単独の reading 化は NumberCandidateProvider (band 950) の責務、
+            // ここで passthrough band 100 で 「2」 surface "2" として emit すると、
+            // 「2〜3回」 のような range 内で NumberCandidateProvider の "ニ" 候補と
+            // path tie になり、 provider 列挙順で Alphabet が勝つ問題が出る。
+            if surface.chars().all(is_digit_char) {
+                continue;
+            }
+
             let char_count = surface.chars().count();
             let length = u8::try_from(char_count).unwrap_or(u8::MAX);
 
@@ -349,6 +359,11 @@ impl CandidateProvider for AlphabetPassthroughProvider {
         }
         out
     }
+}
+
+/// digit 1 字判定 (= ASCII 0-9 / 全角０-９)。
+fn is_digit_char(c: char) -> bool {
+    c.is_ascii_digit() || matches!(c, '\u{FF10}'..='\u{FF19}')
 }
 
 #[cfg(test)]
