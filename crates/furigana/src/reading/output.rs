@@ -21,15 +21,6 @@ fn surface_has_kanji(surface: &str) -> bool {
     surface.chars().any(kana::is_kanji_char)
 }
 
-/// surface と reading が **同音 (= kana 表記が一致)** かを判定。
-///
-/// 「の」 + 「ノ」 のように reading が surface の単純な kata/hira 違いだけの場合に true。
-/// Smart engine の Lindera fallback が hiragana 助詞 / okurigana に reading=カタカナ
-/// を付けて返すケースで、 surface (= 元のひらがな) を保持するため使う。
-fn reading_is_same_kana_as_surface(surface: &str, reading: &str) -> bool {
-    kana::kata_to_hira(surface) == kana::kata_to_hira(reading)
-}
-
 /// surface が **全部 ひらがな or カタカナ** (= kanji / alphabet 等を含まない) かを判定。
 ///
 /// user が既に kana で書いた surface は、 形態素解析の reading が異なっても
@@ -41,17 +32,17 @@ fn surface_is_all_kana(surface: &str) -> bool {
             .all(|c| kana::is_hiragana_char(c) || kana::is_katakana_char(c) || c == 'ー')
 }
 
-/// トークン列をひらがな文字列に変換 (TTS / 読み上げ向け)
+/// トークン列をひらがな文字列に変換 (= 表記読み版)
 ///
-/// **読み上げ用途**: 形態素解析が pron (= 発音) を返したらそれを採用する。
-/// UniDic 経路では 助詞 「は」 → 「ワ」、 「へ」 → 「エ」 等が自動的に発音形に
-/// 展開される。 IPADIC 経路では reading が表記読みなので 「は」 のまま (= TTS
-/// 用には postprocess.toml の regex で別途補完が必要)。
+/// **方針**: ja-furigana は 「読み」 ライブラリであり、 「発音」 処理は TTS engine
+/// (= VOICEVOX 等の OpenJTalk 系) の責務。 助詞 「は」 → 「わ」 等の音韻変換は
+/// 行わず、 入力表記を尊重した出力を返す。 TTS で 「自然な発音」 を得たい場合は
+/// 出力を VOICEVOX 等に流すと、 TTS 側で適切に処理される (= raw 平文でも
+/// VOICEVOX 内部で 助詞変換 / アクセント推定が走る)。
 ///
 /// - 読みあり + surface が漢字を含む → reading を **ひらがな化** (kata_to_hira)
-/// - 読みあり + surface == reading (kana 等価) → **surface をそのまま** (=「ねこ」+「ネコ」)
-/// - 読みあり + surface が全 kana で reading と非等価 → reading を **ひらがな化**
-///   (= 助詞 「は」 + 発音 「ワ」 → 「わ」、 読み上げ向け)
+/// - 読みあり + surface が全 kana → **surface をそのまま** (= 入力表記尊重、
+///   「は」 + UniDic 発音 「ワ」 でも 「は」 のまま、 user が書いた kana 維持)
 /// - 読みあり + その他 (alphabet / 数字 / 記号) → reading を **カタカナに統一**
 ///   (hira_to_kata、 alphabet loanword 等の phonetic reading 用)
 /// - 読みなし → surface をそのまま
@@ -62,14 +53,10 @@ pub fn tokens_to_hiragana(tokens: &[ReadingToken]) -> String {
         if let Some(reading) = &t.reading {
             if surface_has_kanji(&t.surface) {
                 out.push_str(&kana::kata_to_hira(reading));
-            } else if reading_is_same_kana_as_surface(&t.surface, reading) {
-                // 「ねこ」 + 「ネコ」 / 「の」 + 「ノ」 のように surface と reading が
-                // kana 等価 → surface 維持 (= 入力表記を尊重)
-                out.push_str(&t.surface);
             } else if surface_is_all_kana(&t.surface) {
-                // 全 kana surface だが reading が異なる (= 助詞 「は」 + UniDic 発音 「ワ」)
-                // → 読み上げ用に reading のひらがな化を採用
-                out.push_str(&kana::kata_to_hira(reading));
+                // 全 kana surface は user 入力 (= 「こんにちは」 等) → 表記そのまま維持
+                // 助詞 は→わ 等の音韻変換は TTS engine (VOICEVOX 等) に任せる
+                out.push_str(&t.surface);
             } else {
                 // alphabet / 数字 / 記号 + phonetic reading → カタカナに統一
                 // (例: 「Kubernetes」+「クバネティス」、「C++」+「シープラスプラス」)
