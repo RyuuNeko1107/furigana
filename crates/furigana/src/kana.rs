@@ -258,11 +258,12 @@ pub fn has_katakana(s: &str) -> bool {
         .any(|c| is_katakana_char(c) || c == 'ー' || c == 'ヴ')
 }
 
-/// 全角カタカナ reading の **第 1 音を連濁化** する (踊り字 「々」 展開で使用)。
+/// kana reading の **第 1 音を連濁化** する (踊り字 「々」 展開で使用)。
 ///
-/// カ/サ/タ/ハ 行の清音 → 対応する濁音 (ハ 行は半濁音前の濁音) に変換し、 第 1 音を
-/// 置き換えた新文字列を返す。 連濁対象外 (ア/ナ/マ/ヤ/ラ/ワ 行 + 既に濁音 + ハ 行半濁音)
-/// は `None` を返し、 caller は 「清音のまま複製」 にフォールバックする想定。
+/// カタカナ / ひらがな の両方で同 logic 動作。 カ/サ/タ/ハ 行の清音 → 対応する濁音
+/// (ハ 行は半濁音前の濁音) に変換し、 第 1 音を置き換えた新文字列を返す。 連濁対象外
+/// (ア/ナ/マ/ヤ/ラ/ワ 行 + 既に濁音 + ハ 行半濁音) は `None` を返し、 caller は
+/// 「清音のまま複製」 にフォールバックする想定。
 ///
 /// 既存 Strict engine ([`crate::reading::pipeline`] の `expand_odoriji_inplace`) と
 /// Smart engine ([`crate::scoring::odoriji`]) の両方で共有。
@@ -274,6 +275,7 @@ pub fn has_katakana(s: &str) -> bool {
 ///
 /// assert_eq!(voice_first_kana("カミ").as_deref(), Some("ガミ"));   // 神々 → カミ + ガミ
 /// assert_eq!(voice_first_kana("ヒト").as_deref(), Some("ビト"));   // 人々 → ヒト + ビト
+/// assert_eq!(voice_first_kana("ひと").as_deref(), Some("びと"));   // ひらがなも対応 ★round 48
 /// assert_eq!(voice_first_kana("ワレ"), None);                       // 我々 → ワレワレ (連濁なし)
 /// assert_eq!(voice_first_kana("ヤマ"), None);                       // 山々 → ヤマヤマ (連濁なし)
 /// ```
@@ -282,6 +284,7 @@ pub fn voice_first_kana(reading: &str) -> Option<String> {
     let mut chars = reading.chars();
     let first = chars.next()?;
     let voiced = match first {
+        // ─── カタカナ ───────────────────────────────────────────────────────
         'カ' => 'ガ',
         'キ' => 'ギ',
         'ク' => 'グ',
@@ -302,6 +305,28 @@ pub fn voice_first_kana(reading: &str) -> Option<String> {
         'フ' => 'ブ',
         'ヘ' => 'ベ',
         'ホ' => 'ボ',
+        // ─── ひらがな (★round 48、 unihan/joyo の ひらがな default で「人々→ひとひと」
+        //     になっていた問題を fix。 「人/ひと」 + 「々/ひと」 → 「ひと/びと」 連濁) ──
+        'か' => 'が',
+        'き' => 'ぎ',
+        'く' => 'ぐ',
+        'け' => 'げ',
+        'こ' => 'ご',
+        'さ' => 'ざ',
+        'し' => 'じ',
+        'す' => 'ず',
+        'せ' => 'ぜ',
+        'そ' => 'ぞ',
+        'た' => 'だ',
+        'ち' => 'ぢ',
+        'つ' => 'づ',
+        'て' => 'で',
+        'と' => 'ど',
+        'は' => 'ば',
+        'ひ' => 'び',
+        'ふ' => 'ぶ',
+        'へ' => 'べ',
+        'ほ' => 'ぼ',
         _ => return None,
     };
     let mut out = String::new();

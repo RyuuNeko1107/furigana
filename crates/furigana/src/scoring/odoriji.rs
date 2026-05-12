@@ -175,6 +175,24 @@ mod tests {
         assert_eq!(tokens[1].reading, "ビト");
     }
 
+    #[test]
+    fn rendaku_applied_for_hito_hiragana() {
+        // ★round 48: 「人/ひと」 (ひらがな default) でも連濁できる。
+        // unihan/joyo は default をひらがなで持つ entry が多く、 path は
+        // Smart engine 経由で reading がひらがなのまま「々」 token と隣接する。
+        let mut tokens = vec![token("人", "ひと", 0..3), token("々", "々", 3..6)];
+        apply_rendaku_inplace(&mut tokens);
+        assert_eq!(tokens[1].reading, "びと");
+    }
+
+    #[test]
+    fn rendaku_applied_for_kami_hiragana() {
+        // 神々 ひらがな版
+        let mut tokens = vec![token("神", "かみ", 0..3), token("々", "々", 3..6)];
+        apply_rendaku_inplace(&mut tokens);
+        assert_eq!(tokens[1].reading, "がみ");
+    }
+
     // ─── apply_rendaku_inplace: 連濁なし (= 複製) ──────────────────────────
 
     #[test]
