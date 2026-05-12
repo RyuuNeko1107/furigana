@@ -32,6 +32,18 @@ fn surface_is_all_kana(surface: &str) -> bool {
             .all(|c| kana::is_hiragana_char(c) || kana::is_katakana_char(c) || c == 'ー')
 }
 
+/// surface に **ASCII / 全角 alphabet** が含まれるかを判定。
+///
+/// hiragana mode で 「数字 / 記号 のみ」 vs 「alphabet 含み」 を区別する用途:
+/// - alphabet 含み → loanword phonetic で **katakana に統一** (「Kubernetes」 → 「クバネティス」)
+/// - 数字 / 記号のみ → 周辺の hiragana 文脈に合わせて **hiragana 化** (「2」 → 「に」、 「〜」 → 「から」)
+fn surface_has_alphabet(surface: &str) -> bool {
+    surface.chars().any(|c| {
+        c.is_ascii_alphabetic()
+            || matches!(c, '\u{FF21}'..='\u{FF3A}' | '\u{FF41}'..='\u{FF5A}')
+    })
+}
+
 /// トークン列をひらがな文字列に変換 (= 表記読み版)
 ///
 /// **方針**: ja-furigana は 「読み」 ライブラリであり、 「発音」 処理は TTS engine
@@ -43,8 +55,12 @@ fn surface_is_all_kana(surface: &str) -> bool {
 /// - 読みあり + surface が漢字を含む → reading を **ひらがな化** (kata_to_hira)
 /// - 読みあり + surface が全 kana → **surface をそのまま** (= 入力表記尊重、
 ///   「は」 + UniDic 発音 「ワ」 でも 「は」 のまま、 user が書いた kana 維持)
-/// - 読みあり + その他 (alphabet / 数字 / 記号) → reading を **カタカナに統一**
-///   (hira_to_kata、 alphabet loanword 等の phonetic reading 用)
+/// - 読みあり + surface が alphabet 含み → reading を **カタカナに統一**
+///   (= 「Kubernetes」+「クバネティス」 のような loanword phonetic は kata 慣習)
+/// - 読みあり + その他 (= 数字 / 記号のみ) → reading を **ひらがな化** (kata_to_hira)
+///   周辺の hiragana 文脈に合わせて 「2〜3回」 → 「に から さんかい」 のように統一表現
+///   (★alpha.21、 旧 = 数字 / 記号も katakana 統一だったが、 「ニカラさんかい」 のような
+///   kata / hira 混在違和感を解消)
 /// - 読みなし → surface をそのまま
 #[must_use]
 pub fn tokens_to_hiragana(tokens: &[ReadingToken]) -> String {
@@ -57,10 +73,14 @@ pub fn tokens_to_hiragana(tokens: &[ReadingToken]) -> String {
                 // 全 kana surface は user 入力 (= 「こんにちは」 等) → 表記そのまま維持
                 // 助詞 は→わ 等の音韻変換は TTS engine (VOICEVOX 等) に任せる
                 out.push_str(&t.surface);
-            } else {
-                // alphabet / 数字 / 記号 + phonetic reading → カタカナに統一
+            } else if surface_has_alphabet(&t.surface) {
+                // alphabet loanword phonetic → カタカナに統一
                 // (例: 「Kubernetes」+「クバネティス」、「C++」+「シープラスプラス」)
                 out.push_str(&kana::hira_to_kata(reading));
+            } else {
+                // 数字 / 記号のみ → 周辺 hiragana 文脈に合わせる
+                // (例: 「2」 → 「に」、 「〜」 → 「から」、 「+」 → 「ぷらす」)
+                out.push_str(&kana::kata_to_hira(reading));
             }
         } else {
             out.push_str(&t.surface);
