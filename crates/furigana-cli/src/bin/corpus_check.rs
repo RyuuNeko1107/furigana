@@ -127,12 +127,14 @@ fn run() -> Result<ExitCode> {
             if pass {
                 correct += 1;
                 if args.verbose {
-                    println!("OK   #{i}: {:?} -> {:?}", case.input, actual);
+                    println!("OK   #{i}: {:?} -> {actual}", case.input);
                 }
             } else {
                 println!("FAIL #{i}: input={:?} mode={:?}", case.input, case.mode);
                 println!("  expected: {expected:?}");
-                println!("  actual:   {actual:?}");
+                // actual のみ Display で raw 出力 (= 全角 space を `\u{3000}` literal に
+                // escape しない、 比較ツールから raw のまま読める)
+                println!("  actual:   {actual}");
             }
         }
     }

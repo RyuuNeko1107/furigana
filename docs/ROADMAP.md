@@ -161,12 +161,47 @@ ja-furigana の中長期計画。 **完了履歴は [CHANGELOG.md](../CHANGELOG.
   - protect token / 顔文字 chunk を TTS 出力で **silent** にする option (= `--include-emoji-tts=false`)
 - **半角 space normalize の正式化** (= 0.1.0 では `preprocess_input()` で 全角 space に変換、 0.2.0 で path 構築 logic に proper 統合)
 
+##### should_read.toml 163 fail (= 0.1.0 cut 時点 long-standing) の category 分類
+
+`should_read.toml` (598 case) で 0.1.0 cut 時点 163 fail 残留、 0.2.0 で漸進 fix する 7 カテゴリに整理:
+
+- **ASCII 単位 chunk expand (~10 件)**: 「5km / 3GB / 10%」 等 数字 + ASCII
+  単位 chunk が ja-furigana 出力ルールで カタカナ保持。 0.2.0 で SI 単位 expand
+  + ASCII chunk の kana 化 lib 改修
+- **範囲表現 (= 「2〜3回 / 3〜5本」、 ~5 件)**: 「数字〜数字」 chunk を 1 unit
+  扱いにする lib 改修 (= 現状 「3 / 〜 / 5 本」 と分割されて 「〜」 がカタカナ
+  保持され誤読)
+- **日付混合 (= 「8月二日 / 5月20日 / 12月二十日」、 ~8 件)**: 漢数字 +
+  アラビア数字混在の counter chunk 解釈、 lib 改修
+- **ASCII brand loanwords (= 「YouTube / Switch / Discord / LINE / PC / MOD /
+  Java / WiFi」、 ~10 件)**: ASCII chunk の loanwords.toml 補充 + lib の
+  chunk 化判定改修 (= 0.2.0 の loanword expand と coordinated)
+- **数字 + 助数詞 (= 「1歩 / 3歩 / 1万歩 / 4時間 / 7時間 / 1日1万歩」、 ~10 件)**:
+  counter logic と数字 chunk の連結漏れ、 lib counter 補完 / 助数詞 dict 拡充
+- **同形異音語の文脈分岐 (~10 件)**: 「上手 (ジョーズ/カミテ) / 一月 (イチガツ/
+  ヒトツキ) / 月 (ツキ/ガツ) / 人気 (ニンキ/ヒトケ) / 一行 (イッコウ/イチギョウ) /
+  神 (カミ/ガミ/ジン) / 大人気 (ダイニンキ/オトナゲ)」 等、 既存 matcher
+  vocabulary の限界、 lib に追加 axis を入れるか dict 個別 jukugo で覆う判断
+- **個別語彙 dict 追加 (~80+ 件)**: 「灰桜 / 内視鏡 / 麦酒 / 珈琲 / 帆立 /
+  八咫烏 / 麒麟 / 犀 / 鋸 / 蕨 / 鑿 / 灯籠 / 茜染 / 稲妻 / 粉雪 / 学監 /
+  茄子 / 蒸籠 / 葛切 / 畔道 / 預金通帳 / 啄木鳥 / 蜻蛉 / 薙刀 / 撥弦楽器 /
+  琵琶 / 鳩尾」 等。 round 48+ dict 改善で漸進 fix
+- **kabuki / 神話固有名詞 (~15 件)**: 「天照大神 / 須佐之男命 / 八咫烏 /
+  助六由縁江戸桜 / 鏡獅子 / 京鹿子娘道成寺 / 仮名手本忠臣蔵 / 菅原伝授手習鑑」
+  等、 `core/jukugo/proper/` 新 file (= myth.toml / kabuki.toml) で漸進補充
+- **東方 Project 固有名詞 (= touhou.toml ~25 件)**: 既存 `core/works/touhou.toml`
+  の補強、 「博麗霊夢 / 紅美鈴 / 十六夜咲夜 / 西行寺幽々子 / 魂魄妖夢」 等
+
 ##### 改善材料収集 (= 0.2.0 round 前準備)
 
 - **co-occurrence / word-pair stats dev tool** (= 別 dev bin)
   - 「A の next が B である頻度」 等 corpus 集計、 dict 改善 candidate 抽出を自動化
-- **normalize 強化 (= VOICEVOX 75% → 85% push)**
-  - 「セエ → セイ」 母音 / 拗音 phoneme / 句読点周辺の比較スクリプト改良 (= dict 側ではなく比較 tool 側)
+- **VOICEVOX engine 一致率を主力指標として運用** (= 75-77% → 85% push)
+  - 辞書 corpus 内部 expected/actual 一致率は dict 改善で 100% に飽和し dogfood 指標としては形骸化、
+    一方 VOICEVOX engine kana 一致率は dict 改善が **実用 TTS 経路まで届くか** を測る本質指標
+  - 旧 `compare_with_openjtalk.py` (= 単純 phonetic 一致度 lib 内部メトリック) は役目を終え 2026-05-12 削除済、
+    現主力 dev tool は `data/_analysis/scripts/compare_with_voicevox.py` の単一窓口
+  - 「セエ → セイ」 母音 / 拗音 phoneme / 句読点周辺の normalize pipeline 改良 (= dict 側ではなく 比較 tool 側) で残 diff を絞る
 
 #### 0.1.0 cut 後 TODO (= 1〜3 ヶ月運用後判断)
 
