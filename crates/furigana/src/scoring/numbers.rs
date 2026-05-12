@@ -98,8 +98,19 @@ fn build_counter_regex(counters: &CountersData) -> Option<Regex> {
     build_alt_regex_opt(&keys)
 }
 
-/// 大数スケール (+ optional 末尾漢字 unit) の regex を構築。 空 list なら `None`。
-fn build_scale_regex(scales: &ScalesData, units: &UnitsData) -> Option<Regex> {
+/// 大数スケール (+ optional 末尾漢字 unit / counter) の regex を構築。 空 list なら `None`。
+///
+/// trailing 候補 (= 末尾の 1 字漢字 unit) は:
+/// - units.toml の漢字 1 字 entries (= 円 / 度 等)
+/// - counters の漢字 1 字 entries (= 個 / 歩 / 回 等) ★alpha.21 round 7 拡張
+///
+/// 「1 万歩 → イチマンポ」 「3 千個 → サンゼンコ」 のような scale + counter 連結を
+/// section 4 で 1 token 化するため、 counter キーも trailing pattern に含める。
+fn build_scale_regex(
+    scales: &ScalesData,
+    units: &UnitsData,
+    counters: &CountersData,
+) -> Option<Regex> {
     let kanjis: Vec<String> = scales.entries.iter().map(|e| e.kanji.clone()).collect();
     if kanjis.is_empty() {
         return None;
@@ -108,23 +119,26 @@ fn build_scale_regex(scales: &ScalesData, units: &UnitsData) -> Option<Regex> {
     sorted_scales.sort_by_key(|s| std::cmp::Reverse(s.chars().count()));
     let scale_alts: Vec<String> = sorted_scales.iter().map(|s| regex::escape(s)).collect();
 
-    // 単位の中で 「漢字 1 文字 (ASCII 以外)」 を抽出して scale 末尾に optional 連結。
-    let kanji_units: Vec<String> = units
-        .entries
-        .keys()
-        .filter(|s| {
-            s.chars().count() == 1 && s.chars().next().is_some_and(|c| !c.is_ascii_alphanumeric())
-        })
-        .map(|s| regex::escape(s))
-        .collect();
+    let is_single_non_ascii_kanji =
+        |s: &str| s.chars().count() == 1 && s.chars().next().is_some_and(|c| !c.is_ascii_alphanumeric());
 
-    let pat = if kanji_units.is_empty() {
+    // unit + counter 両方から漢字 1 字 trailing を集めて merge (dedupe)。
+    let mut trailing_set: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    for u in units.entries.keys().filter(|s| is_single_non_ascii_kanji(s)) {
+        trailing_set.insert(u.clone());
+    }
+    for c in counters.counter.keys().filter(|s| is_single_non_ascii_kanji(s)) {
+        trailing_set.insert(c.clone());
+    }
+    let trailing: Vec<String> = trailing_set.iter().map(|s| regex::escape(s)).collect();
+
+    let pat = if trailing.is_empty() {
         format!(r"({NUM_PAT})({})", scale_alts.join("|"))
     } else {
         format!(
             r"({NUM_PAT})({})({})?",
             scale_alts.join("|"),
-            kanji_units.join("|")
+            trailing.join("|")
         )
     };
     Some(Regex::new(&pat).expect("scoring scale regex build failed"))
@@ -189,7 +203,7 @@ impl NumberCandidateProvider {
     #[must_use]
     pub fn new(rules: &RulesData) -> Self {
         let counter_re = build_counter_regex(&rules.counters);
-        let scale_re = build_scale_regex(&rules.scales, &rules.units);
+        let scale_re = build_scale_regex(&rules.scales, &rules.units, &rules.counters);
         let si_unit_re = build_si_unit_regex(&rules.units);
         Self {
             counters: rules.counters.clone(),
@@ -238,6 +252,29 @@ impl NumberCandidateProvider {
         let nk = number_to_katakana(&normalized);
         euphonic_counter_read(&nk, counter, &normalized, &self.counters, &self.days)
     }
+}
+
+/// 数値 + scale + 助数詞 (= 「1 万歩」 「3 千個」 等) の trailing counter から suffix
+/// を引く (= last_digit に応じた連濁 / 促音化済の suffix string)。
+///
+/// `scale_reading` で 「イチマン」 等の本体を作った後、 末尾の counter 部分のみを
+/// この helper で取得して append する用途。 SI units lookup で miss した時の
+/// fallback 経路。
+fn scale_trailing_counter_suffix(
+    counter: &str,
+    num: &str,
+    counters: &CountersData,
+) -> Option<String> {
+    let rule = counters.counter.get(counter)?;
+    let normalized = kansuji_to_arabic(num).unwrap_or_else(|| num.to_string());
+    let last = crate::numbers::helpers::last_digit(&normalized);
+    // last_digit が rule に match すればその suffix を、 無ければ default を採用
+    for r in &rule.rules {
+        if r.last_digit.iter().any(|&d| d == last as u32) {
+            return Some(r.suffix.clone());
+        }
+    }
+    rule.default.clone()
 }
 
 /// range marker (`〜` / `~` / `～`) が **数字 / 漢数字 / 全角数字 と隣接** しているか。
@@ -347,6 +384,12 @@ impl CandidateProvider for NumberCandidateProvider {
                 if let Some(u) = trailing_unit {
                     if let Some(unit_kana) = self.units.lookup(u) {
                         reading.push_str(unit_kana);
+                    } else if let Some(suffix) =
+                        scale_trailing_counter_suffix(u, num, &self.counters)
+                    {
+                        // ★alpha.21 round 7: trailing unit が SI units に無いとき
+                        // counter rules から suffix を append (= 「1 万歩」 → イチマン+ポ)。
+                        reading.push_str(&suffix);
                     } else {
                         reading.push_str(u);
                     }
