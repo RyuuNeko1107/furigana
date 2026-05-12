@@ -240,6 +240,39 @@ impl NumberCandidateProvider {
     }
 }
 
+/// range marker (`〜` / `~` / `～`) が **数字 / 漢数字 / 全角数字 と隣接** しているか。
+///
+/// 「2〜3回」 「100〜200円」 のような range 用途では `prev` / `next` どちらかが
+/// 数字なので 「から」 reading を採用する。 一方 「へ〜うま」 「も〜むりすぎ」 のような
+/// kana / 漢字 context では range ではなく vowel extension 用途なので 「から」 は誤読
+/// (= candidate を出さず、 後段 provider / Lindera fallback に譲る)。
+///
+/// 判定: 直前 / 直後 (UTF-8 char 単位で 1 文字遡る or 進む) のいずれかが数字
+/// (ASCII 0-9、 全角 ０-９、 漢数字 一〜十百千) なら range context。
+fn range_marker_in_numeric_context(input: &str, pos: usize, ch: char) -> bool {
+    let prev_is_digit = input[..pos]
+        .chars()
+        .next_back()
+        .is_some_and(is_digit_like_char);
+    let next_pos = pos + ch.len_utf8();
+    let next_is_digit = input[next_pos..]
+        .chars()
+        .next()
+        .is_some_and(is_digit_like_char);
+    prev_is_digit || next_is_digit
+}
+
+/// 数字らしい char か (= ASCII 0-9 / 全角 0-9 / 漢数字 一〜十百千万億兆)。
+fn is_digit_like_char(c: char) -> bool {
+    matches!(c,
+        '0'..='9' | '０'..='９' |
+        '〇' | '零' |
+        '一' | '二' | '三' | '四' | '五' |
+        '六' | '七' | '八' | '九' | '十' |
+        '百' | '千' | '万' | '億' | '兆'
+    )
+}
+
 impl CandidateProvider for NumberCandidateProvider {
     fn candidates_at(&self, input: &str, pos: usize) -> Vec<Candidate> {
         let mut out: Vec<Candidate> = Vec::new();
@@ -346,8 +379,17 @@ impl CandidateProvider for NumberCandidateProvider {
 
         // ─── 7. 記号 1 文字 ─────────────────────────────────────────────────
         if let Some(ch) = rest.chars().next() {
-            if let Some(read) = symbol_char_reading(ch, &self.symbols) {
-                out.push(self.make(input, pos, ch.len_utf8(), read));
+            // 〜 / ~ は **range marker と vowel extension の dual use** で、 周囲が
+            // 数字でない (= kana / 漢字 context) なら 「から」 reading は誤 (例:
+            // 「へ〜うま」 → 「へカラうま」 になる)。 数字直前 / 直後 でない限り
+            // candidate を出さない (= Lindera fallback に譲って surface 維持 or
+            // postprocess で 「ー」 化)。
+            let is_range_marker = matches!(ch, '〜' | '~' | '～');
+            let emit = !is_range_marker || range_marker_in_numeric_context(input, pos, ch);
+            if emit {
+                if let Some(read) = symbol_char_reading(ch, &self.symbols) {
+                    out.push(self.make(input, pos, ch.len_utf8(), read));
+                }
             }
         }
 
@@ -589,6 +631,43 @@ mod tests {
         let cands = p.candidates_at("※", 0);
         // 候補ゼロ (記号 table miss + digit miss)
         assert!(cands.is_empty(), "expected no candidates: {cands:?}");
+    }
+
+    #[test]
+    fn tilde_emits_kara_in_numeric_context() {
+        // 「2〜3回」 のような range context では 〜 → から (= 既存挙動維持)。
+        let p = provider();
+        let input = "2〜3回";
+        let pos = "2".len(); // 〜 の byte position
+        let cands = p.candidates_at(input, pos);
+        let c = find(&cands, "〜").expect("tilde candidate in numeric context");
+        assert_eq!(c.reading, "から");
+    }
+
+    #[test]
+    fn tilde_skipped_in_kana_context() {
+        // 「へ〜うま」 のような vowel extension context では 〜 → から は誤読、
+        // candidate を出さず後段 provider に譲る (★alpha.21 fix)。
+        let p = provider();
+        let input = "へ〜うま";
+        let pos = "へ".len(); // 〜 の byte position
+        let cands = p.candidates_at(input, pos);
+        let tilde = cands.iter().find(|c| c.surface == "〜");
+        assert!(
+            tilde.is_none(),
+            "kana context で 〜 candidate を出すべきでない: {tilde:?}"
+        );
+    }
+
+    #[test]
+    fn tilde_emits_kara_when_only_prev_is_digit() {
+        // 「2〜あ」 のように prev だけ数字でも range 文脈 (= 「2 から あ」 的、 不自然だが
+        // range 解釈は許容)。
+        let p = provider();
+        let input = "2〜あ";
+        let pos = "2".len();
+        let cands = p.candidates_at(input, pos);
+        assert!(cands.iter().any(|c| c.surface == "〜" && c.reading == "から"));
     }
 
     // ─── 素の数字 ────────────────────────────────────────────────────────────
