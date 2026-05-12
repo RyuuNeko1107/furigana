@@ -39,6 +39,15 @@ use std::sync::{Arc, OnceLock};
 /// `Furigana::minimal()` の呼び出し自体は ~µs 級で済むため、引数 parse や
 /// help 表示など analyze に至らない経路を高速化できる。サーバー起動時に
 /// 先に init したい場合は [`Furigana::preload`] を呼ぶ。
+/// 入力 preprocess: scoring engine が ASCII whitespace を candidate 化できない問題の
+/// workaround として、 半角 space / tab を全角 space (U+3000) に置換。 全角 space は
+/// LinderaFallbackProvider が token として拾うため path 構築できる。
+///
+/// 「変なの 水田」 のような (= 半角 space 区切り) input で path 全空になる bug fix。
+fn preprocess_input(text: &str) -> String {
+    text.replace(' ', "\u{3000}").replace('\t', "\u{3000}")
+}
+
 pub struct Furigana {
     analyzer: OnceLock<Analyzer>,
     rules: RulesData,
@@ -140,7 +149,8 @@ impl Furigana {
     /// 出力直前に `postprocess.toml` の `mode = "hiragana"` ルールを適用。
     #[must_use]
     pub fn to_hiragana(&self, text: &str) -> String {
-        let hira = tokens_to_hiragana(&self.tokenize(text));
+        let text = preprocess_input(text);
+        let hira = tokens_to_hiragana(&self.tokenize(&text));
         self.rules.postprocess.apply(&hira, "hiragana")
     }
 
@@ -151,7 +161,8 @@ impl Furigana {
     /// 出力直前に `postprocess.toml` の `mode = "ruby"` ルールを適用。
     #[must_use]
     pub fn to_ruby(&self, text: &str) -> String {
-        let ruby = tokens_to_ruby(&self.tokenize(text));
+        let text = preprocess_input(text);
+        let ruby = tokens_to_ruby(&self.tokenize(&text));
         self.rules.postprocess.apply(&ruby, "ruby")
     }
 
@@ -162,9 +173,10 @@ impl Furigana {
     /// 出力直前に `postprocess.toml` の `mode = "tts"` ルールを適用。
     #[must_use]
     pub fn to_tts(&self, text: &str, opts: &TtsOptions) -> String {
+        let text = preprocess_input(text);
         // hiragana 自体の postprocess はここでは飛ばす (二重適用回避)。
         // 必要なら hiragana 用 postprocess を tts mode で再度書く想定。
-        let hira = tokens_to_hiragana(&self.tokenize(text));
+        let hira = tokens_to_hiragana(&self.tokenize(&text));
         let normalized = tts::normalize_for_tts(&hira, opts);
         self.rules.postprocess.apply(&normalized, "tts")
     }

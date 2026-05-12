@@ -213,16 +213,20 @@ impl CandidateProvider for ProtectTokenProvider {
 
 // ─── アルファベット (英語) passthrough (C2) ─────────────────────────────────
 
-/// 英字 / 全角英数字を 1 文字単位で判定。
+/// 英字 / 全角英数字 / ASCII whitespace を 1 文字単位で判定。
 ///
 /// - ASCII alphanumeric (a-z A-Z 0-9)
 /// - 全角英数字 (Ａ-Ｚ ａ-ｚ ０-９)
+/// - **半角 space / tab** (= 「猫 犬」 のような ASCII whitespace 含み input で path
+///   構築失敗を防ぐ、 passthrough として扱う)
 ///
 /// 注: 「英数」 文字種の判定は [`crate::scoring::matcher::classify_char`] と整合、
 /// ただしここでは alphabet range 検出専用 helper として独立定義 (依存関係縮小)。
 #[must_use]
 pub fn is_alphabet_char(c: char) -> bool {
     c.is_ascii_alphanumeric()
+        || c == ' '
+        || c == '\t'
         || matches!(c,
             '\u{FF10}'..='\u{FF19}'   // 全角数字
             | '\u{FF21}'..='\u{FF3A}' // 全角大文字
