@@ -161,36 +161,21 @@ ja-furigana の中長期計画。 **完了履歴は [CHANGELOG.md](../CHANGELOG.
   - protect token / 顔文字 chunk を TTS 出力で **silent** にする option (= `--include-emoji-tts=false`)
 - **半角 space normalize の正式化** (= 0.1.0 では `preprocess_input()` で 全角 space に変換、 0.2.0 で path 構築 logic に proper 統合)
 
-##### should_read.toml 163 fail (= 0.1.0 cut 時点 long-standing) の category 分類
+##### should_read.toml regression test 状態 (= 2026-05-13 時点)
 
-`should_read.toml` (598 case) で 0.1.0 cut 時点 163 fail 残留、 0.2.0 で漸進 fix する 7 カテゴリに整理:
+`should_read.toml` (598 case 全 6 file) を corpus_check binary に正しく dict
++ rules 渡すと **598/598 = 100%** pass (= round 47 dict 改善 + 「檜風呂」 異体字
+旧字保険 + 「マニュ勢」 expected を連濁ルール反映に更新)。
 
-- **ASCII 単位 chunk expand (~10 件)**: 「5km / 3GB / 10%」 等 数字 + ASCII
-  単位 chunk が ja-furigana 出力ルールで カタカナ保持。 0.2.0 で SI 単位 expand
-  + ASCII chunk の kana 化 lib 改修
-- **範囲表現 (= 「2〜3回 / 3〜5本」、 ~5 件)**: 「数字〜数字」 chunk を 1 unit
-  扱いにする lib 改修 (= 現状 「3 / 〜 / 5 本」 と分割されて 「〜」 がカタカナ
-  保持され誤読)
-- **日付混合 (= 「8月二日 / 5月20日 / 12月二十日」、 ~8 件)**: 漢数字 +
-  アラビア数字混在の counter chunk 解釈、 lib 改修
-- **ASCII brand loanwords (= 「YouTube / Switch / Discord / LINE / PC / MOD /
-  Java / WiFi」、 ~10 件)**: ASCII chunk の loanwords.toml 補充 + lib の
-  chunk 化判定改修 (= 0.2.0 の loanword expand と coordinated)
-- **数字 + 助数詞 (= 「1歩 / 3歩 / 1万歩 / 4時間 / 7時間 / 1日1万歩」、 ~10 件)**:
-  counter logic と数字 chunk の連結漏れ、 lib counter 補完 / 助数詞 dict 拡充
-- **同形異音語の文脈分岐 (~10 件)**: 「上手 (ジョーズ/カミテ) / 一月 (イチガツ/
-  ヒトツキ) / 月 (ツキ/ガツ) / 人気 (ニンキ/ヒトケ) / 一行 (イッコウ/イチギョウ) /
-  神 (カミ/ガミ/ジン) / 大人気 (ダイニンキ/オトナゲ)」 等、 既存 matcher
-  vocabulary の限界、 lib に追加 axis を入れるか dict 個別 jukugo で覆う判断
-- **個別語彙 dict 追加 (~80+ 件)**: 「灰桜 / 内視鏡 / 麦酒 / 珈琲 / 帆立 /
-  八咫烏 / 麒麟 / 犀 / 鋸 / 蕨 / 鑿 / 灯籠 / 茜染 / 稲妻 / 粉雪 / 学監 /
-  茄子 / 蒸籠 / 葛切 / 畔道 / 預金通帳 / 啄木鳥 / 蜻蛉 / 薙刀 / 撥弦楽器 /
-  琵琶 / 鳩尾」 等。 round 48+ dict 改善で漸進 fix
-- **kabuki / 神話固有名詞 (~15 件)**: 「天照大神 / 須佐之男命 / 八咫烏 /
-  助六由縁江戸桜 / 鏡獅子 / 京鹿子娘道成寺 / 仮名手本忠臣蔵 / 菅原伝授手習鑑」
-  等、 `core/jukugo/proper/` 新 file (= myth.toml / kabuki.toml) で漸進補充
-- **東方 Project 固有名詞 (= touhou.toml ~25 件)**: 既存 `core/works/touhou.toml`
-  の補強、 「博麗霊夢 / 紅美鈴 / 十六夜咲夜 / 西行寺幽々子 / 魂魄妖夢」 等
+> **注意**: `tools/run_corpus.py` 経由で binary の default data_dir を使うと
+> dict 未配置で 163 fail と出るが、 これは偽数値。 真の lib regression test は
+> `furigana-corpus-check --rules-dir <furigana-dict/rules> --core-dict-dir
+> <furigana-dict/core> <corpus.toml>` で測ること。 各 PR の CI gate (=
+> `tools/run_corpus.py` を CI 環境で実行する場合) も dict mount の正確性を
+> 担保する必要がある。
+
+corpus 増強 (= 新規 case 追加) は 0.1.0 cut 後 TODO の 「大規模 QA corpus 増強」
+で漸進、 現状 598 case の主要パターンは全 pass。
 
 ##### 改善材料収集 (= 0.2.0 round 前準備)
 
