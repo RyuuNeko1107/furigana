@@ -396,7 +396,7 @@ fn main() -> Result<()> {
 
     // sort by count desc
     let mut entries: Vec<((ChunkKind, String), Aggregate)> = by_key.into_iter().collect();
-    entries.sort_by(|a, b| b.1.count.cmp(&a.1.count));
+    entries.sort_by_key(|e| std::cmp::Reverse(e.1.count));
     if args.top > 0 && entries.len() > args.top {
         entries.truncate(args.top);
     }
@@ -446,7 +446,7 @@ fn main() -> Result<()> {
     // optional: base-kanji 集計 TSV
     if let Some(base_path) = &args.output_kanji_base {
         let mut base_entries: Vec<(String, BaseAggregate)> = by_base.into_iter().collect();
-        base_entries.sort_by(|a, b| b.1.count.cmp(&a.1.count));
+        base_entries.sort_by_key(|e| std::cmp::Reverse(e.1.count));
         if args.top > 0 && base_entries.len() > args.top {
             base_entries.truncate(args.top);
         }
