@@ -47,7 +47,7 @@ use std::sync::{Arc, OnceLock};
 ///
 /// 「変なの 水田」 のような (= 半角 space 区切り) input で path 全空になる bug fix。
 fn preprocess_input(text: &str) -> String {
-    text.replace(' ', "\u{3000}").replace('\t', "\u{3000}")
+    text.replace([' ', '\t'], "\u{3000}")
 }
 
 pub struct Furigana {

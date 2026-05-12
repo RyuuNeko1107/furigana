@@ -304,7 +304,7 @@ fn write_tsv(
         writeln!(out, "count\tsurface\treading\texample_context")?;
     }
     for ((kind, surface), agg) in entries {
-        let ctx = agg.example_context.replace('\t', " ").replace('\n', " ");
+        let ctx = agg.example_context.replace(['\t', '\n'], " ");
         if include_kind_column {
             writeln!(
                 out,
@@ -379,7 +379,7 @@ fn main() -> Result<()> {
             }
         }
 
-        if args.verbose && total_lines % 1000 == 0 {
+        if args.verbose && total_lines.is_multiple_of(1000) {
             eprintln!(
                 "[info] processed {total_lines} lines, {total_chunks} chunks, {} unique surfaces",
                 by_key.len()
@@ -455,7 +455,7 @@ fn main() -> Result<()> {
         );
         writeln!(out, "count\tkanji_base\texample_chunk\texample_context")?;
         for (base, agg) in &base_entries {
-            let ctx = agg.example_context.replace('\t', " ").replace('\n', " ");
+            let ctx = agg.example_context.replace(['\t', '\n'], " ");
             writeln!(
                 out,
                 "{}\t{}\t{}\t{}",
