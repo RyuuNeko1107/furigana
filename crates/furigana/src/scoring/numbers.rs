@@ -279,7 +279,7 @@ fn scale_trailing_counter_suffix(
     let last = crate::numbers::helpers::last_digit(&normalized);
     // last_digit が rule に match すればその suffix を、 無ければ default を採用
     for r in &rule.rules {
-        if r.last_digit.contains(&(last as u32)) {
+        if r.last_digit.contains(&last) {
             return Some(r.suffix.clone());
         }
     }
