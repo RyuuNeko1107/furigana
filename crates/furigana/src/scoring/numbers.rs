@@ -379,17 +379,21 @@ impl CandidateProvider for NumberCandidateProvider {
 
         // ─── 7. 記号 1 文字 ─────────────────────────────────────────────────
         if let Some(ch) = rest.chars().next() {
-            // 〜 / ~ は **range marker と vowel extension の dual use** で、 周囲が
-            // 数字でない (= kana / 漢字 context) なら 「から」 reading は誤 (例:
-            // 「へ〜うま」 → 「へカラうま」 になる)。 数字直前 / 直後 でない限り
-            // candidate を出さない (= Lindera fallback に譲って surface 維持 or
-            // postprocess で 「ー」 化)。
-            let is_range_marker = matches!(ch, '〜' | '~' | '～');
-            let emit = !is_range_marker || range_marker_in_numeric_context(input, pos, ch);
-            if emit {
-                if let Some(read) = symbol_char_reading(ch, &self.symbols) {
-                    out.push(self.make(input, pos, ch.len_utf8(), read));
-                }
+            if let Some(read) = symbol_char_reading(ch, &self.symbols) {
+                // 〜 / ~ / ～ は **range marker と vowel extension の dual use**。
+                // 数字 context (= 「2〜3」 「100〜200円」) なら従来通り concat、
+                // kana / 漢字 context (= 「へ〜うま」 「も〜むりすぎ」) では reading
+                // 前後に空白 padding を入れて 「へ から うま」 のように区切る (=
+                // 「へカラうま」 の concat 違和感を解消、 reading そのものは保持)。
+                let is_range_marker = matches!(ch, '〜' | '~' | '～');
+                let final_read = if is_range_marker
+                    && !range_marker_in_numeric_context(input, pos, ch)
+                {
+                    format!(" {read} ")
+                } else {
+                    read
+                };
+                out.push(self.make(input, pos, ch.len_utf8(), final_read));
             }
         }
 
@@ -645,18 +649,15 @@ mod tests {
     }
 
     #[test]
-    fn tilde_skipped_in_kana_context() {
-        // 「へ〜うま」 のような vowel extension context では 〜 → から は誤読、
-        // candidate を出さず後段 provider に譲る (★alpha.21 fix)。
+    fn tilde_padded_with_spaces_in_kana_context() {
+        // 「へ〜うま」 のような kana context では 「から」 を空白 padding で区切り
+        // 「へ から うま」 のような concat 違和感解消形に (★alpha.21 fix)。
         let p = provider();
         let input = "へ〜うま";
         let pos = "へ".len(); // 〜 の byte position
         let cands = p.candidates_at(input, pos);
-        let tilde = cands.iter().find(|c| c.surface == "〜");
-        assert!(
-            tilde.is_none(),
-            "kana context で 〜 candidate を出すべきでない: {tilde:?}"
-        );
+        let c = find(&cands, "〜").expect("tilde candidate in kana context");
+        assert_eq!(c.reading, " から ", "空白 padding 付き 「から」 を期待");
     }
 
     #[test]
