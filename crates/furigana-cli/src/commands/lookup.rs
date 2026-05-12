@@ -8,7 +8,8 @@ use crate::config::Config;
 use crate::paths::Paths;
 use anyhow::{bail, Context, Result};
 use clap::Args as ClapArgs;
-use furigana::{RomajiStyle, TtsOptions};
+use furigana::{Furigana, RomajiStyle, TtsOptions};
+use std::path::PathBuf;
 
 /// `furigana lookup` のオプション
 #[derive(ClapArgs, Debug)]
@@ -19,6 +20,18 @@ pub struct Args {
     /// 変換モード: `tts` (default) | `hiragana` | `ruby` | `kanji` | `romaji` | `romaji-kunrei` | `analyze`
     #[arg(short, long, default_value = "tts")]
     mode: String,
+
+    /// dev / test 用: rules dir を直接指定 (= furigana-dict/rules/)。
+    /// 指定時は `--data-dir/data/` スキャンを skip して raw dict 構造から直接 load する。
+    /// `furigana dict pull` 配置済の通常運用では指定不要。
+    #[arg(long)]
+    rules_dir: Option<PathBuf>,
+
+    /// dev / test 用: core dict dir を直接指定 (複数指定可、
+    /// = furigana-dict/core/{jukugo, unihan, kanji, loanwords, works} 等)。
+    /// 指定時は `--data-dir/data/` スキャンを skip する。
+    #[arg(long)]
+    core_dict_dir: Vec<PathBuf>,
 
     /// TTS: 「、」後に挿入する文字列
     #[arg(long, default_value = " ")]
@@ -35,7 +48,20 @@ pub struct Args {
 
 /// 実行
 pub fn run(args: Args, paths: &Paths, _cfg: &Config) -> Result<()> {
-    let f = super::build_furigana(paths)?;
+    let f = if args.rules_dir.is_some() || !args.core_dict_dir.is_empty() {
+        // dev/test override: raw furigana-dict/ 構造 (rules/ + core/<sub>/) から直接 load。
+        // build_furigana の `<data_dir>/data/` flat スキャンを bypass して dev workflow を支える。
+        let mut b = Furigana::builder();
+        if let Some(rules) = &args.rules_dir {
+            b = b.rules_dir(rules);
+        }
+        for core in &args.core_dict_dir {
+            b = b.core_dict_dir(core);
+        }
+        b.build()?
+    } else {
+        super::build_furigana(paths)?
+    };
 
     let result = match args.mode.as_str() {
         "kanji" => args.text.clone(),
