@@ -19,10 +19,11 @@ use crate::scoring::matcher::{
 };
 use crate::scoring::numbers::NumberCandidateProvider;
 use crate::scoring::odoriji::{apply_rendaku_to_result, OdorijiProvider};
-use crate::scoring::special::{AlphabetPassthroughProvider, ProtectTokenProvider};
+use crate::scoring::special::{normalize_alphabet, AlphabetPassthroughProvider, ProtectTokenProvider};
 use crate::tts::{self, TtsOptions};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 
 // ============================================================================
 // Furigana 本体
@@ -47,6 +48,13 @@ pub struct Furigana {
     /// `analyze()` で provider として使う。 rules を pre-compile して保持、
     /// 各 `analyze()` 呼び出しごとに regex compile しない。
     number_provider: NumberCandidateProvider,
+    /// 外来語 (alphabet surface) lookup map (★alpha.21 再統合)
+    ///
+    /// `core_dict_dirs` 配下の `role = "loanwords"` file から構築。
+    /// key は [`normalize_alphabet`] 後の正規形 (= ASCII lowercase + 全角→半角)、
+    /// value はカタカナ reading。
+    /// [`AlphabetPassthroughProvider`] に渡して band 1000 で hit させる。
+    loanwords: Arc<HashMap<String, String>>,
 }
 
 impl Furigana {
@@ -258,7 +266,10 @@ impl Furigana {
     #[must_use]
     pub fn analyze(&self, input: &str) -> AnalyzeResult {
         let protect = ProtectTokenProvider::new(input);
-        let alphabet = AlphabetPassthroughProvider::passthrough_only(input);
+        // ★alpha.21: loanwords lookup を渡して band 1000 hit を有効化 (= 「YouTube」
+        // 「Java」 「Discord」 等が dict 適用される)。 旧 passthrough_only mode は
+        // miss-only で alphabet を素通しだったが、 dict 整備が進んで再統合した。
+        let alphabet = AlphabetPassthroughProvider::new(input, Arc::clone(&self.loanwords));
         let dict_bridge = DictBridgeProvider::new(&self.dict);
         let odoriji = OdorijiProvider::new();
         // ★alpha.13: Lindera fallback (band 50) = 他 provider が一切覆わない位置の safety net。
@@ -531,13 +542,60 @@ impl FuriganaBuilder {
         // analyze() 呼び出しごとに rebuild すると regex compile cost が乗るので一度作る。
         let number_provider = NumberCandidateProvider::new(&rules);
 
+        // ★alpha.21: loanwords を再統合。 core_dict_dirs / user_dict_dirs 配下から
+        // `role = "loanwords"` file を集めて lookup map に。 AlphabetPassthroughProvider
+        // に渡して band 1000 dict hit を実現する。
+        let mut loanwords_map: HashMap<String, String> = HashMap::new();
+        for d in &self.core_dict_dirs {
+            load_loanwords_into(&mut loanwords_map, d)?;
+        }
+        for d in &self.user_dict_dirs {
+            load_loanwords_into(&mut loanwords_map, d)?;
+        }
+
         Ok(Furigana {
             analyzer: OnceLock::new(),
             rules,
             dict,
             number_provider,
+            loanwords: Arc::new(loanwords_map),
         })
     }
+}
+
+/// `dir` 配下を再帰 scan し、 `role = "loanwords"` の TOML file から
+/// `[entries]` table の `surface = reading` map を `out` に取り込む。
+///
+/// surface は [`normalize_alphabet`] で正規化 (= ASCII lowercase + 全角→半角)。
+/// 同 surface に複数 reading が現れた場合、 後勝ち (= file 名 sort 順で merge 後勝ち)。
+fn load_loanwords_into(out: &mut HashMap<String, String>, dir: &Path) -> Result<()> {
+    if !dir.exists() {
+        return Ok(());
+    }
+    let mut files: Vec<PathBuf> = Vec::new();
+    crate::dict::collect_toml_files_recursive(dir, &mut files)?;
+    files.sort();
+    for f in files {
+        let content = std::fs::read_to_string(&f)?;
+        let from = f.display().to_string();
+        crate::loader::validate_schema_version(&content, &from)?;
+        let role = crate::loader::resolve_role(&content, &f);
+        if role.as_deref() != Some("loanwords") {
+            continue;
+        }
+        // [entries] table を parse (= role 別 toml 構造、 jukugo と同形式)
+        #[derive(serde::Deserialize, Default)]
+        struct LoanwordsToml {
+            #[serde(default)]
+            entries: HashMap<String, String>,
+        }
+        let parsed: LoanwordsToml = crate::loader::parse_toml(&content, &from)?;
+        for (surface, reading) in parsed.entries {
+            let key = normalize_alphabet(&surface);
+            out.insert(key, reading);
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]

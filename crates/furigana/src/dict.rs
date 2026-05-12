@@ -52,7 +52,10 @@ use std::path::{Path, PathBuf};
 ///
 /// この walk 自体は file 名・dir 名で skip しない (`*.test.toml` と `_genre.toml`
 /// だけ除く)。 dir 構造に依存しない loader の前提条件。
-fn collect_toml_files_recursive(dir: &Path, out: &mut Vec<PathBuf>) -> std::io::Result<()> {
+pub(crate) fn collect_toml_files_recursive(
+    dir: &Path,
+    out: &mut Vec<PathBuf>,
+) -> std::io::Result<()> {
     for entry in std::fs::read_dir(dir)? {
         let path = entry?.path();
         if path.is_file() && path.extension().is_some_and(|e| e == "toml") {
