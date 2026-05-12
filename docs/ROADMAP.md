@@ -130,88 +130,78 @@ ja-furigana の中長期計画。 **完了履歴は [CHANGELOG.md](../CHANGELOG.
 - [ ] 「○○魔館」 系 suffix 単独登録の禁止
 - [ ] 出典明示と同等の重みで規律違反を merge block
 
-#### Phase 8: アクセント (intonation) 機能 — 0.2.0 stable target
+#### Phase 8: 0.2.0 stable — intonation + 残 lib 改善 sweep
+
 詳細仕様: [docs/PROPOSALS/intonation.md](./PROPOSALS/intonation.md) (Status: Planned for 0.2.0 stable)
 
-**dict 側は 0.1.0 から書ける** (forward compat、 lib は strip / 無視)、 0.2.0 で lib が parse して活用。
+**0.1.0 で建てた forward compat** (= bracket notation `[ ] /` strip 済 dict が大量に存在) を 0.2.0 で parse + 活用。 加えて 0.1.0 cut 後の運用で発覚した lib 改善 sweep を統合。
 
-0.2.0 stable で投入:
-- bracket notation parse 実装、 `Token { accent_phrases }` field 追加 (additive、 SemVer minor 互換)
-- `--mode=accent` 中立 JSON 出力
-- `--mode=voicevox-aques` AquesTalk-風記法
+##### 主要 機能追加 (= intonation)
+
+- **bracket notation parse 実装**、 `Token { accent_phrases }` field 追加 (additive、 `#[non_exhaustive]` で SemVer minor 互換)
+- **`--mode=accent`** 中立 JSON 出力 (= engine 非依存の accent annotation)
+- **`--mode=voicevox-aques`** AquesTalk-風記法
+- **`--mode=voicevox-query`** — VOICEVOX `/synthesis` 直叩き用 AccentPhrase[] JSON (pitch / mora pause length 込み)
 - **`tts` mode に accent 機能を追加** (削除しない、 既存 pause 整形は維持、 `include_accent` opt-in)
-- `rules/accent/` 階層 + `rules/numbers/fractions.toml`
+- **`rules/accent/` 階層** + `rules/numbers/fractions.toml`
+- **動的 accent shift rules** — 連濁 / 動詞活用 / 複合語 deaccenting / 助数詞 拡充
 
-詳細は intonation.md §0 / §8 参照。
+詳細は [intonation.md](./PROPOSALS/intonation.md) §0 / §8 参照。
 
-#### 既存 TODO
+##### 主要 lib 改善 sweep (= 0.1.0 運用で発覚)
 
-- [ ] **公開 API のシグネチャ最終確認** — rename したくないものは fix
-- [ ] **HTTP レスポンスの JSON フィールド名 fix**
-- [ ] **CHANGELOG の Migration ガイド整備** — 0.1.x → 0.1.0 の breaking 一覧
-- [ ] **大規模 QA corpus** — `should_read.toml` の network coverage を増やす
-  (現在 108 件)
-- [ ] **branch protection 復元** — alpha 期間中の loose rule から stable 体制へ
+- **`next_char_type = "ひらがな"` 雑指示の最小マッチ化 sweep** ([[kanji]] block 30+ 箇所)
+  - 現状 「ひらがな全体マッチ」 で 想定外文脈で誤発火 (= 「復帰勢でも → フッキイキオデモ」 round 44 等の bug 温床)
+  - `next_starts_any = ["い", "さ", "く"]` 等で必要 stem 文字を明示列挙して安全化
+- **人名判定 lib logic** (= ipadic-name-bias)
+  - 「○○ さん / 君 / 氏 / 様」 next 文脈で前 surface を 「人名 priority」 推定
+  - 現状 personal_names.toml に 46 件主要姓 hardcoded、 lib 側 logic で自動化
+- **顔文字 TTS skip / silent 化**
+  - 「・」 → 「なかぐろ」、 「ω」 → 「おめが」 等の 1 字 phonetic 化が TTS で違和感
+  - protect token / 顔文字 chunk を TTS 出力で **silent** にする option (= `--include-emoji-tts=false`)
+- **半角 space normalize の正式化** (= 0.1.0 では `preprocess_input()` で 全角 space に変換、 0.2.0 で path 構築 logic に proper 統合)
 
-#### timeline 実績 + 見込み (2026-05-12 更新)
+##### 改善材料収集 (= 0.2.0 round 前準備)
 
-実績 (alpha.10〜.19 完了):
-- **alpha.10〜.12**: scoring-engine 投入 + dict format 拡張 + [[kanji]] block loader
-- **alpha.13**: Lindera fallback provider + Smart engine が corpus で実用域へ (82% match)
-- **alpha.14**: Smart engine を `to_*` API に wire-up (= production path)
-- **alpha.15**: Strict engine 完全削除 (-3000 行)、 Smart engine 一本化
-- **alpha.16〜.17**: dict 拡充 + UniDic feature flag (`dict-unidic`)
-- **alpha.18**: ↓ (= alpha.19 で撤回されたが lib band hack 試行)
-- **alpha.19**: dict-curated context rule 路線統一 (= 動詞 / 形容詞 1 字 [[kanji]] block化)
-  + inspect API (= dict gap log helper)、 corpus 99.6%
+- **co-occurrence / word-pair stats dev tool** (= 別 dev bin)
+  - 「A の next が B である頻度」 等 corpus 集計、 dict 改善 candidate 抽出を自動化
+- **normalize 強化 (= VOICEVOX 75% → 85% push)**
+  - 「セエ → セイ」 母音 / 拗音 phoneme / 句読点周辺の比較スクリプト改良 (= dict 側ではなく比較 tool 側)
 
-見込み (= 残作業):
-- **alpha.19 → 0.1.0-rc1**: API freeze + benchmark 再計測 + docs / examples 整備
-- **0.1.0-rc1 → 0.1.0 stable**: 最終 sanity check 後、 full scoring-engine + 完全
-  再編成済 dict で SemVer 開始 (= **dict 0.1.0 coordinated release**)
-- **0.1.0 → 0.1.x patch**: dict 漸進拡充 / corpus 増強 / bug fix (additive only)
-- **0.1.x → 0.2.0 stable**: intonation + 辞書側韻律対応 (bracket parse / `--mode=accent` /
-  tts mode に accent 機能追加)、 numeric_phrases を Smart provider 化
-- **0.2.0 → 0.3.0+**: UniDic csj (= 現代話し言葉)、 連濁 / 動詞活用 accent shift 等
+#### 0.1.0 cut 後 TODO (= 1〜3 ヶ月運用後判断)
 
-stable cut までの実時間見積もり: **半年〜1 年規模**、 完成度優先 (期日 driven ではない)。
-
-「alpha.9 を最終 alpha」 policy は **再撤回** (前回 intonation Postponed で再有効化したものを、 scoring-engine 0.1.0 入りに伴い再度撤回)。 stable cut は **lib (engine) 側の readiness 駆動**、 期日 driven でも dict data 充実駆動でもない:
-
-**0.1.0 stable の position**: 「文脈依存ルビ振りが**確実に動く**段階」 で cut。 intonation 等の辞書側韻律対応は **0.2.0 stable target** ([intonation.md](./PROPOSALS/intonation.md) §0)。
-
-**lib 側 必須要件**:
-- Smart engine 実装完成 (bug 解消、 stable 動作)
-- 既存 corpus regression (`should_read.toml` 現 108 件) が Smart engine で pass
-- **文脈依存ルビ振りの動作 verification**: 全 matcher (`prev/next_eq` / `prev/next_pos` / `prev/next_char_type` / `_any` variants) が test pass + 代表的同形異音語 (上手 / 下る / 行った / 人気 / 一日 / 上下 等) を minimal corpus で pass
-- migration script `tools/migrate_v2.py` 完成 (dict 側 maintainer が走らせる準備状態)
-- public API freeze (`Furigana` builder / `Dict` / `RulesData` 等)
-- `analyze()` API schema freeze
-- HTTP server response JSON freeze
-- 旧 format reject 実装、 matcher vocabulary 完全実装、 (a)(b)(c) penalty 数値 fix
-- CHANGELOG / MIGRATION.md / doc 整備
-
-**dict 側は cut 要件外** (0.1.x 漸進、 別 release cycle):
-- `[[kanji]]` default reading の常用漢字制覇度 / 文脈 match data の量
-- corpus regression 件数の増強 (現 108 件 pass で十分)
-
-dict 側は lib 0.1.0 release と coordinated に migration commit + v0.1.0 tag を 1 回打つ、 以降は dict 独立 release cycle で漸進。
-
-### 0.2.x 候補 (0.1.0 後)
-
-#### intonation 関連の続編
-
-- [ ] **`mode=voicevox-query`** — VOICEVOX `/synthesis` 直叩き用 AccentPhrase[] JSON 出力
-  (pitch 値 / mora pause length 込み、 voicevox-aques 経由しなくて済む)
-- [ ] **動的 accent shift rules** — 連濁 / 動詞活用 / 複合語 deaccenting / 助数詞 拡充
+- [ ] **大規模 QA corpus 増強** — `should_read.toml` network coverage 拡充 (= 現 242 件)
+- [ ] **user_dict CSV 化検討** — 同形異音語 misclassification / 複合語 boundary ずれが
+      頻発するなら、 user 側 dict 拡張 API 追加
 - [ ] **rules/accent/ の中身を地道に拡充** — 接頭辞 / 接尾辞 / 各 counter
 - [ ] **NHK アクセント新辞典 出典の bulk PR** — 出典 license 確認後、 まとまった量の seed PR
 - [ ] **engine adapter の community 受付** — openjtalk / ssml / ymm4 等は community PR 待ち、
   必要なら engine config 外部 TOML 化アーキテクチャを検討
-- [ ] **user_dict CSV 化 検討** — 0.1.0 stable 1〜3 ヶ月運用後、 同形異音語 misclassification や
-  複合語 boundary ずれが頻発するなら検討
 
-### Phase 7 候補 (0.1.0 後)
+#### timeline 実績 (2026-05-12 更新)
+
+**0.1.0 cut 完了 (2026-05-12)**:
+- alpha.10〜.12: scoring-engine 投入 + dict format 拡張 + [[kanji]] block loader
+- alpha.13: Lindera fallback provider + Smart engine が corpus で実用域へ (82% match)
+- alpha.14: Smart engine を `to_*` API に wire-up (= production path)
+- alpha.15: Strict engine 完全削除 (-3000 行)、 Smart engine 一本化
+- alpha.16〜.17: dict 拡充 + UniDic feature flag (`dict-unidic`)
+- alpha.18: ↓ (alpha.19 で撤回されたが lib band hack 試行)
+- alpha.19: dict-curated context rule 路線統一 (= 動詞 / 形容詞 1 字 [[kanji]] block 化) + inspect API
+- alpha.20: 形態素信頼 band-up (= `BAND_LINDERA_COMPOUND = 150`、 dict 未登録の純漢字熟語救済)
+- alpha.21: dict 改善 round 31-46 (= 動詞訓読み default 偏向 sweep 60+ 字) + 公開 API wrapper (= signal_log) + lib 半角 space bug fix + tower_governor ConnectInfo fix
+- **v0.1.0 stable cut**: 主要 corpus 99.2% / OpenJTalk 83-85% / VOICEVOX 75-77% / crates.io publish 再開 / dict v0.1.0 coordinated
+
+**今後 (0.1.x → 0.2.0)**:
+- **0.1.x patch**: dict 漸進拡充 / corpus 増強 / bug fix (additive only)、 daily-release 自動 cut 運用
+- **0.2.0 stable**: 上記 intonation + lib 改善 sweep
+- **0.3.0+**: UniDic csj (= 現代話し言葉)、 連濁 / 動詞活用 accent shift、 lindera-neologd opt-in
+
+0.2.0 までの実時間見積もり: **半年〜1 年規模** (= intonation の dict 蓄積 + lib sweep 規模)、 期日 driven ではなく完成度優先。
+
+**0.2.0 stable の position**: 「intonation / accent annotation が**確実に動く**段階」 + 「0.1.0 で発覚した lib bug temperance」。 [intonation.md](./PROPOSALS/intonation.md) §0 が大方針、 残 lib 改善は 0.1.x patch で漸進対応可能なら 0.2.0 を待たずに先行 release 検討。
+
+### 0.2.0+ 並走候補 (= 0.1.x patch 〜 0.2.0 にかけて漸進、 release blocker ではない)
 
 - [ ] **作品単位辞書の継続拡充** — `core/works/` 構造に他作品を PR ベースで追加、
   サブポリシー (公式読みのみ採録 + 出典 comment 必須) を満たすもの
