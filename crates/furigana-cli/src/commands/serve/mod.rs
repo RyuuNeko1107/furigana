@@ -183,7 +183,13 @@ pub fn run(args: Args, paths: &Paths, cfg: &Config) -> Result<()> {
             );
         }
 
-        axum::serve(listener, app)
+        // tower_governor の PeerIpKeyExtractor が ConnectInfo<SocketAddr> を要求する
+        // ため into_make_service_with_connect_info で peer IP extension を inject。
+        // 未指定だと 500 「Unable To Extract Key!」 になる。
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+        )
             .with_graceful_shutdown(shutdown_signal())
             .await
             .map_err(|e| anyhow!("server error: {e}"))?;
