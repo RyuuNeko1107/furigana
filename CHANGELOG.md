@@ -4,10 +4,41 @@
 [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/) 形式に概ね従い、
 バージョニングは [Semantic Versioning](https://semver.org/lang/ja/) を採用。
 
-## [Unreleased] — 0.1.0 stable cut 準備
+## [0.1.0] - 2026-05-12
 
-alpha.10〜.20 の累積 work を 0.1.0 stable として release する射程に入った
-(主要 corpus 99.2%、 stress test corpus 73.4% で形態素信頼版 band 150 導入)。 0.1.0 では:
+alpha.10〜.21 の累積 work を 0.1.0 stable として cut。 主要 corpus 99.2% / extended.toml
+stress 73.4% / OpenJTalk 1000 件比較 83-85% / VOICEVOX engine 比較 75-77%、 production 品質に到達。
+
+### alpha.21 (= dict 改善 sweep + 公開 API wrapper + lib bug fix)
+
+**dict 改善 round 31-46 (= 16 round)**:
+
+- joyo の動詞訓読み default 偏向を 30+ 字 sweep → `[[kanji]]` block 文脈ルールへ統合
+  (= 卑怯者/前+動詞/入/来/客/2人/2桁/方/日/変/速い/大剣/実写/斬り/方/日/蒸/足/煽/第/寝/間/割/内/体/台/服/側/別/化/眼/説/逆/型/確/長/起動中/笑笑/員/弱/圧/小/辛/達/数/毒/急/即/今+数字/凸/真逆/煽れ/N+中接尾辞/同字異義姓 46 件/勢/市/体接尾辞)
+- jukugo workaround 22 件 → 2 件に圧縮 (= round 35 sweep、 「行っ = イッ」 アプローチで Lindera 抗えない case のみ jukugo)
+- `next_eq` matcher の挙動理解 (= ひらがな連続全体と比較する仕様、 1 char match は `next_starts_any` を使う)
+- 人名 jukugo 46 件追加 (= 田中/鈴木/山田/水田 ... 主要姓、 配信チャット 「○○ さん」 同字異義誤読 fix)
+- regression test 242 件 / 100% pass 維持
+
+**公開 API wrapper** (= わんコメ等 配信向け OSS 外):
+
+- ja-furigana lib + DB dict 上書き → ja-furigana lib 一本化 (Phase B、 DB 参照削除)
+- `signal_log` 機能新規: 改善 signal を専用 file (`improve_signal_NNN.jsonl`、 size 10MB rotation)
+  に集計 counter 出力、 raw コメント全文は構造的に保存しない privacy-safe 設計
+- `raw_context` opt-in 機能: fallback hit token の前後 window N=2 を `raw_context_NNN.jsonl`
+  に保存 (= dict 改善判断材料、 全文不保存)
+- 自動 dict 更新 task: 起動時 + 定期 (= `FURIGANA_DICT_UPDATE_INTERVAL_SECS`) で GitHub Release
+  から最新 dict tarball 取得 + atomic swap
+
+**lib bug fix (= alpha.21 commit)**:
+
+- 半角 space (U+0020) 含む input で `solve_path` が空 path 返す致命 bug fix
+  (= `to_hiragana / to_ruby / to_tts / analyze` 全 mode で空 output だった)、
+  `AlphabetPassthroughProvider` で半角 space passthrough + `preprocess_input()` で
+  半角 space → 全角 space 変換の 2 段 fix
+- `tower_governor::PeerIpKeyExtractor` の ConnectInfo 抽出失敗 → 500 「Unable To Extract Key!」
+  fix: `axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>())`
+  に変更で peer IP extension が inject (= localhost 直叩きでも rate limiter が正常動作)
 
 ### alpha.20 (= 形態素信頼 band-up、 dict 未登録の純漢字熟語救済)
 

@@ -35,20 +35,24 @@ TTS 音声合成の前段やふりがな補助での使用を想定。
 「不確かなときは形態素解析の素朴な結果に fall back」「辞書 hit したものは確実に固定」 という
 **保守的な決定論**。 コミュニティ PR で精度が上がる設計。
 
-> **Status**: alpha (0.1.x、 alpha.19 で 0.1.0 stable cut 射程に入った)。
+> **Status**: 0.1.0 stable (2026-05-12)。
 > **Smart engine** (= candidate scoring + Viterbi-like path 選択 + band lexicographic 比較) で
-> 全 reading を解決 (alpha.15 で Strict pipeline 削除済)。 6 provider 構成:
+> 全 reading を解決。 6 provider 構成:
 > ProtectToken (URL/Email/絵文字) / Alphabet passthrough / DictBridge (jukugo / unihan /
 > `[[kanji]]` block の match) / NumberCandidate (数字 + 助数詞 / 大数 / SI / 日付) /
 > Odoriji (踊り字 「々」 連濁) / LinderaFallback (band 50 safety net)。
 >
-> corpus 正解率 (262 case): **99.6%** (alpha.19 時点、 IPADIC default)。
+> 精度 (= 0.1.0、 IPADIC default):
+> - 主要 corpus 262 case: **99.2%**
+> - OpenJTalk g2p 1000 件比較: **83-85%** (= seed 平均)
+> - VOICEVOX engine query 1000 件比較: **75-77%** (= TTS 整合度)
+>
 > 形態素辞書は **`dict-ipadic`** (default) / **`dict-unidic`** (cwj、 0.2.0 intonation 検討用) の
 > feature flag で build-time switch 可能。
 >
 > 詳細は [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) / 中長期計画は [docs/ROADMAP.md](./docs/ROADMAP.md) /
-> 変更履歴は [CHANGELOG.md](./CHANGELOG.md)。
-> `0.1.x` の間は公開 API / TOML スキーマ / CLI 引数 / HTTP レスポンス構造が予告なく変わりえる。
+> 変更履歴は [CHANGELOG.md](./CHANGELOG.md) / breaking 変更ガイドは [MIGRATION.md](./MIGRATION.md)。
+> 0.1.x patch では SemVer 互換維持 (= 公開 API / TOML スキーマ / CLI 引数 / HTTP レスポンス は additive only)。
 
 ## 名前の対応 (混乱しやすい点)
 
@@ -73,9 +77,9 @@ TTS 音声合成の前段やふりがな補助での使用を想定。
 ```toml
 # Cargo.toml
 [dependencies]
-ja-furigana = "0.1.0-alpha.19"
+ja-furigana = "0.1.0"
 # 形態素辞書を選びたい場合 (default = dict-ipadic):
-# ja-furigana = { version = "0.1.0-alpha.19", default-features = false, features = ["dict-unidic"] }
+# ja-furigana = { version = "0.1.0", default-features = false, features = ["dict-unidic"] }
 ```
 
 ```rust
