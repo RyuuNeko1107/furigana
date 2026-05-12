@@ -190,9 +190,9 @@ pub fn run(args: Args, paths: &Paths, cfg: &Config) -> Result<()> {
             listener,
             app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
         )
-            .with_graceful_shutdown(shutdown_signal())
-            .await
-            .map_err(|e| anyhow!("server error: {e}"))?;
+        .with_graceful_shutdown(shutdown_signal())
+        .await
+        .map_err(|e| anyhow!("server error: {e}"))?;
 
         anyhow::Ok(())
     })?;

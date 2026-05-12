@@ -19,7 +19,9 @@ use crate::scoring::matcher::{
 };
 use crate::scoring::numbers::NumberCandidateProvider;
 use crate::scoring::odoriji::{apply_rendaku_to_result, OdorijiProvider};
-use crate::scoring::special::{normalize_alphabet, AlphabetPassthroughProvider, ProtectTokenProvider};
+use crate::scoring::special::{
+    normalize_alphabet, AlphabetPassthroughProvider, ProtectTokenProvider,
+};
 use crate::tts::{self, TtsOptions};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};

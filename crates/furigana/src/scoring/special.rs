@@ -545,7 +545,14 @@ mod tests {
         assert!(!is_alphabet_char('猫'));
         assert!(!is_alphabet_char('あ'));
         assert!(!is_alphabet_char('!'));
-        assert!(!is_alphabet_char(' '));
+    }
+
+    #[test]
+    fn alphabet_char_accepts_whitespace_passthrough() {
+        // space / tab は alphabet 扱い (= 「猫 犬」 のような ASCII whitespace 含み input
+        // で path 構築失敗を防ぐ passthrough 設計、 impl 側 doc comment 参照)
+        assert!(is_alphabet_char(' '));
+        assert!(is_alphabet_char('\t'));
     }
 
     #[test]

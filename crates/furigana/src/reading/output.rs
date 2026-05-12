@@ -39,8 +39,7 @@ fn surface_is_all_kana(surface: &str) -> bool {
 /// - 数字 / 記号のみ → 周辺の hiragana 文脈に合わせて **hiragana 化** (「2」 → 「に」、 「〜」 → 「から」)
 fn surface_has_alphabet(surface: &str) -> bool {
     surface.chars().any(|c| {
-        c.is_ascii_alphabetic()
-            || matches!(c, '\u{FF21}'..='\u{FF3A}' | '\u{FF41}'..='\u{FF5A}')
+        c.is_ascii_alphabetic() || matches!(c, '\u{FF21}'..='\u{FF3A}' | '\u{FF41}'..='\u{FF5A}')
     })
 }
 

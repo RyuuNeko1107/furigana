@@ -35,7 +35,9 @@
 
 use anyhow::{Context, Result};
 use clap::Parser;
-use furigana::{extract_dict_gap_candidates, surface_with_context, token_band, AnalyzeResult, Furigana};
+use furigana::{
+    extract_dict_gap_candidates, surface_with_context, token_band, AnalyzeResult, Furigana,
+};
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Write};
@@ -304,7 +306,15 @@ fn write_tsv(
     for ((kind, surface), agg) in entries {
         let ctx = agg.example_context.replace('\t', " ").replace('\n', " ");
         if include_kind_column {
-            writeln!(out, "{}\t{}\t{}\t{}\t{}", agg.count, kind.as_str(), surface, agg.reading, ctx)?;
+            writeln!(
+                out,
+                "{}\t{}\t{}\t{}\t{}",
+                agg.count,
+                kind.as_str(),
+                surface,
+                agg.reading,
+                ctx
+            )?;
         } else {
             writeln!(out, "{}\t{}\t{}\t{}", agg.count, surface, agg.reading, ctx)?;
         }
@@ -316,7 +326,11 @@ fn write_tsv(
 fn main() -> Result<()> {
     let args = Args::parse();
     let started = Instant::now();
-    let mode = if args.per_token { "per-token (legacy)" } else { "chunk (kanji + alphabet)" };
+    let mode = if args.per_token {
+        "per-token (legacy)"
+    } else {
+        "chunk (kanji + alphabet)"
+    };
     eprintln!(
         "[info] mode = {mode}, threshold band ≤ {}, context_chars = {}",
         args.threshold, args.context_chars
@@ -325,8 +339,7 @@ fn main() -> Result<()> {
     let f = build_furigana(&args).context("Furigana build")?;
     eprintln!("[info] Furigana built in {:?}", started.elapsed());
 
-    let file = File::open(&args.input)
-        .with_context(|| format!("open input {:?}", args.input))?;
+    let file = File::open(&args.input).with_context(|| format!("open input {:?}", args.input))?;
     let reader = BufReader::new(file);
 
     let mut by_key: HashMap<(ChunkKind, String), Aggregate> = HashMap::with_capacity(50_000);
@@ -345,12 +358,9 @@ fn main() -> Result<()> {
 
         if args.per_token {
             // 旧挙動: 漢字含み token を band threshold 以下で抽出 (alphabet 無視)
-            for gap in extract_dict_gap_candidates(
-                &result,
-                &line,
-                args.context_chars,
-                args.threshold,
-            ) {
+            for gap in
+                extract_dict_gap_candidates(&result, &line, args.context_chars, args.threshold)
+            {
                 let chunk = Chunk {
                     kind: ChunkKind::Kanji,
                     surface: gap.surface.clone(),
@@ -393,11 +403,20 @@ fn main() -> Result<()> {
 
     // main TSV (kind 列付き = kanji + alphabet 混在)
     write_tsv(&args.output, &entries, true)?;
-    let kanji_n = entries.iter().filter(|(k, _)| k.0 == ChunkKind::Kanji).count();
-    let alpha_n = entries.iter().filter(|(k, _)| k.0 == ChunkKind::Alphabet).count();
+    let kanji_n = entries
+        .iter()
+        .filter(|(k, _)| k.0 == ChunkKind::Kanji)
+        .count();
+    let alpha_n = entries
+        .iter()
+        .filter(|(k, _)| k.0 == ChunkKind::Alphabet)
+        .count();
     eprintln!(
         "[info] wrote main TSV: {} surfaces ({} kanji + {} alphabet) → {:?}",
-        entries.len(), kanji_n, alpha_n, args.output
+        entries.len(),
+        kanji_n,
+        alpha_n,
+        args.output
     );
 
     // optional: alphabet 専用 TSV
@@ -405,16 +424,22 @@ fn main() -> Result<()> {
         let alpha_only: Vec<_> = entries
             .iter()
             .filter(|(k, _)| k.0 == ChunkKind::Alphabet)
-            .map(|((k, s), a)| ((*k, s.clone()), Aggregate {
-                count: a.count,
-                reading: a.reading.clone(),
-                example_context: a.example_context.clone(),
-            }))
+            .map(|((k, s), a)| {
+                (
+                    (*k, s.clone()),
+                    Aggregate {
+                        count: a.count,
+                        reading: a.reading.clone(),
+                        example_context: a.example_context.clone(),
+                    },
+                )
+            })
             .collect();
         write_tsv(alpha_path, &alpha_only, false)?;
         eprintln!(
             "[info] wrote alphabet-only TSV: {} surfaces → {:?}",
-            alpha_only.len(), alpha_path
+            alpha_only.len(),
+            alpha_path
         );
     }
 
@@ -425,17 +450,23 @@ fn main() -> Result<()> {
         if args.top > 0 && base_entries.len() > args.top {
             base_entries.truncate(args.top);
         }
-        let mut out = BufWriter::new(File::create(base_path)
-            .with_context(|| format!("create {base_path:?}"))?);
+        let mut out = BufWriter::new(
+            File::create(base_path).with_context(|| format!("create {base_path:?}"))?,
+        );
         writeln!(out, "count\tkanji_base\texample_chunk\texample_context")?;
         for (base, agg) in &base_entries {
             let ctx = agg.example_context.replace('\t', " ").replace('\n', " ");
-            writeln!(out, "{}\t{}\t{}\t{}", agg.count, base, agg.example_chunk, ctx)?;
+            writeln!(
+                out,
+                "{}\t{}\t{}\t{}",
+                agg.count, base, agg.example_chunk, ctx
+            )?;
         }
         out.flush()?;
         eprintln!(
             "[info] wrote kanji-base TSV: {} bases → {:?}",
-            base_entries.len(), base_path
+            base_entries.len(),
+            base_path
         );
     }
     Ok(())

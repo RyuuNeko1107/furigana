@@ -119,15 +119,24 @@ fn build_scale_regex(
     sorted_scales.sort_by_key(|s| std::cmp::Reverse(s.chars().count()));
     let scale_alts: Vec<String> = sorted_scales.iter().map(|s| regex::escape(s)).collect();
 
-    let is_single_non_ascii_kanji =
-        |s: &str| s.chars().count() == 1 && s.chars().next().is_some_and(|c| !c.is_ascii_alphanumeric());
+    let is_single_non_ascii_kanji = |s: &str| {
+        s.chars().count() == 1 && s.chars().next().is_some_and(|c| !c.is_ascii_alphanumeric())
+    };
 
     // unit + counter 両方から漢字 1 字 trailing を集めて merge (dedupe)。
     let mut trailing_set: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
-    for u in units.entries.keys().filter(|s| is_single_non_ascii_kanji(s)) {
+    for u in units
+        .entries
+        .keys()
+        .filter(|s| is_single_non_ascii_kanji(s))
+    {
         trailing_set.insert(u.clone());
     }
-    for c in counters.counter.keys().filter(|s| is_single_non_ascii_kanji(s)) {
+    for c in counters
+        .counter
+        .keys()
+        .filter(|s| is_single_non_ascii_kanji(s))
+    {
         trailing_set.insert(c.clone());
     }
     let trailing: Vec<String> = trailing_set.iter().map(|s| regex::escape(s)).collect();
@@ -429,13 +438,12 @@ impl CandidateProvider for NumberCandidateProvider {
                 // 前後に空白 padding を入れて 「へ から うま」 のように区切る (=
                 // 「へカラうま」 の concat 違和感を解消、 reading そのものは保持)。
                 let is_range_marker = matches!(ch, '〜' | '~' | '～');
-                let final_read = if is_range_marker
-                    && !range_marker_in_numeric_context(input, pos, ch)
-                {
-                    format!(" {read} ")
-                } else {
-                    read
-                };
+                let final_read =
+                    if is_range_marker && !range_marker_in_numeric_context(input, pos, ch) {
+                        format!(" {read} ")
+                    } else {
+                        read
+                    };
                 out.push(self.make(input, pos, ch.len_utf8(), final_read));
             }
         }
@@ -711,7 +719,9 @@ mod tests {
         let input = "2〜あ";
         let pos = "2".len();
         let cands = p.candidates_at(input, pos);
-        assert!(cands.iter().any(|c| c.surface == "〜" && c.reading == "から"));
+        assert!(cands
+            .iter()
+            .any(|c| c.surface == "〜" && c.reading == "から"));
     }
 
     // ─── 素の数字 ────────────────────────────────────────────────────────────
