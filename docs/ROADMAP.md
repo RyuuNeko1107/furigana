@@ -179,14 +179,15 @@ corpus 増強 (= 新規 case 追加) は 0.1.0 cut 後 TODO の 「大規模 QA 
 
 ##### 改善材料収集 (= 0.2.0 round 前準備)
 
-- **co-occurrence / word-pair stats dev tool** (= 別 dev bin)
-  - 「A の next が B である頻度」 等 corpus 集計、 dict 改善 candidate 抽出を自動化
 - **VOICEVOX engine 一致率を主力指標として運用** (= 75-77% → 85% push)
   - 辞書 corpus 内部 expected/actual 一致率は dict 改善で 100% に飽和し dogfood 指標としては形骸化、
     一方 VOICEVOX engine kana 一致率は dict 改善が **実用 TTS 経路まで届くか** を測る本質指標
   - 旧 `compare_with_openjtalk.py` (= 単純 phonetic 一致度 lib 内部メトリック) は役目を終え 2026-05-12 削除済、
     現主力 dev tool は `data/_analysis/scripts/compare_with_voicevox.py` の単一窓口
   - 「セエ → セイ」 母音 / 拗音 phoneme / 句読点周辺の normalize pipeline 改良 (= dict 側ではなく 比較 tool 側) で残 diff を絞る
+  - 過去案 「co-occurrence / word-pair stats dev tool」 は round 47 で normalize 強化 +
+    dict 改善で verify avg 85% 達成、 残 diff は VV 側誤読 / lib bug が多く co-occurrence
+    で抽出できる dict candidate は marginal、 不採用
 
 #### 0.1.0 cut 後 TODO (= 1〜3 ヶ月運用後判断)
 
