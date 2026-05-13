@@ -2,12 +2,40 @@
 
 use super::types::AppState;
 use crate::config::Config;
-use axum::extract::{Request, State};
+use axum::extract::{ConnectInfo, Request, State};
 use axum::http::{HeaderValue, Method, StatusCode};
 use axum::middleware::Next;
 use axum::response::Response;
+use std::net::SocketAddr;
 use subtle::ConstantTimeEq;
 use tower_http::cors::{Any, CorsLayer};
+
+/// log 用に token を識別可能だが秘匿性は保つ形 (先頭 4 文字 + length) で短縮
+fn token_log_repr(token: &str) -> String {
+    let prefix: String = token.chars().take(4).collect();
+    format!("{}…(len={})", prefix, token.len())
+}
+
+/// 認証失敗時の共通 log + metrics
+fn record_auth_failure(state: &AppState, req: &Request, presented: Option<&str>, scope: &str) {
+    let peer = req
+        .extensions()
+        .get::<ConnectInfo<SocketAddr>>()
+        .map(|c| c.0.to_string())
+        .unwrap_or_else(|| "?".to_string());
+    let path = req.uri().path();
+    let token_repr = presented
+        .map(token_log_repr)
+        .unwrap_or_else(|| "<none>".to_string());
+    tracing::warn!(
+        peer = %peer,
+        path = %path,
+        scope = %scope,
+        token = %token_repr,
+        "auth failure"
+    );
+    state.metrics.record_auth_failure();
+}
 
 /// **timing-safe** な token 比較。
 ///
@@ -38,10 +66,14 @@ pub(super) async fn require_token(
     if state.tokens.is_empty() {
         return Ok(next.run(req).await);
     }
-    let presented = extract_token(&req).ok_or(StatusCode::UNAUTHORIZED)?;
+    let Some(presented) = extract_token(&req) else {
+        record_auth_failure(&state, &req, None, "user");
+        return Err(StatusCode::UNAUTHORIZED);
+    };
     if tokens_match(&state.tokens, &presented) {
         Ok(next.run(req).await)
     } else {
+        record_auth_failure(&state, &req, Some(&presented), "user");
         Err(StatusCode::UNAUTHORIZED)
     }
 }
@@ -59,10 +91,14 @@ pub(super) async fn require_admin_token(
     if state.admin_tokens.is_empty() {
         return Err(StatusCode::SERVICE_UNAVAILABLE);
     }
-    let presented = extract_token(&req).ok_or(StatusCode::UNAUTHORIZED)?;
+    let Some(presented) = extract_token(&req) else {
+        record_auth_failure(&state, &req, None, "admin");
+        return Err(StatusCode::UNAUTHORIZED);
+    };
     if tokens_match(&state.admin_tokens, &presented) {
         Ok(next.run(req).await)
     } else {
+        record_auth_failure(&state, &req, Some(&presented), "admin");
         Err(StatusCode::UNAUTHORIZED)
     }
 }

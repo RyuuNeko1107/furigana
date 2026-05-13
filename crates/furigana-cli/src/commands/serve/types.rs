@@ -1,5 +1,6 @@
 //! `serve` の HTTP 型 + AppState + エラーヘルパ
 
+use super::metrics::ServerMetrics;
 use crate::paths::Paths;
 use axum::http::StatusCode;
 use axum::Json;
@@ -12,6 +13,9 @@ use tokio::sync::RwLock;
 /// 1 リクエストあたりの最大入力文字数 (公開 API 仕様)
 pub(super) const MAX_TEXT_LEN: usize = 10_000;
 
+/// total_ms がこの閾値を超えると WARN log + slow_requests counter increment
+pub(super) const SLOW_REQUEST_MS: f64 = 100.0;
+
 /// HTTP サーバーの共有状態
 ///
 /// `furigana` は `RwLock<Arc<...>>` でホットリロード対応:
@@ -19,12 +23,14 @@ pub(super) const MAX_TEXT_LEN: usize = 10_000;
 /// - write 側 (reload): `write().await` で中の `Arc` を差し替え
 ///
 /// `paths` は reload 時に `build_furigana` を再実行するため保持。
+/// `metrics` は process-wide な counter / histogram、 `/metrics` で export。
 #[derive(Clone)]
 pub(super) struct AppState {
     pub(super) furigana: Arc<RwLock<Arc<Furigana>>>,
     pub(super) tokens: Arc<Vec<String>>,
     pub(super) admin_tokens: Arc<Vec<String>>,
     pub(super) paths: Arc<Paths>,
+    pub(super) metrics: Arc<ServerMetrics>,
 }
 
 /// `/furigana` のクエリ / body パラメータ

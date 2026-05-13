@@ -2,14 +2,41 @@
 
 use super::types::{
     default_mode, error, ApiError, AppState, FuriganaParams, FuriganaResponse, MAX_TEXT_LEN,
+    SLOW_REQUEST_MS,
 };
-use axum::extract::{Query, State};
-use axum::http::StatusCode;
+use axum::extract::{ConnectInfo, Query, State};
+use axum::http::{HeaderMap, StatusCode};
+use axum::response::IntoResponse;
 use axum::Json;
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use furigana::{Furigana, RomajiStyle, TtsOptions};
 use serde_json::{json, Value};
+use std::net::SocketAddr;
 use std::time::Instant;
+
+/// reload trigger 元 (= log + metrics 用)
+///
+/// `Startup` は予約 (= 起動時 reload はまだ do_reload 経由しない)、
+/// `Sighup` は Unix のみ使われる。 cross-platform 互換のため全 variant を保持。
+#[derive(Debug, Clone, Copy)]
+#[allow(dead_code)]
+pub(super) enum ReloadSource {
+    Startup,
+    Admin,
+    AutoUpdate,
+    Sighup,
+}
+
+impl ReloadSource {
+    fn as_str(&self) -> &'static str {
+        match self {
+            Self::Startup => "startup",
+            Self::Admin => "admin",
+            Self::AutoUpdate => "auto_update",
+            Self::Sighup => "sighup",
+        }
+    }
+}
 
 /// `GET /healthz`
 pub(super) async fn healthz(State(state): State<AppState>) -> Json<Value> {
@@ -20,27 +47,43 @@ pub(super) async fn healthz(State(state): State<AppState>) -> Json<Value> {
     }))
 }
 
+/// `GET /metrics` — Prometheus 互換 text exposition format で metrics を返す
+pub(super) async fn metrics(State(state): State<AppState>) -> impl IntoResponse {
+    let body = state.metrics.render();
+    (
+        StatusCode::OK,
+        [("content-type", "text/plain; version=0.0.4")],
+        body,
+    )
+}
+
 /// `GET /furigana?text=...`
 pub(super) async fn furigana_get(
     State(state): State<AppState>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Query(params): Query<FuriganaParams>,
 ) -> Result<Json<FuriganaResponse>, ApiError> {
     let f = state.furigana.read().await.clone();
-    process(f.as_ref(), &params)
+    let user_agent = ua(&headers);
+    process(f.as_ref(), &params, &state, peer, user_agent.as_deref())
 }
 
 /// `POST /furigana` (JSON body)
 pub(super) async fn furigana_post(
     State(state): State<AppState>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Json(params): Json<FuriganaParams>,
 ) -> Result<Json<FuriganaResponse>, ApiError> {
     let f = state.furigana.read().await.clone();
-    process(f.as_ref(), &params)
+    let user_agent = ua(&headers);
+    process(f.as_ref(), &params, &state, peer, user_agent.as_deref())
 }
 
 /// `POST /admin/reload` — `<data_dir>` から辞書を再ロードして state を swap
 pub(super) async fn admin_reload(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
-    let dict_size = do_reload(&state).await.map_err(|e| {
+    let dict_size = do_reload(&state, ReloadSource::Admin).await.map_err(|e| {
         error(
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("reload failed: {e}"),
@@ -56,7 +99,8 @@ pub(super) async fn admin_reload(State(state): State<AppState>) -> Result<Json<V
 ///
 /// build 自体は CPU bound + I/O 込みなので `spawn_blocking` で逃がす。
 /// 戻り値は新 dict のサイズ。
-pub(super) async fn do_reload(state: &AppState) -> Result<usize, String> {
+pub(super) async fn do_reload(state: &AppState, source: ReloadSource) -> Result<usize, String> {
+    let old_size = state.furigana.read().await.dict_size();
     let paths = state.paths.clone();
     let new = tokio::task::spawn_blocking(move || crate::commands::build_furigana(&paths))
         .await
@@ -65,17 +109,44 @@ pub(super) async fn do_reload(state: &AppState) -> Result<usize, String> {
     let new_arc = std::sync::Arc::new(new);
     let dict_size = new_arc.dict_size();
     *state.furigana.write().await = new_arc;
-    tracing::info!("辞書を reload しました (dict_size={dict_size})");
+    state.metrics.record_reload(dict_size);
+    tracing::info!(
+        source = source.as_str(),
+        old_size,
+        new_size = dict_size,
+        delta = dict_size as i64 - old_size as i64,
+        "dict reload"
+    );
     Ok(dict_size)
 }
 
+/// HeaderMap から User-Agent 取り出し (= debug log 用、 無ければ None)
+fn ua(headers: &HeaderMap) -> Option<String> {
+    headers
+        .get("user-agent")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string())
+}
+
 /// パラメータをデコード → モード別変換 → JSON レスポンス組み立て
-fn process(f: &Furigana, params: &FuriganaParams) -> Result<Json<FuriganaResponse>, ApiError> {
+fn process(
+    f: &Furigana,
+    params: &FuriganaParams,
+    state: &AppState,
+    peer: SocketAddr,
+    user_agent: Option<&str>,
+) -> Result<Json<FuriganaResponse>, ApiError> {
     let text = decode_text(params)?;
     validate_length(&text)?;
     let mode = normalize_mode(&params.mode);
 
-    tracing::debug!(text = %text, mode = %mode, "request");
+    tracing::debug!(
+        peer = %peer,
+        user_agent = user_agent.unwrap_or("-"),
+        text = %text,
+        mode = %mode,
+        "request"
+    );
 
     let t_start = Instant::now();
 
@@ -106,7 +177,30 @@ fn process(f: &Furigana, params: &FuriganaParams) -> Result<Json<FuriganaRespons
         };
 
         let token_dump = format_analyze_tokens(&analyze_result);
+        state.metrics.record_request(&mode, t_total_ms);
+        let degraded = detect_degraded(&mode, &text, &result);
+        if degraded {
+            state.metrics.record_failed_resolution();
+            tracing::warn!(
+                peer = %peer,
+                text = %text,
+                result = %result,
+                mode = %mode,
+                "reading resolution degraded (= empty or identity to input)"
+            );
+        }
+        if t_total_ms > SLOW_REQUEST_MS {
+            state.metrics.record_slow_request();
+            tracing::warn!(
+                peer = %peer,
+                mode = %mode,
+                text_len = text.chars().count(),
+                total_ms = round1(t_total_ms),
+                "slow request"
+            );
+        }
         tracing::debug!(
+            peer = %peer,
             result = %result,
             tokens = %token_dump,
             n_tokens = analyze_result.tokens.len(),
@@ -176,7 +270,32 @@ fn process(f: &Furigana, params: &FuriganaParams) -> Result<Json<FuriganaRespons
 
     let token_dump = format_tokens(&tokens);
     let n_segments = segments.as_ref().map(|s| s.len()).unwrap_or(0);
+    state.metrics.record_request(&mode, t_total_ms);
+    let degraded = detect_degraded(&mode, &text, &result);
+    if degraded {
+        state.metrics.record_failed_resolution();
+        tracing::warn!(
+            peer = %peer,
+            text = %text,
+            result = %result,
+            mode = %mode,
+            "reading resolution degraded (= empty or identity to input)"
+        );
+    }
+    if t_total_ms > SLOW_REQUEST_MS {
+        state.metrics.record_slow_request();
+        tracing::warn!(
+            peer = %peer,
+            mode = %mode,
+            text_len = text.chars().count(),
+            total_ms = round1(t_total_ms),
+            tokenize_ms = round1(t_tokenize_ms),
+            convert_ms = round1(t_convert_ms),
+            "slow request"
+        );
+    }
     tracing::debug!(
+        peer = %peer,
         result = %result,
         tokens = %token_dump,
         n_tokens = tokens.len(),
@@ -194,6 +313,26 @@ fn process(f: &Furigana, params: &FuriganaParams) -> Result<Json<FuriganaRespons
         timings_ms,
         analyze: None,
     }))
+}
+
+/// 読み解決が退化 (= empty / kanji 通過扱い / input = output) しているか判定。
+///
+/// `mode="kanji"` は input そのまま返すのが仕様なので除外。 そうでない mode で
+/// result が空 / input と同一 / 全部 None-reading の状態は dict 未収録 or
+/// engine の path 解決失敗を示唆する debug 用 signal。
+fn detect_degraded(mode: &str, text: &str, result: &str) -> bool {
+    if mode == "kanji" {
+        return false;
+    }
+    if result.is_empty() {
+        return true;
+    }
+    // input 中に漢字を含むのに result が input と完全一致 = reading 解決されてない
+    let has_kanji = text.chars().any(|c| {
+        // CJK Unified Ideographs の主要範囲のみで近似 (= 詳細は furigana::kana 側)
+        ('\u{4E00}'..='\u{9FFF}').contains(&c) || ('\u{3400}'..='\u{4DBF}').contains(&c)
+    });
+    has_kanji && result == text
 }
 
 /// debug log 用に tokens を `surface[reading]|surface[reading]|...` 形式に整形

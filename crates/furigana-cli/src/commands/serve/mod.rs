@@ -22,6 +22,7 @@
 
 mod auth;
 mod handlers;
+mod metrics;
 mod types;
 
 use crate::config::Config;
@@ -41,7 +42,10 @@ use tokio::sync::RwLock;
 use auth::{build_cors, require_admin_token, require_token};
 #[cfg(unix)]
 use handlers::do_reload;
-use handlers::{admin_reload, furigana_get, furigana_post, healthz};
+use handlers::{
+    admin_reload, furigana_get, furigana_post, healthz, metrics as metrics_handler, ReloadSource,
+};
+use metrics::ServerMetrics;
 use types::AppState;
 
 #[derive(ClapArgs, Debug)]
@@ -97,11 +101,15 @@ pub fn run(args: Args, paths: &Paths, cfg: &Config) -> Result<()> {
     let admin_tokens = cfg.auth.admin_tokens.clone();
     let admin_enabled = !admin_tokens.is_empty();
 
+    let server_metrics = Arc::new(ServerMetrics::default());
+    server_metrics.set_dict_size(furigana.dict_size());
+
     let state = AppState {
         furigana: Arc::new(RwLock::new(furigana)),
         tokens: Arc::new(tokens),
         admin_tokens: Arc::new(admin_tokens),
         paths: Arc::new(paths.clone()),
+        metrics: server_metrics,
     };
 
     let cors = build_cors(cfg);
@@ -110,10 +118,13 @@ pub fn run(args: Args, paths: &Paths, cfg: &Config) -> Result<()> {
     // body 1 MB は通常のリクエスト (text パラメータ ~100k chars) より十分大きい。
     // rate limit 60 req/min per IP (= 1 req/sec バースト 5)。 admin endpoint も
     // 含めてグローバルに適用、 過剰トラフィックは即 429 で弾く。
+    use axum::body::Body;
+    use axum::http::Request;
     use tower_governor::governor::GovernorConfigBuilder;
     use tower_governor::GovernorLayer;
     use tower_http::limit::RequestBodyLimitLayer;
     use tower_http::trace::TraceLayer;
+    use tracing::Level;
     const MAX_BODY_BYTES: usize = 1024 * 1024;
     let governor_conf = std::sync::Arc::new(
         GovernorConfigBuilder::default()
@@ -137,14 +148,61 @@ pub fn run(args: Args, paths: &Paths, cfg: &Config) -> Result<()> {
             require_admin_token,
         ));
 
+    // TraceLayer: /healthz と /metrics は polling 系で log を埋めるので TRACE 降格、
+    // それ以外 (= /furigana / /admin) は DEBUG で出す。 RUST_LOG=info でも
+    // TraceLayer 自体は黙る (= 詳細は handler の debug! 経由で見る)。
+    let trace_layer = TraceLayer::new_for_http()
+        .make_span_with(|req: &Request<Body>| {
+            let path = req.uri().path();
+            let level = if path == "/healthz" || path == "/metrics" {
+                Level::TRACE
+            } else {
+                Level::DEBUG
+            };
+            tracing::span!(
+                Level::DEBUG,
+                "request",
+                method = %req.method(),
+                uri = %req.uri(),
+                version = ?req.version(),
+                trace_level = ?level,
+            )
+        });
+
+    // 429 detection: governor_layer の 後段 (= 外側 wrap) で response status を見て
+    // rate_limited counter を増やす + warn log を出す。 layer 順序は逆順 apply
+    // なので、 .layer() chain で governor_layer より「後に」 書くと先に発火する。
+    let log_429_state = state.clone();
+    let log_429 = axum::middleware::from_fn(
+        move |req: axum::extract::Request, next: axum::middleware::Next| {
+            let metrics = log_429_state.metrics.clone();
+            async move {
+                let peer = req
+                    .extensions()
+                    .get::<axum::extract::ConnectInfo<std::net::SocketAddr>>()
+                    .map(|c| c.0.to_string())
+                    .unwrap_or_else(|| "?".to_string());
+                let path = req.uri().path().to_string();
+                let resp = next.run(req).await;
+                if resp.status() == axum::http::StatusCode::TOO_MANY_REQUESTS {
+                    metrics.record_rate_limited();
+                    tracing::warn!(peer = %peer, path = %path, "rate limited (429)");
+                }
+                resp
+            }
+        },
+    );
+
     let app = Router::new()
         .merge(furigana_routes)
         .merge(admin_routes)
         .route("/healthz", get(healthz))
+        .route("/metrics", get(metrics_handler))
         .layer(cors)
         .layer(RequestBodyLimitLayer::new(MAX_BODY_BYTES))
+        .layer(log_429)
         .layer(governor_layer)
-        .layer(TraceLayer::new_for_http())
+        .layer(trace_layer)
         .with_state(state.clone());
 
     let rt = tokio::runtime::Builder::new_multi_thread()
@@ -277,7 +335,7 @@ fn spawn_auto_update(state: AppState, cfg: crate::config::AutoUpdateConfig) {
             match result {
                 Ok(Ok(())) => {
                     // pull 成功 → state を swap
-                    match handlers::do_reload(&state).await {
+                    match handlers::do_reload(&state, ReloadSource::AutoUpdate).await {
                         Ok(size) => {
                             tracing::info!(
                                 "auto_update: {} 反映完了 (dict_size={})",
@@ -342,7 +400,7 @@ fn spawn_sighup_reload(state: AppState) {
         };
         while sighup.recv().await.is_some() {
             tracing::info!("SIGHUP を受信、辞書を reload します");
-            match do_reload(&state).await {
+            match do_reload(&state, ReloadSource::Sighup).await {
                 Ok(size) => tracing::info!("reload 成功 (dict_size={size})"),
                 Err(e) => tracing::error!("reload 失敗: {e}"),
             }
