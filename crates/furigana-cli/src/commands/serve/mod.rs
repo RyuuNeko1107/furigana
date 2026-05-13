@@ -113,6 +113,7 @@ pub fn run(args: Args, paths: &Paths, cfg: &Config) -> Result<()> {
     use tower_governor::governor::GovernorConfigBuilder;
     use tower_governor::GovernorLayer;
     use tower_http::limit::RequestBodyLimitLayer;
+    use tower_http::trace::TraceLayer;
     const MAX_BODY_BYTES: usize = 1024 * 1024;
     let governor_conf = std::sync::Arc::new(
         GovernorConfigBuilder::default()
@@ -143,6 +144,7 @@ pub fn run(args: Args, paths: &Paths, cfg: &Config) -> Result<()> {
         .layer(cors)
         .layer(RequestBodyLimitLayer::new(MAX_BODY_BYTES))
         .layer(governor_layer)
+        .layer(TraceLayer::new_for_http())
         .with_state(state.clone());
 
     let rt = tokio::runtime::Builder::new_multi_thread()
