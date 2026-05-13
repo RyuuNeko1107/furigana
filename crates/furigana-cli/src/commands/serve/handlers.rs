@@ -75,6 +75,8 @@ fn process(f: &Furigana, params: &FuriganaParams) -> Result<Json<FuriganaRespons
     validate_length(&text)?;
     let mode = normalize_mode(&params.mode);
 
+    tracing::debug!(text = %text, mode = %mode, "request");
+
     let t_start = Instant::now();
 
     // analyze mode は tokenize 経路ではなく Smart engine analyze() を直接呼ぶ。
@@ -102,6 +104,16 @@ fn process(f: &Furigana, params: &FuriganaParams) -> Result<Json<FuriganaRespons
         } else {
             None
         };
+
+        let token_dump = format_analyze_tokens(&analyze_result);
+        tracing::debug!(
+            result = %result,
+            tokens = %token_dump,
+            n_tokens = analyze_result.tokens.len(),
+            total_ms = round1(t_total_ms),
+            convert_ms = round1(t_convert_ms),
+            "response (analyze)"
+        );
 
         return Ok(Json(FuriganaResponse {
             result,
@@ -162,6 +174,19 @@ fn process(f: &Furigana, params: &FuriganaParams) -> Result<Json<FuriganaRespons
         None
     };
 
+    let token_dump = format_tokens(&tokens);
+    let n_segments = segments.as_ref().map(|s| s.len()).unwrap_or(0);
+    tracing::debug!(
+        result = %result,
+        tokens = %token_dump,
+        n_tokens = tokens.len(),
+        n_segments,
+        total_ms = round1(t_total_ms),
+        tokenize_ms = round1(t_tokenize_ms),
+        convert_ms = round1(t_convert_ms),
+        "response"
+    );
+
     Ok(Json(FuriganaResponse {
         result,
         mode,
@@ -169,6 +194,31 @@ fn process(f: &Furigana, params: &FuriganaParams) -> Result<Json<FuriganaRespons
         timings_ms,
         analyze: None,
     }))
+}
+
+/// debug log 用に tokens を `surface[reading]|surface[reading]|...` 形式に整形
+fn format_tokens(tokens: &[furigana::ReadingToken]) -> String {
+    tokens
+        .iter()
+        .map(|t| {
+            format!(
+                "{}[{}]",
+                t.surface,
+                t.reading.as_deref().unwrap_or("")
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("|")
+}
+
+/// debug log 用に analyze tokens を `surface[reading]|...` 形式に整形
+fn format_analyze_tokens(result: &furigana::AnalyzeResult) -> String {
+    result
+        .tokens
+        .iter()
+        .map(|t| format!("{}[{}]", t.surface, t.reading))
+        .collect::<Vec<_>>()
+        .join("|")
 }
 
 /// `text` または `text_b64` から本文を取り出す。両方無ければ 400。
