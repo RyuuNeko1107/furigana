@@ -18,7 +18,8 @@
 //! 既存実装を deprecate、 0.2.0+ で削除予定)。
 
 use crate::scoring::candidate::{
-    Candidate, CandidateProvider, Score, BAND_DICT_EXACT, BAND_KANJI, BAND_PROTECTED,
+    Candidate, CandidateProvider, Score, ScoringContext, BAND_DICT_EXACT, BAND_KANJI,
+    BAND_PROTECTED,
 };
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -185,6 +186,7 @@ impl ProtectTokenProvider {
     }
 
     /// pre-computed 保護 token 一覧を返す (debug / 解析用途)。
+    #[cfg(test)]
     #[must_use]
     pub fn tokens(&self) -> &[ProtectedToken] {
         &self.tokens
@@ -192,11 +194,11 @@ impl ProtectTokenProvider {
 }
 
 impl CandidateProvider for ProtectTokenProvider {
-    fn candidates_at(&self, input: &str, pos: usize) -> Vec<Candidate> {
+    fn candidates_at(&self, ctx: &ScoringContext, pos: usize) -> Vec<Candidate> {
         let mut out = Vec::new();
         for token in &self.tokens {
             if token.range.start == pos {
-                let surface = &input[token.range.clone()];
+                let surface = &ctx.input[token.range.clone()];
                 let char_count = surface.chars().count();
                 let length = u8::try_from(char_count).unwrap_or(u8::MAX);
                 out.push(Candidate::new(
@@ -315,12 +317,14 @@ impl AlphabetPassthroughProvider {
     }
 
     /// lookup 不要 (= 全 passthrough) で構築。 test / 簡易用途。
+    #[cfg(test)]
     #[must_use]
     pub fn passthrough_only(input: &str) -> Self {
         Self::new(input, Arc::new(HashMap::new()))
     }
 
     /// pre-computed 英字 range を返す (debug / 解析用途)。
+    #[cfg(test)]
     #[must_use]
     pub fn ranges(&self) -> &[Range<usize>] {
         &self.ranges
@@ -328,13 +332,13 @@ impl AlphabetPassthroughProvider {
 }
 
 impl CandidateProvider for AlphabetPassthroughProvider {
-    fn candidates_at(&self, input: &str, pos: usize) -> Vec<Candidate> {
+    fn candidates_at(&self, ctx: &ScoringContext, pos: usize) -> Vec<Candidate> {
         let mut out = Vec::new();
         for range in &self.ranges {
             if range.start != pos {
                 continue;
             }
-            let surface = &input[range.clone()];
+            let surface = &ctx.input[range.clone()];
 
             // ★alpha.19: surface が全て数字 (= 「2」「100」 等) なら skip。
             // 数字単独の reading 化は NumberCandidateProvider (band 950) の責務、
@@ -373,6 +377,12 @@ fn is_digit_char(c: char) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scoring::boundary::BoundaryAnalysis;
+
+    fn ctx(input: &str) -> ScoringContext<'_> {
+        let boundary = Box::leak(Box::new(BoundaryAnalysis::empty()));
+        ScoringContext { input, boundary }
+    }
 
     // ─── is_emoji_char ───────────────────────────────────────────────────────
 
@@ -482,7 +492,7 @@ mod tests {
         let input = "foo https://example.com bar";
         let provider = ProtectTokenProvider::new(input);
         let url_start = input.find("https").unwrap();
-        let candidates = provider.candidates_at(input, url_start);
+        let candidates = provider.candidates_at(&ctx(input), url_start);
         assert_eq!(candidates.len(), 1);
         assert_eq!(candidates[0].surface, "https://example.com");
         assert_eq!(candidates[0].reading, "https://example.com"); // passthrough
@@ -493,7 +503,7 @@ mod tests {
     fn provider_returns_empty_at_non_token_position() {
         let input = "foo https://example.com bar";
         let provider = ProtectTokenProvider::new(input);
-        let candidates = provider.candidates_at(input, 0);
+        let candidates = provider.candidates_at(&ctx(input), 0);
         assert!(candidates.is_empty(), "pos 0 は URL の start ではない");
     }
 
@@ -502,7 +512,7 @@ mod tests {
         let input = "Hi😀";
         let provider = ProtectTokenProvider::new(input);
         let emoji_start = input.find('😀').unwrap();
-        let candidates = provider.candidates_at(input, emoji_start);
+        let candidates = provider.candidates_at(&ctx(input), emoji_start);
         assert_eq!(candidates.len(), 1);
         assert_eq!(candidates[0].surface, "😀");
         assert_eq!(candidates[0].reading, "😀"); // passthrough、 ひらがな化しない
@@ -513,7 +523,7 @@ mod tests {
         let input = "ただのテキスト";
         let provider = ProtectTokenProvider::new(input);
         assert!(provider.tokens().is_empty());
-        assert!(provider.candidates_at(input, 0).is_empty());
+        assert!(provider.candidates_at(&ctx(input), 0).is_empty());
     }
 
     #[test]
@@ -600,7 +610,7 @@ mod tests {
     fn alphabet_passthrough_provider_returns_surface_when_no_lookup() {
         let input = "APIサーバー";
         let provider = AlphabetPassthroughProvider::passthrough_only(input);
-        let candidates = provider.candidates_at(input, 0);
+        let candidates = provider.candidates_at(&ctx(input), 0);
         assert_eq!(candidates.len(), 1);
         assert_eq!(candidates[0].surface, "API");
         assert_eq!(candidates[0].reading, "API"); // passthrough: reading = surface
@@ -614,7 +624,7 @@ mod tests {
         let mut lookup = HashMap::new();
         lookup.insert("api".to_string(), "エーピーアイ".to_string());
         let provider = AlphabetPassthroughProvider::new(input, Arc::new(lookup));
-        let candidates = provider.candidates_at(input, 0);
+        let candidates = provider.candidates_at(&ctx(input), 0);
         assert_eq!(candidates.len(), 1);
         assert_eq!(candidates[0].surface, "API");
         assert_eq!(candidates[0].reading, "エーピーアイ");
@@ -626,7 +636,7 @@ mod tests {
         let mut lookup = HashMap::new();
         lookup.insert("api".to_string(), "エーピーアイ".to_string());
         let provider = AlphabetPassthroughProvider::new(input, Arc::new(lookup));
-        let candidates = provider.candidates_at(input, 0);
+        let candidates = provider.candidates_at(&ctx(input), 0);
         assert_eq!(candidates.len(), 1);
         // surface は full-width のまま、 normalize されるのは lookup key のみ
         assert_eq!(candidates[0].surface, "ＡＰＩ");
@@ -638,7 +648,7 @@ mod tests {
         let input = "APIサーバー";
         let provider = AlphabetPassthroughProvider::passthrough_only(input);
         // pos 3 は 「サ」 の start (= API の後)、 alphabet ではない
-        assert!(provider.candidates_at(input, 3).is_empty());
+        assert!(provider.candidates_at(&ctx(input), 3).is_empty());
     }
 
     #[test]
@@ -646,6 +656,6 @@ mod tests {
         let input = "ただの日本語";
         let provider = AlphabetPassthroughProvider::passthrough_only(input);
         assert!(provider.ranges().is_empty());
-        assert!(provider.candidates_at(input, 0).is_empty());
+        assert!(provider.candidates_at(&ctx(input), 0).is_empty());
     }
 }

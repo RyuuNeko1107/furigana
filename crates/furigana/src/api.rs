@@ -12,7 +12,7 @@ use crate::rules::RulesData;
 use crate::scoring::analyze::{analyze as scoring_analyze, AnalyzeResult};
 use crate::scoring::boundary::BoundaryAnalysis;
 use crate::scoring::bracket::strip_intonation_markers;
-use crate::scoring::candidate::{Candidate, CandidateProvider, Score};
+use crate::scoring::candidate::{Candidate, CandidateProvider, Score, ScoringContext};
 use crate::scoring::lindera_fallback::LinderaFallbackProvider;
 use crate::scoring::matcher::{
     next2_logical_token, next_logical_token, prev_logical_token, MatchContext,
@@ -301,7 +301,11 @@ impl Furigana {
         let boundary =
             BoundaryAnalysis::analyze(input, |surface| self.dict.lookup_jukugo(surface).is_some());
 
-        let mut result = scoring_analyze(input, &providers, Some(&boundary));
+        let ctx = ScoringContext {
+            input,
+            boundary: &boundary,
+        };
+        let mut result = scoring_analyze(&ctx, &providers);
         apply_rendaku_to_result(&mut result);
         result
     }
@@ -337,17 +341,26 @@ impl<'a> DictBridgeProvider<'a> {
     fn new(dict: &'a Dict) -> Self {
         Self { dict }
     }
-}
 
-impl<'a> CandidateProvider for DictBridgeProvider<'a> {
-    fn candidates_at(&self, input: &str, pos: usize) -> Vec<Candidate> {
-        let mut out = Vec::new();
+    fn build_match_context(input: &str, pos: usize, end_pos: usize) -> MatchContext<'_> {
+        let prev = prev_logical_token(input, pos);
+        let next = next_logical_token(input, end_pos);
+        let next2 = next2_logical_token(input, end_pos);
+        MatchContext::with_all(
+            if prev.is_empty() { None } else { Some(prev) },
+            if next.is_empty() { None } else { Some(next) },
+            if next2.is_empty() { None } else { Some(next2) },
+        )
+    }
+
+    fn emit_entries(
+        &self,
+        input: &str,
+        pos: usize,
+        emitted: &mut std::collections::HashSet<String>,
+        out: &mut Vec<Candidate>,
+    ) {
         let tail = &input[pos..];
-
-        // ★A2 alpha.12: rich_iter で 全 entry を walk、 prefix match した entry に
-        // ついて MatchCondition を評価 (= 文脈分岐 reading を Smart engine に乗せる)
-        let mut emitted_at_pos: std::collections::HashSet<String> =
-            std::collections::HashSet::new();
         for (surface, entry) in self.dict.rich_iter() {
             if !tail.starts_with(surface) {
                 continue;
@@ -357,26 +370,15 @@ impl<'a> CandidateProvider for DictBridgeProvider<'a> {
             let char_count = surface.chars().count();
             let length = u8::try_from(char_count).unwrap_or(u8::MAX);
 
-            // MatchContext build: char-class-based pseudo-token segmentation
-            // (Lindera 不要、 Smart engine 経路で自前で context 取得)
-            let prev = prev_logical_token(input, pos);
-            let next = next_logical_token(input, end_pos);
-            let next2 = next2_logical_token(input, end_pos);
-            let ctx = MatchContext::with_all(
-                if prev.is_empty() { None } else { Some(prev) },
-                if next.is_empty() { None } else { Some(next) },
-                if next2.is_empty() { None } else { Some(next2) },
-            );
+            let mctx = Self::build_match_context(input, pos, end_pos);
 
-            // match block 列を順次評価、 第一 hit の reading を採用
             let reading = entry
                 .matches()
                 .iter()
-                .find(|m| m.condition.matches_context(&ctx))
+                .find(|m| m.condition.matches_context(&mctx))
                 .map(|m| m.reading.as_str())
                 .unwrap_or_else(|| entry.default_reading());
 
-            // band: 1 字 surface は band 100 (= kanji fallback)、 2+ 字 は band 1000 (= dict_exact)
             let score = if char_count == 1 {
                 Score::kanji(length)
             } else {
@@ -389,66 +391,85 @@ impl<'a> CandidateProvider for DictBridgeProvider<'a> {
                 pos..end_pos,
                 score,
             ));
-            emitted_at_pos.insert(surface.to_string());
+            emitted.insert(surface.to_string());
         }
+    }
 
-        // ★A2 alpha.12: [[kanji]] block (= core/kanji/*.toml) を walk して
-        // 1 文字 surface に文脈分岐 reading を提供。 rich_iter / unihan と異なり
-        // ファイル毎の per-char default + match 配列を持つので、 rich で拾い損ねた
-        // 1 字 surface はここで MatchCondition 評価ありで band 100 candidate 化。
-        if let Some(c) = tail.chars().next() {
-            let char_len = c.len_utf8();
-            let surface = &tail[..char_len];
-            let end_pos = pos + char_len;
-            let prev = prev_logical_token(input, pos);
-            let next = next_logical_token(input, end_pos);
-            let next2 = next2_logical_token(input, end_pos);
-            let ctx = MatchContext::with_all(
-                if prev.is_empty() { None } else { Some(prev) },
-                if next.is_empty() { None } else { Some(next) },
-                if next2.is_empty() { None } else { Some(next2) },
-            );
-            for block in self.dict.kanji_iter() {
-                if block.char != surface {
-                    continue;
-                }
-                if emitted_at_pos.contains(surface) {
-                    // rich 側で既に同 surface を band 100 で emit している
-                    // (= [[kanji]] と entries の重複登録 ケース)、 skip して duplicate 回避
-                    continue;
-                }
-                let reading = block
-                    .matches
-                    .iter()
-                    .find(|m| m.condition.matches_context(&ctx))
-                    .map(|m| m.reading.as_str())
-                    .unwrap_or(block.default.as_str());
-                out.push(Candidate::new(
-                    surface.to_string(),
-                    strip_intonation_markers(reading),
-                    pos..end_pos,
-                    Score::kanji(1),
-                ));
-                emitted_at_pos.insert(surface.to_string());
-            }
-        }
+    fn emit_kanji_blocks(
+        &self,
+        input: &str,
+        pos: usize,
+        emitted: &mut std::collections::HashSet<String>,
+        out: &mut Vec<Candidate>,
+    ) {
+        let tail = &input[pos..];
+        let Some(c) = tail.chars().next() else {
+            return;
+        };
+        let char_len = c.len_utf8();
+        let surface = &tail[..char_len];
+        let end_pos = pos + char_len;
+        let mctx = Self::build_match_context(input, pos, end_pos);
 
-        // unihan fallback: rich / [[kanji]] block 両方に無い 1 文字 surface
-        // (= unihan/*.toml で flat 登録された entry) を band 100 で出す。
-        if let Some(c) = tail.chars().next() {
-            let char_len = c.len_utf8();
-            let surface = &tail[..char_len];
-            if !emitted_at_pos.contains(surface) {
-                if let Some(reading) = self.dict.lookup_unihan(surface) {
-                    out.push(Candidate::new(
-                        surface.to_string(),
-                        strip_intonation_markers(reading),
-                        pos..pos + char_len,
-                        Score::kanji(1),
-                    ));
-                }
+        for block in self.dict.kanji_iter() {
+            if block.char != surface {
+                continue;
             }
+            if emitted.contains(surface) {
+                continue;
+            }
+            let reading = block
+                .matches
+                .iter()
+                .find(|m| m.condition.matches_context(&mctx))
+                .map(|m| m.reading.as_str())
+                .unwrap_or(block.default.as_str());
+            out.push(Candidate::new(
+                surface.to_string(),
+                strip_intonation_markers(reading),
+                pos..end_pos,
+                Score::kanji(1),
+            ));
+            emitted.insert(surface.to_string());
         }
+    }
+
+    fn emit_unihan(
+        &self,
+        input: &str,
+        pos: usize,
+        emitted: &std::collections::HashSet<String>,
+        out: &mut Vec<Candidate>,
+    ) {
+        let tail = &input[pos..];
+        let Some(c) = tail.chars().next() else {
+            return;
+        };
+        let char_len = c.len_utf8();
+        let surface = &tail[..char_len];
+        if emitted.contains(surface) {
+            return;
+        }
+        if let Some(reading) = self.dict.lookup_unihan(surface) {
+            out.push(Candidate::new(
+                surface.to_string(),
+                strip_intonation_markers(reading),
+                pos..pos + char_len,
+                Score::kanji(1),
+            ));
+        }
+    }
+}
+
+impl<'a> CandidateProvider for DictBridgeProvider<'a> {
+    fn candidates_at(&self, ctx: &ScoringContext, pos: usize) -> Vec<Candidate> {
+        let input = ctx.input;
+        let mut out = Vec::new();
+        let mut emitted: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+        self.emit_entries(input, pos, &mut emitted, &mut out);
+        self.emit_kanji_blocks(input, pos, &mut emitted, &mut out);
+        self.emit_unihan(input, pos, &emitted, &mut out);
 
         out
     }

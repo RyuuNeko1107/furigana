@@ -28,6 +28,7 @@
 //! (詳細は scoring/special.rs で実装予定)。
 
 use serde::Deserialize;
+#[cfg(test)]
 use std::collections::HashMap;
 
 /// `[entries]` 内の各 entry 値。 untagged enum で省略形 / 完全形を併存。
@@ -259,6 +260,7 @@ impl KanjiBlock {
 /// `[entries]` block 全体 (= surface → Entry の HashMap)
 ///
 /// TOML 上の `[entries]` table を deserialize する。
+#[cfg(test)]
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct EntriesData {
     /// surface → Entry mapping
@@ -269,6 +271,7 @@ pub struct EntriesData {
 /// `[[kanji]]` block 全体 (= 配列で複数 KanjiBlock)
 ///
 /// TOML 上の `[[kanji]]` array of tables を deserialize する。
+#[cfg(test)]
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct KanjiData {
     /// kanji block 配列

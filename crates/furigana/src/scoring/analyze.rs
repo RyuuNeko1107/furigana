@@ -13,8 +13,7 @@
 //! - dict 改善判断: caller が path inspect、 PR 起こす材料
 //! - **lib は collect しない** (OSS ローカル完結方針)、 caller 任意で persist
 
-use crate::scoring::boundary::BoundaryAnalysis;
-use crate::scoring::candidate::{Candidate, CandidateProvider};
+use crate::scoring::candidate::{Candidate, CandidateProvider, ScoringContext};
 use crate::scoring::engine::solve_path;
 use serde::Serialize;
 use std::ops::Range;
@@ -83,13 +82,9 @@ pub struct AnalyzeResult {
 /// - 入力空 → 全 field 空
 /// - path 構築不能 (= input 覆い切れない) → tokens / path_indices 空、 candidates / boundary_regions は計算結果残る
 /// - path 構築成功 → tokens / path_indices / candidates が同 length、 path_indices[i] = tokens[i].range.start
-pub fn analyze(
-    input: &str,
-    providers: &[&dyn CandidateProvider],
-    boundary: Option<&BoundaryAnalysis>,
-) -> AnalyzeResult {
+pub fn analyze(ctx: &ScoringContext, providers: &[&dyn CandidateProvider]) -> AnalyzeResult {
     // 1. solve_path で採択 path 取得
-    let path = solve_path(input, providers);
+    let path = solve_path(ctx, providers);
 
     // 2. path → Token 列
     let tokens: Vec<Token> = path.iter().map(Token::from_candidate).collect();
@@ -103,16 +98,19 @@ pub fn analyze(
         .map(|&pos| {
             let mut all = Vec::new();
             for provider in providers {
-                all.extend(provider.candidates_at(input, pos));
+                all.extend(provider.candidates_at(ctx, pos));
             }
             all
         })
         .collect();
 
     // 5. boundary_regions: BoundaryAnalysis から range を抽出
-    let boundary_regions: Vec<Range<usize>> = boundary
-        .map(|b| b.regions.iter().map(|r| r.range.clone()).collect())
-        .unwrap_or_default();
+    let boundary_regions: Vec<Range<usize>> = ctx
+        .boundary
+        .regions
+        .iter()
+        .map(|r| r.range.clone())
+        .collect();
 
     AnalyzeResult {
         tokens,
@@ -125,7 +123,17 @@ pub fn analyze(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::scoring::candidate::Score;
+    use crate::scoring::boundary::BoundaryAnalysis;
+    use crate::scoring::candidate::{Score, ScoringContext};
+
+    fn ctx(input: &str) -> ScoringContext {
+        let boundary = Box::leak(Box::new(BoundaryAnalysis::empty()));
+        ScoringContext { input, boundary }
+    }
+
+    fn ctx_with_boundary<'a>(input: &'a str, boundary: &'a BoundaryAnalysis) -> ScoringContext<'a> {
+        ScoringContext { input, boundary }
+    }
 
     /// dummy provider: 指定 surface→reading mapping を 全位置で試行
     struct DictProvider {
@@ -133,10 +141,10 @@ mod tests {
     }
 
     impl CandidateProvider for DictProvider {
-        fn candidates_at(&self, input: &str, pos: usize) -> Vec<Candidate> {
+        fn candidates_at(&self, ctx: &ScoringContext, pos: usize) -> Vec<Candidate> {
             let mut out = Vec::new();
             for (surface, reading, score) in &self.entries {
-                if input[pos..].starts_with(surface.as_str()) {
+                if ctx.input[pos..].starts_with(surface.as_str()) {
                     out.push(Candidate::new(
                         surface.clone(),
                         reading.clone(),
@@ -152,7 +160,7 @@ mod tests {
     #[test]
     fn analyze_empty_input() {
         let dict = DictProvider { entries: vec![] };
-        let result = analyze("", &[&dict], None);
+        let result = analyze(&ctx(""), &[&dict]);
         assert!(result.tokens.is_empty());
         assert!(result.candidates.is_empty());
         assert!(result.path_indices.is_empty());
@@ -164,7 +172,7 @@ mod tests {
         let dict = DictProvider {
             entries: vec![("猫".into(), "ネコ".into(), Score::dict_exact(1))],
         };
-        let result = analyze("猫", &[&dict], None);
+        let result = analyze(&ctx("猫"), &[&dict]);
         assert_eq!(result.tokens.len(), 1);
         assert_eq!(result.tokens[0].surface, "猫");
         assert_eq!(result.tokens[0].reading, "ネコ");
@@ -184,7 +192,7 @@ mod tests {
                 ("好き".into(), "スキ".into(), Score::dict_exact(2)),
             ],
         };
-        let result = analyze("魔理沙が好き", &[&dict], None);
+        let result = analyze(&ctx("魔理沙が好き"), &[&dict]);
         assert_eq!(result.tokens.len(), 3);
         assert_eq!(result.tokens[0].surface, "魔理沙");
         assert_eq!(result.tokens[1].surface, "が");
@@ -198,7 +206,7 @@ mod tests {
             entries: vec![("魔理沙".into(), "マリサ".into(), Score::dict_exact(3))],
         };
         let boundary = BoundaryAnalysis::analyze("魔理沙", |_| true); // exact match
-        let result = analyze("魔理沙", &[&dict], Some(&boundary));
+        let result = analyze(&ctx_with_boundary("魔理沙", &boundary), &[&dict]);
         assert_eq!(result.boundary_regions.len(), 1);
         assert_eq!(result.boundary_regions[0], 0..9);
     }
@@ -208,7 +216,7 @@ mod tests {
         let dict = DictProvider {
             entries: vec![("猫".into(), "ネコ".into(), Score::dict_exact(1))],
         };
-        let result = analyze("猫", &[&dict], None);
+        let result = analyze(&ctx("猫"), &[&dict]);
         assert!(result.boundary_regions.is_empty());
     }
 
@@ -218,7 +226,7 @@ mod tests {
             entries: vec![("猫".into(), "ネコ".into(), Score::dict_exact(1))],
         };
         // 「が」 を覆える provider なし、 path 構築不能
-        let result = analyze("猫が", &[&dict], None);
+        let result = analyze(&ctx("猫が"), &[&dict]);
         assert!(result.tokens.is_empty());
         assert!(result.path_indices.is_empty());
     }
@@ -242,7 +250,7 @@ mod tests {
         let dict_b = DictProvider {
             entries: vec![("猫".into(), "ニャア".into(), Score::dict_exact(1))],
         };
-        let result = analyze("猫", &[&dict_a, &dict_b], None);
+        let result = analyze(&ctx("猫"), &[&dict_a, &dict_b]);
         // tokens は 1 つ (path 採択)、 candidates[0] には dict_a + dict_b 両方入る
         assert_eq!(result.tokens.len(), 1);
         assert_eq!(result.candidates[0].len(), 2);

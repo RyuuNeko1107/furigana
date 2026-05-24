@@ -17,7 +17,7 @@
 //! - candidate range は valid (= `range.start <= range.end <= input.len()`) であること、 invalid range は skip
 //! - 同 path score の場合は **第一発見** が勝つ (TOML 出現順 / provider 順依存)
 
-use crate::scoring::candidate::{Candidate, CandidateProvider, Score};
+use crate::scoring::candidate::{Candidate, CandidateProvider, Score, ScoringContext};
 use std::cmp::Ordering;
 
 /// path 全体の累積 score。
@@ -113,8 +113,8 @@ impl PartialOrd for PathScore {
 ///
 /// O(N × C) — N = input byte 長、 C = 各位置での平均候補数。
 /// providers の中身次第、 通常は十分高速。
-pub fn solve_path(input: &str, providers: &[&dyn CandidateProvider]) -> Vec<Candidate> {
-    let n = input.len();
+pub fn solve_path(ctx: &ScoringContext, providers: &[&dyn CandidateProvider]) -> Vec<Candidate> {
+    let n = ctx.input.len();
     if n == 0 {
         return Vec::new();
     }
@@ -134,7 +134,7 @@ pub fn solve_path(input: &str, providers: &[&dyn CandidateProvider]) -> Vec<Cand
         // この位置から始まる候補を全 provider から収集
         let mut all_candidates: Vec<Candidate> = Vec::new();
         for provider in providers {
-            all_candidates.extend(provider.candidates_at(input, pos));
+            all_candidates.extend(provider.candidates_at(ctx, pos));
         }
 
         for cand in all_candidates {
@@ -184,7 +184,8 @@ pub fn solve_path(input: &str, providers: &[&dyn CandidateProvider]) -> Vec<Cand
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::scoring::candidate::{Score, BAND_DICT_EXACT, BAND_KANJI};
+    use crate::scoring::boundary::BoundaryAnalysis;
+    use crate::scoring::candidate::{Score, ScoringContext, BAND_DICT_EXACT, BAND_KANJI};
 
     // ─── PathScore lexicographic 比較 ────────────────────────────────────────
 
@@ -259,11 +260,16 @@ mod tests {
         entries: Vec<(String, String, Score)>,
     }
 
+    fn ctx(input: &str) -> ScoringContext {
+        let boundary = Box::leak(Box::new(BoundaryAnalysis::empty()));
+        ScoringContext { input, boundary }
+    }
+
     impl CandidateProvider for DictProvider {
-        fn candidates_at(&self, input: &str, pos: usize) -> Vec<Candidate> {
+        fn candidates_at(&self, ctx: &ScoringContext, pos: usize) -> Vec<Candidate> {
             let mut out = Vec::new();
             for (surface, reading, score) in &self.entries {
-                if input[pos..].starts_with(surface.as_str()) {
+                if ctx.input[pos..].starts_with(surface.as_str()) {
                     let end = pos + surface.len();
                     out.push(Candidate::new(
                         surface.clone(),
@@ -283,8 +289,8 @@ mod tests {
     }
 
     impl CandidateProvider for CharProvider {
-        fn candidates_at(&self, input: &str, pos: usize) -> Vec<Candidate> {
-            let Some(c) = input[pos..].chars().next() else {
+        fn candidates_at(&self, ctx: &ScoringContext, pos: usize) -> Vec<Candidate> {
+            let Some(c) = ctx.input[pos..].chars().next() else {
                 return Vec::new();
             };
             let len = c.len_utf8();
@@ -300,13 +306,13 @@ mod tests {
     #[test]
     fn solve_path_empty_input_returns_empty() {
         let dict = DictProvider { entries: vec![] };
-        let path = solve_path("", &[&dict]);
+        let path = solve_path(&ctx(""), &[&dict]);
         assert!(path.is_empty());
     }
 
     #[test]
     fn solve_path_no_providers_returns_empty() {
-        let path = solve_path("猫が好き", &[]);
+        let path = solve_path(&ctx("猫が好き"), &[]);
         assert!(path.is_empty(), "no providers → no candidates → no path");
     }
 
@@ -315,7 +321,7 @@ mod tests {
         let dict = DictProvider {
             entries: vec![("猫".into(), "ネコ".into(), Score::dict_exact(1))],
         };
-        let path = solve_path("猫", &[&dict]);
+        let path = solve_path(&ctx("猫"), &[&dict]);
         assert_eq!(path.len(), 1);
         assert_eq!(path[0].surface, "猫");
         assert_eq!(path[0].reading, "ネコ");
@@ -330,7 +336,7 @@ mod tests {
                 ("好き".into(), "スキ".into(), Score::dict_exact(2)),
             ],
         };
-        let path = solve_path("魔理沙が好き", &[&dict]);
+        let path = solve_path(&ctx("魔理沙が好き"), &[&dict]);
         assert_eq!(path.len(), 3);
         assert_eq!(path[0].surface, "魔理沙");
         assert_eq!(path[1].surface, "が");
@@ -348,7 +354,7 @@ mod tests {
                 ("手".into(), "テ".into(), Score::kanji(1)),
             ],
         };
-        let path = solve_path("上手", &[&dict]);
+        let path = solve_path(&ctx("上手"), &[&dict]);
         assert_eq!(path.len(), 1);
         assert_eq!(path[0].surface, "上手");
         assert_eq!(path[0].reading, "ジョウズ");
@@ -366,7 +372,7 @@ mod tests {
                 ("理沙".into(), "リサ".into(), Score::dict_exact(2)),
             ],
         };
-        let path = solve_path("魔理沙", &[&dict]);
+        let path = solve_path(&ctx("魔理沙"), &[&dict]);
         assert_eq!(path.len(), 1);
         assert_eq!(path[0].surface, "魔理沙");
     }
@@ -377,7 +383,7 @@ mod tests {
         let chars = CharProvider {
             score: Score::kanji(1),
         };
-        let path = solve_path("猫が好", &[&dict, &chars]);
+        let path = solve_path(&ctx("猫が好"), &[&dict, &chars]);
         // 各 1 文字 fallback で 3 candidate
         assert_eq!(path.len(), 3);
         assert_eq!(path[0].surface, "猫");
@@ -395,7 +401,7 @@ mod tests {
         let chars = CharProvider {
             score: Score::kanji(1),
         };
-        let path = solve_path("魔理沙", &[&dict, &chars]);
+        let path = solve_path(&ctx("魔理沙"), &[&dict, &chars]);
         assert_eq!(path.len(), 1);
         assert_eq!(path[0].surface, "魔理沙");
         assert_eq!(path[0].score.band, BAND_DICT_EXACT);
@@ -407,7 +413,7 @@ mod tests {
         let dict = DictProvider {
             entries: vec![("猫".into(), "ネコ".into(), Score::dict_exact(1))],
         };
-        let path = solve_path("猫が", &[&dict]);
+        let path = solve_path(&ctx("猫が"), &[&dict]);
         assert!(path.is_empty(), "「が」 が unreachable で path 構築不能");
     }
 
@@ -420,7 +426,7 @@ mod tests {
         let chars = CharProvider {
             score: Score::kanji(1),
         };
-        let path = solve_path("魔理沙が好き", &[&dict, &chars]);
+        let path = solve_path(&ctx("魔理沙が好き"), &[&dict, &chars]);
         // 「魔理沙」 (1) + 「が」 (1) + 「好」 (1) + 「き」 (1) = 4 edges
         assert_eq!(path.len(), 4);
         assert_eq!(path[0].surface, "魔理沙");
@@ -448,7 +454,7 @@ mod tests {
         };
         // どちらも band 1000 / length 2、 match_hits で 「カミテ」 が勝つ
         // (provider 順序を with_hits 優先で渡す)
-        let path = solve_path("上手", &[&dict_with_hits, &dict_default]);
+        let path = solve_path(&ctx("上手"), &[&dict_with_hits, &dict_default]);
         assert_eq!(path.len(), 1);
         assert_eq!(path[0].reading, "カミテ");
     }
@@ -458,14 +464,14 @@ mod tests {
         // 0-length (= range.start == range.end) は skip される
         struct BadProvider;
         impl CandidateProvider for BadProvider {
-            fn candidates_at(&self, _input: &str, pos: usize) -> Vec<Candidate> {
+            fn candidates_at(&self, _ctx: &ScoringContext, pos: usize) -> Vec<Candidate> {
                 vec![Candidate::new("", "", pos..pos, Score::dict_exact(0))]
             }
         }
         let chars = CharProvider {
             score: Score::kanji(1),
         };
-        let path = solve_path("猫", &[&BadProvider, &chars]);
+        let path = solve_path(&ctx("猫"), &[&BadProvider, &chars]);
         // 0-length 候補 skip されて char fallback で 1 文字 candidate
         assert_eq!(path.len(), 1);
         assert_eq!(path[0].surface, "猫");

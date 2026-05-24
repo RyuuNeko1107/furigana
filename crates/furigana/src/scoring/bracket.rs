@@ -21,7 +21,7 @@
 ///
 /// # 例
 ///
-/// ```
+/// ```ignore
 /// use furigana::scoring::bracket::strip_intonation_markers;
 ///
 /// assert_eq!(strip_intonation_markers("ジョウズ"), "ジョウズ");
@@ -39,16 +39,18 @@ pub fn strip_intonation_markers(reading: &str) -> String {
 /// reading に intonation bracket marker (`[`, `]`, `/`) が含まれているか判定。
 ///
 /// debug / 解析用途、 dict ロード時の reading 内 marker 検出に。
+/// 0.2.0 intonation 機能で活用予定 (forward compat)。
 ///
 /// # 例
 ///
-/// ```
+/// ```ignore
 /// use furigana::scoring::bracket::has_intonation_markers;
 ///
 /// assert!(!has_intonation_markers("ジョウズ"));
 /// assert!(has_intonation_markers("ジョ]ウズ"));
 /// assert!(has_intonation_markers("ハ[クレイ/レ[イム"));
 /// ```
+#[allow(dead_code)] // forward compat for 0.2.0 intonation; used in tests
 #[must_use]
 pub fn has_intonation_markers(reading: &str) -> bool {
     reading.chars().any(|c| matches!(c, '[' | ']' | '/'))

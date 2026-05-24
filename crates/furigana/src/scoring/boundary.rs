@@ -41,6 +41,7 @@ pub struct BoundaryAnalysis {
 
 impl BoundaryAnalysis {
     /// 空の分析結果 (= regions なし、 全位置 penalty 0)。
+    #[cfg(test)]
     #[must_use]
     pub fn empty() -> Self {
         Self::default()
@@ -87,6 +88,7 @@ impl BoundaryAnalysis {
     ///
     /// region 境界 (= region.start) や region 外なら 0。
     /// 複数 region に跨る場合は最初に hit した region の penalty を採用 (region は重ならない設計)。
+    #[cfg(test)]
     #[must_use]
     pub fn penalty_at(&self, pos: usize) -> i16 {
         for region in &self.regions {
@@ -99,6 +101,7 @@ impl BoundaryAnalysis {
     }
 
     /// `pos` を含む region の reference (なければ None)。 debug / 解析用途。
+    #[cfg(test)]
     #[must_use]
     pub fn region_containing(&self, pos: usize) -> Option<&KanjiRegion> {
         self.regions

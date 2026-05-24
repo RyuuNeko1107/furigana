@@ -99,7 +99,7 @@ pub mod numbers;
 pub mod reading;
 pub mod romaji;
 pub mod rules;
-pub mod scoring;
+pub(crate) mod scoring;
 pub mod tts;
 
 mod api;

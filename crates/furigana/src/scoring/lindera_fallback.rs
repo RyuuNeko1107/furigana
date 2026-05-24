@@ -51,7 +51,7 @@
 
 use crate::analyzer::Analyzer;
 use crate::scoring::bracket::strip_intonation_markers;
-use crate::scoring::candidate::{Candidate, CandidateProvider, Score};
+use crate::scoring::candidate::{Candidate, CandidateProvider, Score, ScoringContext};
 
 /// band-up 対象の判定: 「CJK 統合漢字範囲のみ」 で 々/〆/ヶ は除外する。
 ///
@@ -115,6 +115,7 @@ impl LinderaFallbackProvider {
     }
 
     /// 空 provider (test 用、 input なしで安全に new する)。
+    #[allow(dead_code)] // test utility; kept for external callers and future use
     #[must_use]
     pub fn empty() -> Self {
         Self { edges: Vec::new() }
@@ -122,7 +123,8 @@ impl LinderaFallbackProvider {
 }
 
 impl CandidateProvider for LinderaFallbackProvider {
-    fn candidates_at(&self, input: &str, pos: usize) -> Vec<Candidate> {
+    fn candidates_at(&self, ctx: &ScoringContext, pos: usize) -> Vec<Candidate> {
+        let input = ctx.input;
         self.edges
             .iter()
             .filter(|(start, _, _)| *start == pos)
@@ -157,6 +159,12 @@ impl CandidateProvider for LinderaFallbackProvider {
 mod tests {
     use super::*;
     use crate::analyzer::Analyzer;
+    use crate::scoring::boundary::BoundaryAnalysis;
+
+    fn ctx(input: &str) -> ScoringContext<'_> {
+        let boundary = Box::leak(Box::new(BoundaryAnalysis::empty()));
+        ScoringContext { input, boundary }
+    }
 
     fn analyzer() -> Analyzer {
         Analyzer::new().expect("Analyzer init")
@@ -166,7 +174,7 @@ mod tests {
     fn empty_input_yields_no_edges() {
         let a = analyzer();
         let p = LinderaFallbackProvider::new(&a, "");
-        assert_eq!(p.candidates_at("", 0).len(), 0);
+        assert_eq!(p.candidates_at(&ctx(""), 0).len(), 0);
     }
 
     #[test]
@@ -175,7 +183,7 @@ mod tests {
         let input = "猫が好き";
         let p = LinderaFallbackProvider::new(&a, input);
         // 「猫」 の byte 範囲は 0..3 (UTF-8 3 byte)、 「が」 は 3..6
-        let cands_at_3 = p.candidates_at(input, 3);
+        let cands_at_3 = p.candidates_at(&ctx(input), 3);
         assert!(
             !cands_at_3.is_empty(),
             "expected Lindera edge at pos=3 (=が)"
@@ -216,7 +224,7 @@ mod tests {
         let a = analyzer();
         let input = "最近の話";
         let p = LinderaFallbackProvider::new(&a, input);
-        let cands_at_0 = p.candidates_at(input, 0);
+        let cands_at_0 = p.candidates_at(&ctx(input), 0);
         let saikin = cands_at_0.iter().find(|c| c.surface == "最近");
         if let Some(c) = saikin {
             assert_eq!(
@@ -232,7 +240,7 @@ mod tests {
         let a = analyzer();
         let input = "私";
         let p = LinderaFallbackProvider::new(&a, input);
-        let cands = p.candidates_at(input, 0);
+        let cands = p.candidates_at(&ctx(input), 0);
         if let Some(c) = cands.iter().find(|c| c.surface == "私") {
             assert_eq!(c.score.band, 50, "単漢字 surface は band 50 維持");
         }
@@ -246,7 +254,7 @@ mod tests {
         let p = LinderaFallbackProvider::new(&a, input);
         // Lindera が 「来」 + 「た」 と 2 token に分ける場合、 各々 1 字 → 50。
         // 仮に 1 token (「来た」) で返した場合も混在で band 50。
-        for c in p.candidates_at(input, 0) {
+        for c in p.candidates_at(&ctx(input), 0) {
             assert_eq!(
                 c.score.band, 50,
                 "漢字+okurigana 混在 surface は band 50 維持 ({:?})",
@@ -263,7 +271,7 @@ mod tests {
         // 仮に Lindera が 「★」 に reading を付けなければ surface fallback
         let input = "★";
         let p = LinderaFallbackProvider::new(&a, input);
-        let cands = p.candidates_at(input, 0);
+        let cands = p.candidates_at(&ctx(input), 0);
         // edge が出るか / reading が surface fallback か (= None ではない) を check
         if let Some(c) = cands.first() {
             assert!(!c.reading.is_empty(), "reading should fallback to surface");

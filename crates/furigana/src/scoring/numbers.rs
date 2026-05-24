@@ -49,7 +49,9 @@ use crate::numbers::{
     symbol_char_reading,
 };
 use crate::rules::{CountersData, DaysData, RulesData, ScalesData, SymbolsData, UnitsData};
-use crate::scoring::candidate::{Candidate, CandidateProvider, Score, BAND_SPECIAL};
+use crate::scoring::candidate::{
+    Candidate, CandidateProvider, Score, ScoringContext, BAND_SPECIAL,
+};
 use once_cell::sync::Lazy;
 use regex::{Captures, Regex};
 
@@ -320,7 +322,8 @@ fn is_digit_like_char(c: char) -> bool {
 }
 
 impl CandidateProvider for NumberCandidateProvider {
-    fn candidates_at(&self, input: &str, pos: usize) -> Vec<Candidate> {
+    fn candidates_at(&self, ctx: &ScoringContext, pos: usize) -> Vec<Candidate> {
+        let input = ctx.input;
         let mut out: Vec<Candidate> = Vec::new();
         let rest = &input[pos..];
         if rest.is_empty() {
@@ -463,7 +466,13 @@ impl CandidateProvider for NumberCandidateProvider {
 mod tests {
     use super::*;
     use crate::loader::load_rules_dir;
+    use crate::scoring::boundary::BoundaryAnalysis;
     use std::path::PathBuf;
+
+    fn ctx(input: &str) -> ScoringContext<'_> {
+        let boundary = Box::leak(Box::new(BoundaryAnalysis::empty()));
+        ScoringContext { input, boundary }
+    }
 
     fn rules() -> RulesData {
         let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -486,7 +495,7 @@ mod tests {
     #[test]
     fn empty_rules_yields_empty_candidates_for_pure_number() {
         let p = NumberCandidateProvider::new(&RulesData::default());
-        let cands = p.candidates_at("3", 0);
+        let cands = p.candidates_at(&ctx("3"), 0);
         // counter / scale / si_unit / symbol いずれも空、 しかし DIGIT は static なので 1 候補
         assert_eq!(cands.len(), 1);
         assert_eq!(cands[0].surface, "3");
@@ -496,14 +505,14 @@ mod tests {
     #[test]
     fn empty_input_yields_empty() {
         let p = provider();
-        assert!(p.candidates_at("", 0).is_empty());
+        assert!(p.candidates_at(&ctx(""), 0).is_empty());
     }
 
     #[test]
     fn pos_at_end_yields_empty() {
         let p = provider();
         let input = "3本";
-        assert!(p.candidates_at(input, input.len()).is_empty());
+        assert!(p.candidates_at(&ctx(input), input.len()).is_empty());
     }
 
     // ─── 単一助数詞 ──────────────────────────────────────────────────────────
@@ -511,7 +520,7 @@ mod tests {
     #[test]
     fn single_counter_basic() {
         let p = provider();
-        let cands = p.candidates_at("3本のバナナ", 0);
+        let cands = p.candidates_at(&ctx("3本のバナナ"), 0);
         let c = find(&cands, "3本").expect("3本 candidate");
         assert_eq!(c.reading, "サンボン");
         assert_eq!(c.score.band, BAND_SPECIAL);
@@ -522,7 +531,7 @@ mod tests {
     fn single_counter_includes_bare_digit_too() {
         // 「3本」 の位置 0 では digit "3" 候補も同時に提案される (DP が長い方を選ぶ)
         let p = provider();
-        let cands = p.candidates_at("3本のバナナ", 0);
+        let cands = p.candidates_at(&ctx("3本のバナナ"), 0);
         assert!(
             find(&cands, "3").is_some(),
             "bare digit candidate should exist"
@@ -536,7 +545,7 @@ mod tests {
     #[test]
     fn single_counter_zero_no_sokuon() {
         let p = provider();
-        let cands = p.candidates_at("0本", 0);
+        let cands = p.candidates_at(&ctx("0本"), 0);
         let c = find(&cands, "0本").expect("0本 candidate");
         assert_eq!(c.reading, "ゼロホン");
     }
@@ -545,7 +554,7 @@ mod tests {
     fn single_counter_day_uses_period_default() {
         // 「N日」 単独は **期間扱い**: days.toml 特殊読み (1=ツイタチ) を bypass、 default 「ニチ」
         let p = provider();
-        let cands = p.candidates_at("1日に2回", 0);
+        let cands = p.candidates_at(&ctx("1日に2回"), 0);
         let c = find(&cands, "1日").expect("1日 candidate");
         assert_eq!(c.reading, "イチニチ");
     }
@@ -553,7 +562,7 @@ mod tests {
     #[test]
     fn single_counter_handles_full_width_digit() {
         let p = provider();
-        let cands = p.candidates_at("３本", 0);
+        let cands = p.candidates_at(&ctx("３本"), 0);
         let c = find(&cands, "３本").expect("full-width counter candidate");
         assert_eq!(c.reading, "サンボン");
     }
@@ -563,7 +572,7 @@ mod tests {
         // 漢数字 「一日」 単独は counter_re (NUM_PAT = Arabic 数字限定) では match しない、
         // 既存 chunker と同じ挙動 (= 漢数字 normalization は DATE_NUM_PAT 経由でのみ動く)。
         let p = provider();
-        let cands = p.candidates_at("一日中", 0);
+        let cands = p.candidates_at(&ctx("一日中"), 0);
         assert!(
             find(&cands, "一日").is_none(),
             "漢数字 単独 + counter は candidate にならない (chunker 互換): {cands:?}",
@@ -574,7 +583,7 @@ mod tests {
     fn date_md_normalizes_kansuji() {
         // 日付 pattern 内の漢数字は kansuji_to_arabic で normalize される。
         let p = provider();
-        let cands = p.candidates_at("六月一日", 0);
+        let cands = p.candidates_at(&ctx("六月一日"), 0);
         let c = find(&cands, "六月一日").expect("date MD with kansuji");
         // 一日 → days.toml の特殊読み (ツイタチ) を採用
         assert!(c.reading.contains("ツイタチ"), "reading: {}", c.reading);
@@ -586,7 +595,7 @@ mod tests {
     #[test]
     fn date_full_emits_single_candidate() {
         let p = provider();
-        let cands = p.candidates_at("2025年10月30日に集合", 0);
+        let cands = p.candidates_at(&ctx("2025年10月30日に集合"), 0);
         let c = find(&cands, "2025年10月30日").expect("date full candidate");
         assert!(c.reading.contains("ジュウガツ"), "reading: {}", c.reading);
         assert_eq!(c.score.band, BAND_SPECIAL);
@@ -596,7 +605,7 @@ mod tests {
     fn date_md_uses_special_day_reading() {
         // 日付内 「1日」 は days.toml の 「ツイタチ」
         let p = provider();
-        let cands = p.candidates_at("1月1日に集合", 0);
+        let cands = p.candidates_at(&ctx("1月1日に集合"), 0);
         let c = find(&cands, "1月1日").expect("date MD candidate");
         assert!(c.reading.contains("イチガツ"), "reading: {}", c.reading);
         assert!(c.reading.contains("ツイタチ"), "reading: {}", c.reading);
@@ -607,7 +616,7 @@ mod tests {
     #[test]
     fn time_colon_basic() {
         let p = provider();
-        let cands = p.candidates_at("9:30に集合", 0);
+        let cands = p.candidates_at(&ctx("9:30に集合"), 0);
         let c = find(&cands, "9:30").expect("time colon candidate");
         assert!(c.reading.contains("クジ"), "reading: {}", c.reading);
         assert!(
@@ -620,7 +629,7 @@ mod tests {
     #[test]
     fn time_jp_full() {
         let p = provider();
-        let cands = p.candidates_at("9時30分に集合", 0);
+        let cands = p.candidates_at(&ctx("9時30分に集合"), 0);
         let c = find(&cands, "9時30分").expect("time JP candidate");
         assert!(c.reading.contains("クジ"), "reading: {}", c.reading);
     }
@@ -628,7 +637,7 @@ mod tests {
     #[test]
     fn time_jp_hour_only() {
         let p = provider();
-        let cands = p.candidates_at("9時に集合", 0);
+        let cands = p.candidates_at(&ctx("9時に集合"), 0);
         let c = find(&cands, "9時").expect("time JP hour-only candidate");
         assert_eq!(c.reading, "クジ");
     }
@@ -640,7 +649,7 @@ mod tests {
         // fixture rules の units は SI 単位 (km / L 等) のみで 「円」 を含まないので、
         // build_scale_regex の trailing_unit は None になる。 scale candidate は 「3万」 で出る。
         let p = provider();
-        let cands = p.candidates_at("3万円のもの", 0);
+        let cands = p.candidates_at(&ctx("3万円のもの"), 0);
         // chunker の split_scale テストと同じく、 「3万」 OR 「3万円」 のどちらかが候補化される
         let has_scale = cands
             .iter()
@@ -651,7 +660,7 @@ mod tests {
     #[test]
     fn scale_without_trailing_unit() {
         let p = provider();
-        let cands = p.candidates_at("3万", 0);
+        let cands = p.candidates_at(&ctx("3万"), 0);
         let c = find(&cands, "3万").expect("scale candidate");
         assert!(c.reading.contains("マン"), "reading: {}", c.reading);
     }
@@ -661,7 +670,7 @@ mod tests {
     #[test]
     fn si_unit_basic() {
         let p = provider();
-        let cands = p.candidates_at("100km先", 0);
+        let cands = p.candidates_at(&ctx("100km先"), 0);
         let c = find(&cands, "100km").expect("SI unit candidate");
         assert!(c.reading.contains("ヒャク"), "reading: {}", c.reading);
         assert!(c.reading.contains("キロメートル"), "reading: {}", c.reading);
@@ -672,7 +681,7 @@ mod tests {
     #[test]
     fn symbol_single_char() {
         let p = provider();
-        let cands = p.candidates_at("+5", 0);
+        let cands = p.candidates_at(&ctx("+5"), 0);
         let c = find(&cands, "+").expect("symbol candidate");
         assert_eq!(c.reading, "プラス");
         assert_eq!(c.score.length, 1);
@@ -683,7 +692,7 @@ mod tests {
         // counters.toml の simple に 「‰」 もあるが symbols.toml fixture には未登録だと no-op
         // (= '※' のような未登録記号は 7 番からは候補出ず、 8 番素の数字でも該当しない)
         let p = provider();
-        let cands = p.candidates_at("※", 0);
+        let cands = p.candidates_at(&ctx("※"), 0);
         // 候補ゼロ (記号 table miss + digit miss)
         assert!(cands.is_empty(), "expected no candidates: {cands:?}");
     }
@@ -694,7 +703,7 @@ mod tests {
         let p = provider();
         let input = "2〜3回";
         let pos = "2".len(); // 〜 の byte position
-        let cands = p.candidates_at(input, pos);
+        let cands = p.candidates_at(&ctx(input), pos);
         let c = find(&cands, "〜").expect("tilde candidate in numeric context");
         assert_eq!(c.reading, "から");
     }
@@ -706,7 +715,7 @@ mod tests {
         let p = provider();
         let input = "へ〜うま";
         let pos = "へ".len(); // 〜 の byte position
-        let cands = p.candidates_at(input, pos);
+        let cands = p.candidates_at(&ctx(input), pos);
         let c = find(&cands, "〜").expect("tilde candidate in kana context");
         assert_eq!(c.reading, " から ", "空白 padding 付き 「から」 を期待");
     }
@@ -718,7 +727,7 @@ mod tests {
         let p = provider();
         let input = "2〜あ";
         let pos = "2".len();
-        let cands = p.candidates_at(input, pos);
+        let cands = p.candidates_at(&ctx(input), pos);
         assert!(cands
             .iter()
             .any(|c| c.surface == "〜" && c.reading == "から"));
@@ -729,7 +738,7 @@ mod tests {
     #[test]
     fn bare_digit_basic() {
         let p = provider();
-        let cands = p.candidates_at("12345です", 0);
+        let cands = p.candidates_at(&ctx("12345です"), 0);
         let c = find(&cands, "12345").expect("bare digit candidate");
         assert!(!c.reading.is_empty());
         assert_eq!(c.score.band, BAND_SPECIAL);
@@ -738,7 +747,7 @@ mod tests {
     #[test]
     fn bare_digit_handles_full_width() {
         let p = provider();
-        let cands = p.candidates_at("１２３", 0);
+        let cands = p.candidates_at(&ctx("１２３"), 0);
         let c = find(&cands, "１２３").expect("full-width digit candidate");
         assert_eq!(c.reading, "ヒャクニジュウサン");
     }
@@ -750,7 +759,7 @@ mod tests {
         // 「1月1日」 の pos 0 で 「1月1日」 (date MD) と 「1月」 (counter) が並列に出る
         // (DP が edge_count で longer match を選ぶ責務)
         let p = provider();
-        let cands = p.candidates_at("1月1日", 0);
+        let cands = p.candidates_at(&ctx("1月1日"), 0);
         assert!(find(&cands, "1月1日").is_some(), "date candidate");
         assert!(find(&cands, "1月").is_some(), "counter candidate");
     }
@@ -759,7 +768,7 @@ mod tests {
     fn si_and_scale_dont_collide_for_pure_number() {
         // 「100」 単独 (unit / scale なし) は digit のみ
         let p = provider();
-        let cands = p.candidates_at("100", 0);
+        let cands = p.candidates_at(&ctx("100"), 0);
         // "100" digit candidate
         assert!(find(&cands, "100").is_some(), "digit candidate");
         // SI 候補は出ない (single の k や m もないため)
@@ -773,7 +782,7 @@ mod tests {
         let p = provider();
         let input = "abc3本";
         let pos = 3; // "abc" 後の "3" 位置 (3 ASCII bytes)
-        let cands = p.candidates_at(input, pos);
+        let cands = p.candidates_at(&ctx(input), pos);
         let c = find(&cands, "3本").expect("3本 candidate at offset 3");
         // "3本" = "3" (1 byte) + "本" (3 bytes UTF-8) = 4 bytes
         assert_eq!(c.range, 3..7);
@@ -784,7 +793,7 @@ mod tests {
     #[test]
     fn digit_regex_is_static_and_works_with_empty_rules() {
         let p = NumberCandidateProvider::new(&RulesData::default());
-        let cands = p.candidates_at("42x", 0);
+        let cands = p.candidates_at(&ctx("42x"), 0);
         let c = find(&cands, "42").expect("bare digit candidate even with empty rules");
         assert!(!c.reading.is_empty());
     }

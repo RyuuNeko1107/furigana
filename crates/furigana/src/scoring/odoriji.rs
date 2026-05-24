@@ -34,7 +34,7 @@
 
 use crate::kana::voice_first_kana;
 use crate::scoring::analyze::{AnalyzeResult, Token};
-use crate::scoring::candidate::{Candidate, CandidateProvider, Score, BAND_KANJI};
+use crate::scoring::candidate::{Candidate, CandidateProvider, Score, ScoringContext, BAND_KANJI};
 
 /// 踊り字 (々) char。
 const ODORIJI_CHAR: char = '々';
@@ -57,8 +57,8 @@ impl OdorijiProvider {
 }
 
 impl CandidateProvider for OdorijiProvider {
-    fn candidates_at(&self, input: &str, pos: usize) -> Vec<Candidate> {
-        let tail = &input[pos..];
+    fn candidates_at(&self, ctx: &ScoringContext, pos: usize) -> Vec<Candidate> {
+        let tail = &ctx.input[pos..];
         let Some(c) = tail.chars().next() else {
             return Vec::new();
         };
@@ -110,7 +110,13 @@ pub fn apply_rendaku_to_result(result: &mut AnalyzeResult) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scoring::boundary::BoundaryAnalysis;
     use std::ops::Range;
+
+    fn ctx(input: &str) -> ScoringContext<'_> {
+        let boundary = Box::leak(Box::new(BoundaryAnalysis::empty()));
+        ScoringContext { input, boundary }
+    }
 
     fn token(surface: &str, reading: &str, range: Range<usize>) -> Token {
         Token {
@@ -127,7 +133,7 @@ mod tests {
         let p = OdorijiProvider::new();
         // "神々" = 神 (3 bytes) + 々 (3 bytes)
         let input = "神々";
-        let cands = p.candidates_at(input, 3);
+        let cands = p.candidates_at(&ctx(input), 3);
         assert_eq!(cands.len(), 1);
         assert_eq!(cands[0].surface, "々");
         assert_eq!(cands[0].reading, "々"); // placeholder
@@ -140,7 +146,7 @@ mod tests {
         let p = OdorijiProvider::new();
         let input = "神々";
         // pos 0 は 「神」 (々 ではない)
-        assert!(p.candidates_at(input, 0).is_empty());
+        assert!(p.candidates_at(&ctx(input), 0).is_empty());
     }
 
     #[test]
@@ -148,13 +154,13 @@ mod tests {
         let p = OdorijiProvider::new();
         let input = "神";
         // pos 3 は input.len() = 入力末尾
-        assert!(p.candidates_at(input, 3).is_empty());
+        assert!(p.candidates_at(&ctx(input), 3).is_empty());
     }
 
     #[test]
     fn provider_returns_empty_for_empty_input() {
         let p = OdorijiProvider::new();
-        assert!(p.candidates_at("", 0).is_empty());
+        assert!(p.candidates_at(&ctx(""), 0).is_empty());
     }
 
     // ─── apply_rendaku_inplace: 連濁あり ─────────────────────────────────────

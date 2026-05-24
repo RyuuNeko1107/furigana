@@ -9,9 +9,21 @@
 //! - [`CandidateProvider`]: candidate を供給する trait (entry / kanji / Lindera / 特殊処理 各 layer 実装)
 //! - band 定数: 1000 = 単語辞書完全一致、 950 = 特殊処理、 100 = 漢字辞書、 50 = Lindera unihan injection
 
+use crate::scoring::boundary::BoundaryAnalysis;
 use serde::Serialize;
 use std::cmp::Ordering;
 use std::ops::Range;
+
+// ─── ScoringContext ─────────────────────────────────────────────────────────
+
+/// provider に渡す解析セッション全体のコンテキスト。
+///
+/// 各 byte 位置で不変な情報 (input text, boundary analysis) をまとめる。
+/// 0.2.0 では bracket 解析結果も追加予定。
+pub struct ScoringContext<'a> {
+    pub input: &'a str,
+    pub boundary: &'a BoundaryAnalysis,
+}
 
 // ─── band 値定数 ─────────────────────────────────────────────────────────────
 
@@ -188,11 +200,11 @@ impl Candidate {
 /// `candidates_at` は **byte 位置 `pos` から始まる** 候補を返す。 caller (Smart engine)
 /// は input 上の各位置で全 provider を呼び出して候補を集約、 Viterbi-like DP で path を解く。
 pub trait CandidateProvider {
-    /// `input` の byte 位置 `pos` から始まる candidate を全列挙して返す。
+    /// `ctx.input` の byte 位置 `pos` から始まる candidate を全列挙して返す。
     ///
     /// 候補が無い (= この位置から始まる surface が dict / kanji / etc に存在しない) 場合は空 Vec。
     /// 候補が複数あっても OK (= 同位置から異なる surface 長の candidate を返してよい)。
-    fn candidates_at(&self, input: &str, pos: usize) -> Vec<Candidate>;
+    fn candidates_at(&self, ctx: &ScoringContext, pos: usize) -> Vec<Candidate>;
 }
 
 #[cfg(test)]
