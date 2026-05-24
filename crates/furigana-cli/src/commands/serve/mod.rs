@@ -151,23 +151,22 @@ pub fn run(args: Args, paths: &Paths, cfg: &Config) -> Result<()> {
     // TraceLayer: /healthz と /metrics は polling 系で log を埋めるので TRACE 降格、
     // それ以外 (= /furigana / /admin) は DEBUG で出す。 RUST_LOG=info でも
     // TraceLayer 自体は黙る (= 詳細は handler の debug! 経由で見る)。
-    let trace_layer = TraceLayer::new_for_http()
-        .make_span_with(|req: &Request<Body>| {
-            let path = req.uri().path();
-            let level = if path == "/healthz" || path == "/metrics" {
-                Level::TRACE
-            } else {
-                Level::DEBUG
-            };
-            tracing::span!(
-                Level::DEBUG,
-                "request",
-                method = %req.method(),
-                uri = %req.uri(),
-                version = ?req.version(),
-                trace_level = ?level,
-            )
-        });
+    let trace_layer = TraceLayer::new_for_http().make_span_with(|req: &Request<Body>| {
+        let path = req.uri().path();
+        let level = if path == "/healthz" || path == "/metrics" {
+            Level::TRACE
+        } else {
+            Level::DEBUG
+        };
+        tracing::span!(
+            Level::DEBUG,
+            "request",
+            method = %req.method(),
+            uri = %req.uri(),
+            version = ?req.version(),
+            trace_level = ?level,
+        )
+    });
 
     // 429 detection: governor_layer の 後段 (= 外側 wrap) で response status を見て
     // rate_limited counter を増やす + warn log を出す。 layer 順序は逆順 apply

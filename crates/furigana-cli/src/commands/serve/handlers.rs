@@ -339,13 +339,7 @@ fn detect_degraded(mode: &str, text: &str, result: &str) -> bool {
 fn format_tokens(tokens: &[furigana::ReadingToken]) -> String {
     tokens
         .iter()
-        .map(|t| {
-            format!(
-                "{}[{}]",
-                t.surface,
-                t.reading.as_deref().unwrap_or("")
-            )
-        })
+        .map(|t| format!("{}[{}]", t.surface, t.reading.as_deref().unwrap_or("")))
         .collect::<Vec<_>>()
         .join("|")
 }
