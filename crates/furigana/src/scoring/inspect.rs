@@ -167,18 +167,24 @@ mod tests {
                 reading: "ハイザクラ".into(),
                 range: 0..6,
                 accent_phrases: Vec::new(),
+                ambiguous: false,
+                alternatives: Vec::new(),
             },
             Token {
                 surface: "の".into(),
                 reading: "ノ".into(),
                 range: 6..9,
                 accent_phrases: Vec::new(),
+                ambiguous: false,
+                alternatives: Vec::new(),
             },
             Token {
                 surface: "道".into(),
                 reading: "ミチ".into(),
                 range: 9..12,
                 accent_phrases: Vec::new(),
+                ambiguous: false,
+                alternatives: Vec::new(),
             },
         ];
         let candidates = vec![

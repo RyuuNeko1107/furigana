@@ -72,9 +72,10 @@ pub const BAND_PROTECTED: u16 = 2000;
 /// 1. `band` 大 (band 値で勝負、 1000 vs 950 等)
 /// 2. `length` 大 (longest match、 surface 長で勝負)
 /// 3. `match_hits` 多 (inline match condition 評価で hit した数)
-/// 4. `boundary_penalty` 大 (= less negative、 ペナルティが軽い path が勝つ)
+/// 4. `weight` 大 (代替候補の相対頻度、 ADR-0004)
+/// 5. `boundary_penalty` 大 (= less negative、 ペナルティが軽い path が勝つ)
 ///
-/// 同点 (= 全 4 軸同値) の場合の tie-break は caller 側 (例: TOML 出現順) で。
+/// 同点 (= 全 5 軸同値) の場合の tie-break は caller 側 (例: TOML 出現順) で。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
 pub struct Score {
     /// band 値 (1000 / 950 / 100 / 50 等)
@@ -83,9 +84,14 @@ pub struct Score {
     pub length: u8,
     /// inline match condition hit 数 (default ≠ match block)
     pub match_hits: u8,
+    /// 候補の相対頻度 (0–100、 default = 100、 alt 候補は dict 指定値)
+    pub weight: u8,
     /// (b)(c) 漢字連続 boundary penalty 累積。 negative = penalty あり。
     pub boundary_penalty: i16,
 }
+
+/// default reading の weight (暗黙最大値)。
+pub const WEIGHT_DEFAULT: u8 = 100;
 
 impl Score {
     /// 明示値で構築。
@@ -95,6 +101,25 @@ impl Score {
             band,
             length,
             match_hits,
+            weight: WEIGHT_DEFAULT,
+            boundary_penalty,
+        }
+    }
+
+    /// weight 指定付き構築 (alt 候補用)。
+    #[must_use]
+    pub const fn with_weight(
+        band: u16,
+        length: u8,
+        match_hits: u8,
+        weight: u8,
+        boundary_penalty: i16,
+    ) -> Self {
+        Self {
+            band,
+            length,
+            match_hits,
+            weight,
             boundary_penalty,
         }
     }
@@ -124,9 +149,6 @@ impl Score {
     }
 
     /// Lindera 2 字以上純漢字 surface 用 score (band 150、 length 指定、 ★alpha.20)。
-    ///
-    /// 単漢字 default 合成より形態素 1 token を優先する場面で使う。
-    /// caller は 「surface 文字数 ≥ 2 かつ 全 char が漢字」 を確認してから呼ぶこと。
     #[must_use]
     pub const fn lindera_compound(length: u8) -> Self {
         Self::new(BAND_LINDERA_COMPOUND, length, 0, 0)
@@ -135,13 +157,11 @@ impl Score {
 
 impl Ord for Score {
     fn cmp(&self, other: &Self) -> Ordering {
-        // lexicographic: 各軸で同点なら次の軸で勝負
         self.band
             .cmp(&other.band)
             .then(self.length.cmp(&other.length))
             .then(self.match_hits.cmp(&other.match_hits))
-            // boundary_penalty: i16、 negative = ペナルティ済。
-            // less negative (= 数値として大きい) が better、 通常 i16 Ord と一致。
+            .then(self.weight.cmp(&other.weight))
             .then(self.boundary_penalty.cmp(&other.boundary_penalty))
     }
 }

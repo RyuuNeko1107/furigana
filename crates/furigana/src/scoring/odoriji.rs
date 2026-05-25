@@ -124,6 +124,8 @@ mod tests {
             reading: reading.to_string(),
             range,
             accent_phrases: Vec::new(),
+            ambiguous: false,
+            alternatives: Vec::new(),
         }
     }
 

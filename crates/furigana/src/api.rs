@@ -9,10 +9,14 @@ use crate::dict::Dict;
 use crate::error::Result;
 use crate::reading::{tokens_to_hiragana, tokens_to_ruby, ReadingToken};
 use crate::rules::RulesData;
-use crate::scoring::analyze::{analyze as scoring_analyze, AnalyzeResult, Token as AnalyzeToken};
+use crate::scoring::analyze::{
+    analyze as scoring_analyze, AlternativeReading, AnalyzeResult, Token as AnalyzeToken,
+};
 use crate::scoring::bracket::AccentPhrase;
 use crate::scoring::boundary::BoundaryAnalysis;
-use crate::scoring::candidate::{Candidate, CandidateProvider, Score, ScoringContext};
+use crate::scoring::candidate::{
+    Candidate, CandidateProvider, Score, ScoringContext, BAND_DICT_EXACT, BAND_KANJI,
+};
 use crate::scoring::lindera_fallback::LinderaFallbackProvider;
 use crate::scoring::matcher::{
     next2_logical_token, next_logical_token, prev_logical_token, MatchContext,
@@ -341,6 +345,10 @@ pub struct AccentToken {
     pub surface: String,
     pub reading: String,
     pub accent_phrases: Vec<AccentPhrase>,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub ambiguous: bool,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub alternatives: Vec<AlternativeReading>,
 }
 
 impl From<AnalyzeToken> for AccentToken {
@@ -349,6 +357,8 @@ impl From<AnalyzeToken> for AccentToken {
             surface: t.surface,
             reading: t.reading,
             accent_phrases: t.accent_phrases,
+            ambiguous: t.ambiguous,
+            alternatives: t.alternatives,
         }
     }
 }
@@ -421,18 +431,31 @@ impl<'a> DictBridgeProvider<'a> {
                 .map(|m| m.reading.as_str())
                 .unwrap_or_else(|| entry.default_reading());
 
-            let score = if char_count == 1 {
-                Score::kanji(length)
+            let band = if char_count == 1 {
+                BAND_KANJI
             } else {
-                Score::dict_exact(length)
+                BAND_DICT_EXACT
             };
 
             out.push(Candidate::new(
                 surface.to_string(),
                 reading.to_string(),
                 pos..end_pos,
-                score,
+                Score::new(band, length, 0, 0),
             ));
+
+            for alt in entry.alternatives() {
+                if !alt.condition.matches_context(&mctx) {
+                    continue;
+                }
+                out.push(Candidate::new(
+                    surface.to_string(),
+                    alt.reading.to_string(),
+                    pos..end_pos,
+                    Score::with_weight(band, length, 0, alt.weight, 0),
+                ));
+            }
+
             emitted.insert(surface.to_string());
         }
     }
@@ -472,6 +495,19 @@ impl<'a> DictBridgeProvider<'a> {
                 pos..end_pos,
                 Score::kanji(1),
             ));
+
+            for alt in &block.alt {
+                if !alt.condition.matches_context(&mctx) {
+                    continue;
+                }
+                out.push(Candidate::new(
+                    surface.to_string(),
+                    alt.reading.to_string(),
+                    pos..end_pos,
+                    Score::with_weight(BAND_KANJI, 1, 0, alt.weight, 0),
+                ));
+            }
+
             emitted.insert(surface.to_string());
         }
     }
@@ -1252,5 +1288,66 @@ reading = "ショウ"
         // ことを check (= 「生」 が 「ショウ」、 「じる」 が 「ジル」 / 「生じる」 1 token も同等)
         let combined: String = r.tokens.iter().map(|t| t.reading.as_str()).collect();
         assert_eq!(combined, "ショウジル", "result: {r:?}");
+    }
+
+    // ─── ADR-0004: ambiguous / alternatives ─────────────────────────────────
+
+    #[test]
+    fn analyze_entry_with_alt_shows_ambiguous() {
+        let mut f = Furigana::minimal().unwrap();
+        f.merge_dict_toml(
+            r#"
+[meta]
+schema_version = "2"
+role = "jukugo"
+
+[entries."上手"]
+reading = "ジョウズ"
+
+[[entries."上手".alt]]
+reading = "カミテ"
+weight = 30
+"#,
+        )
+        .unwrap();
+        let r = f.analyze("上手");
+        assert_eq!(r.tokens.len(), 1);
+        assert_eq!(r.tokens[0].reading, "ジョウズ");
+        assert!(r.tokens[0].ambiguous);
+        assert_eq!(r.tokens[0].alternatives.len(), 1);
+        assert_eq!(r.tokens[0].alternatives[0].reading, "カミテ");
+        assert_eq!(r.tokens[0].alternatives[0].weight, 30);
+    }
+
+    #[test]
+    fn analyze_entry_without_alt_not_ambiguous() {
+        let mut f = Furigana::minimal().unwrap();
+        f.add_reading("猫", "ネコ");
+        let r = f.analyze("猫");
+        assert!(!r.tokens[0].ambiguous);
+        assert!(r.tokens[0].alternatives.is_empty());
+    }
+
+    #[test]
+    fn to_accent_with_alt_includes_alternatives() {
+        let mut f = Furigana::minimal().unwrap();
+        f.merge_dict_toml(
+            r#"
+[meta]
+schema_version = "2"
+role = "jukugo"
+
+[entries."上手"]
+reading = "ジョ]ウズ"
+
+[[entries."上手".alt]]
+reading = "カ]ミテ"
+weight = 30
+"#,
+        )
+        .unwrap();
+        let r = f.to_accent("上手");
+        assert!(r.tokens[0].ambiguous);
+        assert_eq!(r.tokens[0].alternatives[0].reading, "カミテ");
     }
 }

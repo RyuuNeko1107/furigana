@@ -13,16 +13,23 @@
 //! - dict 改善判断: caller が path inspect、 PR 起こす材料
 //! - **lib は collect しない** (OSS ローカル完結方針)、 caller 任意で persist
 
-use crate::scoring::bracket::{parse_bracket_notation, AccentPhrase};
+use crate::scoring::bracket::{parse_bracket_notation, strip_intonation_markers, AccentPhrase};
 use crate::scoring::candidate::{Candidate, CandidateProvider, ScoringContext};
 use crate::scoring::engine::solve_path;
 use serde::Serialize;
 use std::ops::Range;
 
+/// 出力用の代替読み候補 (ADR-0004)。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[non_exhaustive]
+pub struct AlternativeReading {
+    pub reading: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sense: Option<String>,
+    pub weight: u8,
+}
+
 /// 採択 path 上の 1 つの token (= 採用された candidate edge を caller-friendly に)。
-///
-/// `score` 等の internal info は持たず、 caller が必要なら `AnalyzeResult::candidates`
-/// から該当 candidate を引いて参照する。
 ///
 /// `#[non_exhaustive]`: SemVer 互換維持のため caller の literal struct 構築は禁止。
 #[derive(Debug, Clone, Serialize)]
@@ -36,13 +43,16 @@ pub struct Token {
     pub range: Range<usize>,
     /// accent phrase 列 (0.2.0)。bracket notation がない reading では空。
     pub accent_phrases: Vec<AccentPhrase>,
+    /// 同一位置に代替候補が存在するか (ADR-0004)
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub ambiguous: bool,
+    /// 代替読み候補 (採択されなかった候補、weight 降順)
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub alternatives: Vec<AlternativeReading>,
 }
 
 impl Token {
     /// [`Candidate`] から [`Token`] へ変換 (score を捨てる)。
-    ///
-    /// `Candidate.reading` に bracket notation が含まれる場合、
-    /// strip 済 reading + accent_phrases にパースする。
     #[must_use]
     pub fn from_candidate(c: &Candidate) -> Self {
         let parsed = parse_bracket_notation(&c.reading);
@@ -51,6 +61,8 @@ impl Token {
             reading: parsed.reading,
             range: c.range.clone(),
             accent_phrases: parsed.accent_phrases,
+            ambiguous: false,
+            alternatives: Vec::new(),
         }
     }
 }
@@ -118,6 +130,39 @@ pub fn analyze(ctx: &ScoringContext, providers: &[&dyn CandidateProvider]) -> An
         .iter()
         .map(|r| r.range.clone())
         .collect();
+
+    // 6. alternatives: 同一位置・同一 surface で reading が異なる候補を抽出 (ADR-0004)
+    let mut tokens = tokens;
+    for (i, token_candidates) in candidates.iter().enumerate() {
+        if i >= tokens.len() {
+            break;
+        }
+        let token = &mut tokens[i];
+        let winning_reading = &token.reading;
+
+        let mut alts: Vec<AlternativeReading> = token_candidates
+            .iter()
+            .filter(|c| {
+                c.surface == token.surface
+                    && c.range == token.range
+                    && strip_intonation_markers(&c.reading) != *winning_reading
+            })
+            .map(|c| AlternativeReading {
+                reading: strip_intonation_markers(&c.reading),
+                sense: None,
+                weight: c.score.weight,
+            })
+            .collect();
+
+        // dedup by reading (同一 reading の重複を除去、weight 最大を残す)
+        alts.sort_by(|a, b| b.weight.cmp(&a.weight));
+        alts.dedup_by(|a, b| a.reading == b.reading);
+
+        if !alts.is_empty() {
+            token.ambiguous = true;
+            token.alternatives = alts;
+        }
+    }
 
     AnalyzeResult {
         tokens,

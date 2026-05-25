@@ -85,9 +85,18 @@ impl Entry {
             Entry::Detailed(d) => &d.matches,
         }
     }
+
+    /// この entry の代替読み候補を返す (省略形は空)。
+    #[must_use]
+    pub fn alternatives(&self) -> &[Alternative] {
+        match self {
+            Entry::Simple(_) => &[],
+            Entry::Detailed(d) => &d.alt,
+        }
+    }
 }
 
-/// 完全形 entry の本体。 default reading (必須) + match block 配列 (空可)。
+/// 完全形 entry の本体。 default reading (必須) + match block 配列 (空可) + alt 候補 (空可)。
 ///
 /// `reading` field は必須、 不在は parse error。 全 match block が miss した場合の
 /// fallback としてもこの reading が使われる。
@@ -98,6 +107,9 @@ pub struct EntryDetail {
     /// 文脈 match block (TOML 順、 第一 hit 採用、 全 miss なら default 採用)
     #[serde(default, rename = "match")]
     pub matches: Vec<MatchBlock>,
+    /// 代替読み候補 (ADR-0004)。消費側が ML 等で選択する用途。
+    #[serde(default)]
+    pub alt: Vec<Alternative>,
 }
 
 /// `[[entries."x".match]]` 配列の 1 要素。 matcher conditions + match 時の reading。
@@ -178,6 +190,36 @@ pub struct MatchCondition {
     pub next_digit: bool,
 }
 
+/// 代替読み候補 (ADR-0004)。同形異音語の曖昧解決用。
+///
+/// ## 例
+///
+/// ```toml
+/// [[entries."上手".alt]]
+/// reading = "カミテ"
+/// sense = "stage-left"
+/// weight = 30
+/// next_eq = "から"
+/// ```
+#[derive(Debug, Clone, Deserialize)]
+pub struct Alternative {
+    /// 代替読み
+    pub reading: String,
+    /// 意味ラベル (消費側が ML に渡すヒント)
+    #[serde(default)]
+    pub sense: Option<String>,
+    /// 相対頻度 (0–100、 default reading は暗黙 100)
+    #[serde(default = "default_weight")]
+    pub weight: u8,
+    /// 文脈条件 (条件 hit 時のみこの alt を候補に含める。空 = 無条件)
+    #[serde(flatten)]
+    pub condition: MatchCondition,
+}
+
+fn default_weight() -> u8 {
+    50
+}
+
 /// 文字種列挙 (matcher の `prev_char_type` / `next_char_type` の値型)。
 ///
 /// TOML では文字列で書く: `"漢字"` / `"ひらがな"` / `"カタカナ"` / `"英数"` / `"記号"`
@@ -232,6 +274,9 @@ pub struct KanjiBlock {
     /// 文脈 match (= entry inline match と同 vocabulary)
     #[serde(default, rename = "match")]
     pub matches: Vec<MatchBlock>,
+    /// 代替読み候補 (ADR-0004)
+    #[serde(default)]
+    pub alt: Vec<Alternative>,
 }
 
 impl KanjiBlock {
@@ -505,6 +550,7 @@ mod tests {
             char: "魔理沙".to_string(),
             default: "マリサ".to_string(),
             matches: vec![],
+            alt: vec![],
         };
         let err = block.validate().unwrap_err();
         assert!(err.contains("single character"), "err: {err}");
@@ -516,6 +562,7 @@ mod tests {
             char: String::new(),
             default: "".to_string(),
             matches: vec![],
+            alt: vec![],
         };
         let err = block.validate().unwrap_err();
         assert!(err.contains("empty"), "err: {err}");
@@ -527,6 +574,7 @@ mod tests {
             char: "生".to_string(),
             default: "セイ".to_string(),
             matches: vec![],
+            alt: vec![],
         };
         assert!(block.validate().is_ok());
     }
@@ -595,5 +643,86 @@ mod tests {
         "#;
         let data: KanjiData = toml::from_str(toml_str).unwrap();
         assert_eq!(data.blocks[0].default, "ジョ]ウ");
+    }
+
+    // ─── Alternative (ADR-0004) ─────────────────────────────────────────────
+
+    #[test]
+    fn entry_with_alt_candidates_deserializes() {
+        let toml_str = r#"
+            [entries."上手"]
+            reading = "ジョウズ"
+
+            [[entries."上手".alt]]
+            reading = "カミテ"
+            sense = "stage-left"
+            weight = 30
+
+            [[entries."上手".alt]]
+            reading = "ウワテ"
+            sense = "superior"
+            weight = 20
+            prev_ends_any = ["より"]
+        "#;
+        let data: EntriesData = toml::from_str(toml_str).unwrap();
+        let entry = data.entries.get("上手").unwrap();
+        assert_eq!(entry.default_reading(), "ジョウズ");
+        let alts = entry.alternatives();
+        assert_eq!(alts.len(), 2);
+        assert_eq!(alts[0].reading, "カミテ");
+        assert_eq!(alts[0].sense.as_deref(), Some("stage-left"));
+        assert_eq!(alts[0].weight, 30);
+        assert_eq!(alts[1].reading, "ウワテ");
+        assert_eq!(alts[1].weight, 20);
+        assert_eq!(alts[1].condition.prev_ends_any, vec!["より"]);
+    }
+
+    #[test]
+    fn entry_without_alt_has_empty_alternatives() {
+        let toml_str = r#"
+            [entries]
+            "猫" = "ネコ"
+        "#;
+        let data: EntriesData = toml::from_str(toml_str).unwrap();
+        assert!(data.entries.get("猫").unwrap().alternatives().is_empty());
+    }
+
+    #[test]
+    fn alt_default_weight_is_50() {
+        let toml_str = r#"
+            [entries."橋"]
+            reading = "ハシ"
+
+            [[entries."橋".alt]]
+            reading = "キョウ"
+        "#;
+        let data: EntriesData = toml::from_str(toml_str).unwrap();
+        let alts = data.entries.get("橋").unwrap().alternatives();
+        assert_eq!(alts[0].weight, 50);
+        assert!(alts[0].sense.is_none());
+    }
+
+    #[test]
+    fn kanji_block_with_alt_deserializes() {
+        let toml_str = r#"
+            [[kanji]]
+            char = "生"
+            default = "セイ"
+
+            [[kanji.alt]]
+            reading = "ナマ"
+            sense = "raw"
+            weight = 40
+
+            [[kanji.alt]]
+            reading = "イ"
+            sense = "live"
+            weight = 20
+        "#;
+        let data: KanjiData = toml::from_str(toml_str).unwrap();
+        let block = &data.blocks[0];
+        assert_eq!(block.alt.len(), 2);
+        assert_eq!(block.alt[0].reading, "ナマ");
+        assert_eq!(block.alt[1].reading, "イ");
     }
 }
