@@ -123,6 +123,7 @@ mod tests {
             surface: surface.to_string(),
             reading: reading.to_string(),
             range,
+            accent_phrases: Vec::new(),
         }
     }
 

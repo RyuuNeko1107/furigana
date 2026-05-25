@@ -106,12 +106,13 @@ mod api;
 mod embedded;
 mod sanitize;
 
-pub use crate::api::{Furigana, FuriganaBuilder};
+pub use crate::api::{AccentResult, AccentToken, Furigana, FuriganaBuilder};
 pub use crate::dict::Dict;
 pub use crate::error::{FuriganaError, Result};
 pub use crate::reading::{tokens_to_hiragana, tokens_to_ruby, ReadingToken};
 pub use crate::romaji::{hiragana_to_romaji, RomajiStyle};
 pub use crate::scoring::analyze::{AnalyzeResult, Token as AnalyzeToken};
+pub use crate::scoring::bracket::AccentPhrase;
 pub use crate::scoring::inspect::{
     extract_dict_gap_candidates, surface_with_context, token_band, ContextWindow, DictGapCandidate,
 };

@@ -46,11 +46,10 @@
 //! - thread safety: 内部 [`Analyzer`] は [`std::sync::Mutex`] 保護なので、
 //!   並列実行は直列化される。 single-thread 用途では問題なし。
 //! - reading は Lindera 由来 = カタカナ (IPADIC details[7])、 既存 provider と
-//!   出力形式整合。 [`crate::scoring::bracket::strip_intonation_markers`] は
-//!   念のため通すが、 Lindera reading に bracket は含まれない想定。
+//!   出力形式整合。 Lindera reading に bracket は含まれない想定。
+//!   bracket strip は Token 変換時に `parse_bracket_notation` が一括処理。
 
 use crate::analyzer::Analyzer;
-use crate::scoring::bracket::strip_intonation_markers;
 use crate::scoring::candidate::{Candidate, CandidateProvider, Score, ScoringContext};
 
 /// band-up 対象の判定: 「CJK 統合漢字範囲のみ」 で 々/〆/ヶ は除外する。
@@ -146,7 +145,7 @@ impl CandidateProvider for LinderaFallbackProvider {
                 };
                 Candidate::new(
                     surface.to_string(),
-                    strip_intonation_markers(reading),
+                    reading.clone(),
                     *start..*end,
                     score,
                 )

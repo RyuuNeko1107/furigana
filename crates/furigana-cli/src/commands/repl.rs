@@ -48,6 +48,7 @@ enum Mode {
     Kanji,
     Romaji,
     RomajiKunrei,
+    Accent,
 }
 
 impl Mode {
@@ -60,6 +61,7 @@ impl Mode {
             "kanji" => Self::Kanji,
             "romaji" => Self::Romaji,
             "romaji-kunrei" | "kunrei" => Self::RomajiKunrei,
+            "accent" => Self::Accent,
             _ => return None,
         })
     }
@@ -73,6 +75,7 @@ impl Mode {
             Self::Kanji => "kanji",
             Self::Romaji => "romaji",
             Self::RomajiKunrei => "romaji-kunrei",
+            Self::Accent => "accent",
         }
     }
 }
@@ -91,6 +94,7 @@ const MODE_NAMES: &[&str] = &[
     "kanji",
     "romaji",
     "romaji-kunrei",
+    "accent",
 ];
 
 /// 入力行の先頭がメタコマンドっぽいかを判定する用に、エイリアスも含めて拾う。
@@ -262,6 +266,12 @@ pub fn run(args: Args, paths: &Paths, _cfg: &Config) -> Result<()> {
                     "  {}",
                     furigana::hiragana_to_romaji(&hira, RomajiStyle::Kunrei)
                 );
+            }
+            Mode::Accent => {
+                let result = f.to_accent(line);
+                if let Ok(json) = serde_json::to_string_pretty(&result) {
+                    println!("  {json}");
+                }
             }
         }
         let t_conv = t1.elapsed();

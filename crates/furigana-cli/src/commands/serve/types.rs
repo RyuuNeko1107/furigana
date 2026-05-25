@@ -4,7 +4,7 @@ use super::metrics::ServerMetrics;
 use crate::paths::Paths;
 use axum::http::StatusCode;
 use axum::Json;
-use furigana::{AnalyzeResult, Furigana};
+use furigana::{AccentResult, AnalyzeResult, Furigana};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::sync::Arc;
@@ -85,6 +85,9 @@ pub(super) struct FuriganaResponse {
     /// `result` には採択 path の reading 連結が入る。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) analyze: Option<AnalyzeResult>,
+    /// `mode=accent` の時のみ入る accent 中立 JSON (0.2.0)。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) accent: Option<AccentResult>,
 }
 
 /// `/furigana` のエラーレスポンス (`{"error": "..."}` + HTTP ステータス)

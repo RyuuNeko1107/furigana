@@ -13,6 +13,7 @@
 //! - dict 改善判断: caller が path inspect、 PR 起こす材料
 //! - **lib は collect しない** (OSS ローカル完結方針)、 caller 任意で persist
 
+use crate::scoring::bracket::{parse_bracket_notation, AccentPhrase};
 use crate::scoring::candidate::{Candidate, CandidateProvider, ScoringContext};
 use crate::scoring::engine::solve_path;
 use serde::Serialize;
@@ -23,8 +24,7 @@ use std::ops::Range;
 /// `score` 等の internal info は持たず、 caller が必要なら `AnalyzeResult::candidates`
 /// から該当 candidate を引いて参照する。
 ///
-/// `#[non_exhaustive]`: 0.2.0+ で field 追加余地 (例: `pos: Option<String>` / `accent_phrases`
-/// for intonation 等)、 SemVer 互換維持のため caller の literal struct 構築は禁止。
+/// `#[non_exhaustive]`: SemVer 互換維持のため caller の literal struct 構築は禁止。
 #[derive(Debug, Clone, Serialize)]
 #[non_exhaustive]
 pub struct Token {
@@ -34,16 +34,23 @@ pub struct Token {
     pub reading: String,
     /// input text 上の byte range
     pub range: Range<usize>,
+    /// accent phrase 列 (0.2.0)。bracket notation がない reading では空。
+    pub accent_phrases: Vec<AccentPhrase>,
 }
 
 impl Token {
     /// [`Candidate`] から [`Token`] へ変換 (score を捨てる)。
+    ///
+    /// `Candidate.reading` に bracket notation が含まれる場合、
+    /// strip 済 reading + accent_phrases にパースする。
     #[must_use]
     pub fn from_candidate(c: &Candidate) -> Self {
+        let parsed = parse_bracket_notation(&c.reading);
         Self {
             surface: c.surface.clone(),
-            reading: c.reading.clone(),
+            reading: parsed.reading,
             range: c.range.clone(),
+            accent_phrases: parsed.accent_phrases,
         }
     }
 }

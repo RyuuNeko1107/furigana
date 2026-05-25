@@ -215,6 +215,41 @@ fn process(
             segments: None,
             timings_ms,
             analyze: Some(analyze_result),
+            accent: None,
+        }));
+    }
+
+    if mode == "accent" {
+        let accent_start = Instant::now();
+        let accent_result = f.to_accent(&text);
+        let t_convert_ms = accent_start.elapsed().as_secs_f64() * 1000.0;
+        let t_total_ms = t_start.elapsed().as_secs_f64() * 1000.0;
+
+        let result: String = accent_result
+            .tokens
+            .iter()
+            .map(|t| t.reading.as_str())
+            .collect();
+
+        let timings_ms = if params.debug {
+            Some(json!({
+                "total": round1(t_total_ms),
+                "tokenize": 0.0,
+                "convert": round1(t_convert_ms),
+            }))
+        } else {
+            None
+        };
+
+        state.metrics.record_request(&mode, t_total_ms);
+
+        return Ok(Json(FuriganaResponse {
+            result,
+            mode,
+            segments: None,
+            timings_ms,
+            analyze: None,
+            accent: Some(accent_result),
         }));
     }
 
@@ -312,6 +347,7 @@ fn process(
         segments,
         timings_ms,
         analyze: None,
+        accent: None,
     }))
 }
 
@@ -391,9 +427,8 @@ fn validate_length(text: &str) -> Result<(), ApiError> {
 /// 不正な mode は静かに `tts` (= default) に fallback
 fn normalize_mode(mode: &str) -> String {
     match mode {
-        "tts" | "hiragana" | "ruby" | "kanji" | "romaji" | "romaji-kunrei" | "analyze" => {
-            mode.to_string()
-        }
+        "tts" | "hiragana" | "ruby" | "kanji" | "romaji" | "romaji-kunrei" | "analyze"
+        | "accent" => mode.to_string(),
         _ => default_mode(),
     }
 }

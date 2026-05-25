@@ -17,7 +17,7 @@ pub struct Args {
     /// 変換対象テキスト
     text: String,
 
-    /// 変換モード: `tts` (default) | `hiragana` | `ruby` | `kanji` | `romaji` | `romaji-kunrei` | `analyze`
+    /// 変換モード: `tts` (default) | `hiragana` | `ruby` | `kanji` | `romaji` | `romaji-kunrei` | `analyze` | `accent`
     #[arg(short, long, default_value = "tts")]
     mode: String,
 
@@ -83,8 +83,12 @@ pub fn run(args: Args, paths: &Paths, _cfg: &Config) -> Result<()> {
             let result = f.analyze(&args.text);
             serde_json::to_string_pretty(&result).context("serialize AnalyzeResult to JSON")?
         }
+        "accent" => {
+            let result = f.to_accent(&args.text);
+            serde_json::to_string_pretty(&result).context("serialize AccentResult to JSON")?
+        }
         other => bail!(
-            "未知の mode: {other} (使用可能: tts | hiragana | ruby | kanji | romaji | romaji-kunrei | analyze)"
+            "未知の mode: {other} (使用可能: tts | hiragana | ruby | kanji | romaji | romaji-kunrei | analyze | accent)"
         ),
     };
 

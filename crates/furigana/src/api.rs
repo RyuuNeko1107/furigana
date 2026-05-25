@@ -9,9 +9,9 @@ use crate::dict::Dict;
 use crate::error::Result;
 use crate::reading::{tokens_to_hiragana, tokens_to_ruby, ReadingToken};
 use crate::rules::RulesData;
-use crate::scoring::analyze::{analyze as scoring_analyze, AnalyzeResult};
+use crate::scoring::analyze::{analyze as scoring_analyze, AnalyzeResult, Token as AnalyzeToken};
+use crate::scoring::bracket::AccentPhrase;
 use crate::scoring::boundary::BoundaryAnalysis;
-use crate::scoring::bracket::strip_intonation_markers;
 use crate::scoring::candidate::{Candidate, CandidateProvider, Score, ScoringContext};
 use crate::scoring::lindera_fallback::LinderaFallbackProvider;
 use crate::scoring::matcher::{
@@ -309,6 +309,48 @@ impl Furigana {
         apply_rendaku_to_result(&mut result);
         result
     }
+
+    /// accent mode 出力 (intonation.md §7.1)。
+    ///
+    /// [`Self::analyze`] を呼び、 token の accent_phrases を含む中立 JSON 向け構造体を返す。
+    /// bracket notation がない token は `accent_phrases` 空。
+    #[must_use]
+    pub fn to_accent(&self, input: &str) -> AccentResult {
+        let result = self.analyze(input);
+        AccentResult {
+            schema_version: "1".to_string(),
+            tokens: result.tokens.into_iter().map(AccentToken::from).collect(),
+        }
+    }
+}
+
+// ─── AccentResult / AccentToken ─────────────────────────────────────────────
+
+/// `--mode=accent` 中立 JSON 出力 (intonation.md §7.1)。
+#[derive(Debug, Clone, serde::Serialize)]
+#[non_exhaustive]
+pub struct AccentResult {
+    pub schema_version: String,
+    pub tokens: Vec<AccentToken>,
+}
+
+/// accent mode の 1 token。
+#[derive(Debug, Clone, serde::Serialize)]
+#[non_exhaustive]
+pub struct AccentToken {
+    pub surface: String,
+    pub reading: String,
+    pub accent_phrases: Vec<AccentPhrase>,
+}
+
+impl From<AnalyzeToken> for AccentToken {
+    fn from(t: AnalyzeToken) -> Self {
+        Self {
+            surface: t.surface,
+            reading: t.reading,
+            accent_phrases: t.accent_phrases,
+        }
+    }
 }
 
 // ============================================================================
@@ -325,8 +367,8 @@ impl Furigana {
 /// - jukugo (≥ 2 文字 surface) → [`Score::dict_exact`] (band 1000)
 /// - unihan (= 1 文字 surface) → [`Score::kanji`] (band 100)
 ///
-/// reading は [`strip_intonation_markers`] で bracket marker を除去
-/// (forward compat for 0.2.0)。
+/// reading は bracket notation を保持したまま Candidate に渡す。
+/// Token 変換時に `parse_bracket_notation` で strip + accent 抽出。
 ///
 /// ## 計算量
 ///
@@ -387,7 +429,7 @@ impl<'a> DictBridgeProvider<'a> {
 
             out.push(Candidate::new(
                 surface.to_string(),
-                strip_intonation_markers(reading),
+                reading.to_string(),
                 pos..end_pos,
                 score,
             ));
@@ -426,7 +468,7 @@ impl<'a> DictBridgeProvider<'a> {
                 .unwrap_or(block.default.as_str());
             out.push(Candidate::new(
                 surface.to_string(),
-                strip_intonation_markers(reading),
+                reading.to_string(),
                 pos..end_pos,
                 Score::kanji(1),
             ));
@@ -453,7 +495,7 @@ impl<'a> DictBridgeProvider<'a> {
         if let Some(reading) = self.dict.lookup_unihan(surface) {
             out.push(Candidate::new(
                 surface.to_string(),
-                strip_intonation_markers(reading),
+                reading.to_string(),
                 pos..pos + char_len,
                 Score::kanji(1),
             ));
@@ -860,11 +902,37 @@ mod tests {
     #[test]
     fn analyze_strips_intonation_brackets_from_reading() {
         let mut f = Furigana::minimal().unwrap();
-        // 0.2.0 forward compat: bracket marker は lib 側で strip される
         f.add_reading("灰桜", "ハ[イザクラ");
         let r = f.analyze("灰桜");
         assert_eq!(r.tokens.len(), 1);
         assert_eq!(r.tokens[0].reading, "ハイザクラ");
+        // 0.2.0: accent_phrases にパース結果が入る
+        assert_eq!(r.tokens[0].accent_phrases.len(), 1);
+        assert_eq!(r.tokens[0].accent_phrases[0].reading, "ハイザクラ");
+        assert_eq!(r.tokens[0].accent_phrases[0].mora, 5);
+        assert_eq!(r.tokens[0].accent_phrases[0].accent, Some(0)); // flat
+    }
+
+    #[test]
+    fn to_accent_returns_accent_result_with_bracket_entry() {
+        let mut f = Furigana::minimal().unwrap();
+        f.add_reading("雨", "ア]メ");
+        let r = f.to_accent("雨");
+        assert_eq!(r.schema_version, "1");
+        assert_eq!(r.tokens.len(), 1);
+        assert_eq!(r.tokens[0].surface, "雨");
+        assert_eq!(r.tokens[0].reading, "アメ");
+        assert_eq!(r.tokens[0].accent_phrases.len(), 1);
+        assert_eq!(r.tokens[0].accent_phrases[0].accent, Some(1)); // 頭高
+    }
+
+    #[test]
+    fn to_accent_no_brackets_yields_empty_phrases() {
+        let mut f = Furigana::minimal().unwrap();
+        f.add_reading("猫", "ネコ");
+        let r = f.to_accent("猫");
+        assert_eq!(r.tokens[0].reading, "ネコ");
+        assert!(r.tokens[0].accent_phrases.is_empty());
     }
 
     #[test]
