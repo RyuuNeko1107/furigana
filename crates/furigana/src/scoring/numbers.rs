@@ -48,7 +48,9 @@ use crate::numbers::{
     euphonic_counter_read, kansuji_to_arabic, number_to_katakana, scale_reading, si_unit_reading,
     symbol_char_reading,
 };
-use crate::rules::{CountersData, DaysData, RulesData, ScalesData, SymbolsData, UnitsData};
+use crate::rules::{
+    CounterMode, CountersData, DaysData, RulesData, ScalesData, SymbolsData, UnitsData,
+};
 use crate::scoring::candidate::{
     Candidate, CandidateProvider, Score, ScoringContext, BAND_SPECIAL,
 };
@@ -89,15 +91,41 @@ static DIGIT_RE: Lazy<Regex> =
 
 // ─── 動的 regex builders (data 依存) ─────────────────────────────────────────
 
-/// 助数詞 list から `(NUM)(counter1|counter2|...)` regex を構築。 空 list なら `None`。
+/// 助数詞 list から `(NUM)(base)(recursive)?` regex を構築。 空 list なら `None`。
+///
+/// recursive-mode の助数詞 (= 「目」) は base alternation に混ぜず、 base counter の
+/// **optional trailing group** にする。 こうしないと 「2 個目」 が 「2 個」 (= 個) で
+/// 止まり、 残った 「目」 が単漢字 fallback で 「モク」 と誤読される (= 「ニコモク」)。
+/// group 3 が match したら section 6 で `base + recursive` を合成して
+/// [`euphonic_counter_read`] の末尾再帰 (strip_suffix '目') に委ねる。
 fn build_counter_regex(counters: &CountersData) -> Option<Regex> {
-    let keys: Vec<String> = counters
-        .simple
-        .keys()
-        .chain(counters.counter.keys())
-        .cloned()
-        .collect();
-    build_alt_regex_opt(&keys)
+    let mut base: Vec<String> = counters.simple.keys().cloned().collect();
+    let mut recursive: Vec<String> = Vec::new();
+    for (key, rule) in &counters.counter {
+        if rule.mode == Some(CounterMode::Recursive) {
+            recursive.push(key.clone());
+        } else {
+            base.push(key.clone());
+        }
+    }
+    if base.is_empty() {
+        return None;
+    }
+    // 長い順に並べて alternation で longest-first match (= 「番目」 を 「番」 より先に)
+    base.sort_by_key(|s| std::cmp::Reverse(s.chars().count()));
+    let base_alts: Vec<String> = base.iter().map(|s| regex::escape(s)).collect();
+    let pat = if recursive.is_empty() {
+        format!(r"({NUM_PAT})({})", base_alts.join("|"))
+    } else {
+        recursive.sort_by_key(|s| std::cmp::Reverse(s.chars().count()));
+        let rec_alts: Vec<String> = recursive.iter().map(|s| regex::escape(s)).collect();
+        format!(
+            r"({NUM_PAT})({})({})?",
+            base_alts.join("|"),
+            rec_alts.join("|")
+        )
+    };
+    Some(Regex::new(&pat).expect("scoring counter regex build failed"))
 }
 
 /// 大数スケール (+ optional 末尾漢字 unit / counter) の regex を構築。 空 list なら `None`。
@@ -166,17 +194,6 @@ fn build_si_unit_regex(units: &UnitsData) -> Option<Regex> {
     let alts: Vec<String> = sorted.iter().map(|s| regex::escape(s)).collect();
     let pat = format!(r"(?i)({NUM_PAT})({})", alts.join("|"));
     Some(Regex::new(&pat).expect("scoring si_unit regex build failed"))
-}
-
-fn build_alt_regex_opt(items: &[String]) -> Option<Regex> {
-    if items.is_empty() {
-        return None;
-    }
-    let mut sorted = items.to_vec();
-    sorted.sort_by_key(|s| std::cmp::Reverse(s.chars().count()));
-    let alts: Vec<String> = sorted.iter().map(|s| regex::escape(s)).collect();
-    let pat = format!(r"({NUM_PAT})({})", alts.join("|"));
-    Some(Regex::new(&pat).expect("scoring alt regex build failed"))
 }
 
 /// `re` が `hay` の先頭から (start == 0) match した場合のみ Captures を返す。
@@ -426,7 +443,17 @@ impl CandidateProvider for NumberCandidateProvider {
             if let Some(caps) = at_start(re, rest) {
                 let m_end = caps.get(0).unwrap().end();
                 let num = caps.get(1).unwrap().as_str();
-                let counter = caps.get(2).unwrap().as_str();
+                let base = caps.get(2).unwrap().as_str();
+                // group 3 = optional 末尾再帰助数詞 (= 「目」)。 match したら
+                // 「個」 + 「目」 = 「個目」 を read_counter に渡し、 euphonic_counter_read
+                // の strip_suffix('目') 再帰で 「ニコメ」 等を得る。
+                let combined;
+                let counter = if let Some(rec) = caps.get(3) {
+                    combined = format!("{base}{}", rec.as_str());
+                    combined.as_str()
+                } else {
+                    base
+                };
                 let reading = self.read_counter(num, counter);
                 out.push(self.make(input, pos, m_end, reading));
             }
@@ -525,6 +552,28 @@ mod tests {
         assert_eq!(c.reading, "サンボン");
         assert_eq!(c.score.band, BAND_SPECIAL);
         assert_eq!(c.score.length, 2); // "3" + "本" = 2 文字
+    }
+
+    #[test]
+    fn recursive_counter_me_through_provider() {
+        // 「2 個目」 = 個 (base) + 目 (recursive) を 1 token 化 → ニコメ。
+        // regression: 以前は 「2個」 で止まり 「目」 が単漢字 fallback で 「モク」 と
+        // 誤読されて 「ニコモク」 になっていた。
+        let p = provider();
+        let c2 = find(&p.candidates_at(&ctx("2個目"), 0), "2個目")
+            .expect("2個目 candidate")
+            .clone();
+        assert_eq!(c2.reading, "ニコメ");
+        // 「5 人目」 = 人 special (5→ゴニン) + メ → ゴニンメ
+        let c5 = find(&p.candidates_at(&ctx("5人目"), 0), "5人目")
+            .expect("5人目 candidate")
+            .clone();
+        assert_eq!(c5.reading, "ゴニンメ");
+        // 「3 回目」 = 回 default + メ → サンカイメ
+        let c3 = find(&p.candidates_at(&ctx("3回目"), 0), "3回目")
+            .expect("3回目 candidate")
+            .clone();
+        assert_eq!(c3.reading, "サンカイメ");
     }
 
     #[test]
