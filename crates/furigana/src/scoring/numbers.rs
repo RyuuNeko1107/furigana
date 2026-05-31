@@ -66,6 +66,10 @@ const NUM_PAT: &str =
 /// 日付・月日 用の 「Arabic 1〜4 桁 OR 漢数字 1〜3 文字」 pattern。
 const DATE_NUM_PAT: &str = r"(?:[0-9０-９]{1,4}|[一二三四五六七八九十〇零]{1,3})";
 
+/// 漢数字 pattern (= 末尾再帰助数詞 「N 個目」 の漢数字版用)。 `kansuji_to_arabic` が
+/// 解釈できる範囲 (一〜九十百千 + 〇零)。 「一個目」 「十二回目」 等を catch する。
+const KANJI_NUM_PAT: &str = r"[一二三四五六七八九十百千〇零]{1,6}";
+
 static TIME_COLON_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"([0-9０-９]{1,2})[:：]([0-9０-９]{2})(?:[:：]([0-9０-９]{2}))?")
         .expect("scoring TIME_COLON regex build failed")
@@ -91,14 +95,21 @@ static DIGIT_RE: Lazy<Regex> =
 
 // ─── 動的 regex builders (data 依存) ─────────────────────────────────────────
 
-/// 助数詞 list から `(NUM)(base)(recursive)?` regex を構築。 空 list なら `None`。
+/// 助数詞 list から 2 本の regex を構築:
+/// - **arabic**: `(NUM)(base)(recursive)?` (= 算用 / 全角数字 + 助数詞、 recursive 任意)
+/// - **kanji_recursive**: `(KANJI_NUM)(base)(recursive)` (= 漢数字 + 助数詞 + 「目」、 recursive **必須**)
 ///
-/// recursive-mode の助数詞 (= 「目」) は base alternation に混ぜず、 base counter の
-/// **optional trailing group** にする。 こうしないと 「2 個目」 が 「2 個」 (= 個) で
-/// 止まり、 残った 「目」 が単漢字 fallback で 「モク」 と誤読される (= 「ニコモク」)。
-/// group 3 が match したら section 6 で `base + recursive` を合成して
-/// [`euphonic_counter_read`] の末尾再帰 (strip_suffix '目') に委ねる。
-fn build_counter_regex(counters: &CountersData) -> Option<Regex> {
+/// recursive-mode の助数詞 (= 「目」) は base alternation に混ぜず trailing group にする。
+/// こうしないと 「2 個目」 が 「2 個」 で止まり、 残った 「目」 が単漢字 fallback で
+/// 「モク」 と誤読される (= 「ニコモク」)。group が match したら section 6 で
+/// `base + recursive` を合成して [`euphonic_counter_read`] の末尾再帰 (strip_suffix '目')
+/// に委ねる。
+///
+/// 漢数字側は **recursive を必須** にする (= 「一個目」 のみ対象、 「一個」 「一日」 等の
+/// bare 漢数字 + 助数詞 は従来通り Lindera / chunker に委ねる)。 こうしないと
+/// 「一日中」 の 「一日」 が counter candidate 化して chunker 互換が崩れる
+/// (= [`tests::single_counter_kansuji_only_in_date_pattern`])。
+fn build_counter_regexes(counters: &CountersData) -> (Option<Regex>, Option<Regex>) {
     let mut base: Vec<String> = counters.simple.keys().cloned().collect();
     let mut recursive: Vec<String> = Vec::new();
     for (key, rule) in &counters.counter {
@@ -109,23 +120,28 @@ fn build_counter_regex(counters: &CountersData) -> Option<Regex> {
         }
     }
     if base.is_empty() {
-        return None;
+        return (None, None);
     }
     // 長い順に並べて alternation で longest-first match (= 「番目」 を 「番」 より先に)
     base.sort_by_key(|s| std::cmp::Reverse(s.chars().count()));
     let base_alts: Vec<String> = base.iter().map(|s| regex::escape(s)).collect();
-    let pat = if recursive.is_empty() {
-        format!(r"({NUM_PAT})({})", base_alts.join("|"))
-    } else {
-        recursive.sort_by_key(|s| std::cmp::Reverse(s.chars().count()));
-        let rec_alts: Vec<String> = recursive.iter().map(|s| regex::escape(s)).collect();
-        format!(
-            r"({NUM_PAT})({})({})?",
-            base_alts.join("|"),
-            rec_alts.join("|")
-        )
-    };
-    Some(Regex::new(&pat).expect("scoring counter regex build failed"))
+    let base_joined = base_alts.join("|");
+
+    if recursive.is_empty() {
+        let arabic = Regex::new(&format!(r"({NUM_PAT})({base_joined})"))
+            .expect("scoring counter regex build failed");
+        return (Some(arabic), None);
+    }
+
+    recursive.sort_by_key(|s| std::cmp::Reverse(s.chars().count()));
+    let rec_alts: Vec<String> = recursive.iter().map(|s| regex::escape(s)).collect();
+    let rec_joined = rec_alts.join("|");
+
+    let arabic = Regex::new(&format!(r"({NUM_PAT})({base_joined})({rec_joined})?"))
+        .expect("scoring counter regex build failed");
+    let kanji = Regex::new(&format!(r"({KANJI_NUM_PAT})({base_joined})({rec_joined})"))
+        .expect("scoring kanji counter regex build failed");
+    (Some(arabic), Some(kanji))
 }
 
 /// 大数スケール (+ optional 末尾漢字 unit / counter) の regex を構築。 空 list なら `None`。
@@ -216,8 +232,11 @@ pub struct NumberCandidateProvider {
     units: UnitsData,
     symbols: SymbolsData,
     days: DaysData,
-    /// `(NUM)(counter)` pattern。 counter / simple table が空なら `None`。
+    /// `(NUM)(base)(recursive?)` pattern (算用 / 全角数字)。 counter / simple table が空なら `None`。
     counter_re: Option<Regex>,
+    /// `(KANJI_NUM)(base)(recursive)` pattern (漢数字 + 末尾再帰 「目」 必須)。
+    /// recursive counter が無い (= 「目」 未定義) なら `None`。
+    counter_kanji_re: Option<Regex>,
     /// `(NUM)(scale)(unit?)` pattern。 scales 空なら `None`。
     scale_re: Option<Regex>,
     /// `(NUM)(si_unit)` pattern。 units 空なら `None`。
@@ -230,7 +249,7 @@ impl NumberCandidateProvider {
     /// rules が空 (= [`RulesData::default`]) でも安全 (regex 全 `None` で全 candidate 抑制)。
     #[must_use]
     pub fn new(rules: &RulesData) -> Self {
-        let counter_re = build_counter_regex(&rules.counters);
+        let (counter_re, counter_kanji_re) = build_counter_regexes(&rules.counters);
         let scale_re = build_scale_regex(&rules.scales, &rules.units, &rules.counters);
         let si_unit_re = build_si_unit_regex(&rules.units);
         Self {
@@ -240,6 +259,7 @@ impl NumberCandidateProvider {
             symbols: rules.symbols.clone(),
             days: rules.days.clone(),
             counter_re,
+            counter_kanji_re,
             scale_re,
             si_unit_re,
         }
@@ -459,6 +479,21 @@ impl CandidateProvider for NumberCandidateProvider {
             }
         }
 
+        // ─── 6b. 漢数字 + 助数詞 + 末尾再帰 「目」 ────────────────────────────
+        // 「一個目」 「十二回目」 等。 recursive 「目」 を必須にして、 bare 漢数字 +
+        // 助数詞 (= 「一個」 「一日」) は従来通り Lindera / chunker に委ねる。
+        if let Some(re) = &self.counter_kanji_re {
+            if let Some(caps) = at_start(re, rest) {
+                let m_end = caps.get(0).unwrap().end();
+                let num = caps.get(1).unwrap().as_str();
+                let base = caps.get(2).unwrap().as_str();
+                let rec = caps.get(3).unwrap().as_str();
+                let counter = format!("{base}{rec}");
+                let reading = self.read_counter(num, &counter);
+                out.push(self.make(input, pos, m_end, reading));
+            }
+        }
+
         // ─── 7. 記号 1 文字 ─────────────────────────────────────────────────
         if let Some(ch) = rest.chars().next() {
             if let Some(read) = symbol_char_reading(ch, &self.symbols) {
@@ -574,6 +609,26 @@ mod tests {
             .expect("3回目 candidate")
             .clone();
         assert_eq!(c3.reading, "サンカイメ");
+    }
+
+    #[test]
+    fn recursive_counter_me_kanji_numeral() {
+        // 漢数字版: 「一個目」 → イッコメ (個 + 目)。 旧: 個 までで止まり 目 → モク。
+        let p = provider();
+        let c1 = find(&p.candidates_at(&ctx("一個目"), 0), "一個目")
+            .expect("一個目 candidate")
+            .clone();
+        assert_eq!(c1.reading, "イッコメ");
+        // 「二回目」 → ニカイメ
+        let c2 = find(&p.candidates_at(&ctx("二回目"), 0), "二回目")
+            .expect("二回目 candidate")
+            .clone();
+        assert_eq!(c2.reading, "ニカイメ");
+        // bare 漢数字 + 助数詞 (目なし) は candidate にしない (chunker 互換維持)
+        assert!(
+            find(&p.candidates_at(&ctx("一個"), 0), "一個").is_none(),
+            "漢数字 + 助数詞 (目なし) は kanji recursive regex に match しない"
+        );
     }
 
     #[test]
