@@ -155,7 +155,7 @@ pub fn analyze(ctx: &ScoringContext, providers: &[&dyn CandidateProvider]) -> An
             .collect();
 
         // dedup by reading (同一 reading の重複を除去、weight 最大を残す)
-        alts.sort_by(|a, b| b.weight.cmp(&a.weight));
+        alts.sort_by_key(|a| std::cmp::Reverse(a.weight));
         alts.dedup_by(|a, b| a.reading == b.reading);
 
         if !alts.is_empty() {
