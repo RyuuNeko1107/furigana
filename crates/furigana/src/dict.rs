@@ -576,7 +576,10 @@ mod tests {
         // 吸収された "上手" は explicit detailed entry を **上書きしない** (= 決定論的、
         // 文脈 match カミテ を保持)
         let kt = d.lookup_rich("上手").expect("上手 rich");
-        assert!(matches!(kt, Entry::Detailed(_)), "detailed 上手 が hoist で潰れた");
+        assert!(
+            matches!(kt, Entry::Detailed(_)),
+            "detailed 上手 が hoist で潰れた"
+        );
         assert_eq!(kt.matches().len(), 1);
         assert_eq!(kt.matches()[0].reading, "カミテ");
     }
