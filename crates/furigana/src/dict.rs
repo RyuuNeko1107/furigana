@@ -95,6 +95,35 @@ struct DictFile {
     kanji: Vec<KanjiBlock>,
 }
 
+/// entry value tree (table / array) を再帰走査し、 **非 ASCII の string key**
+/// を `(surface, reading)` として収集する (= TOML footgun で detailed entry の
+/// match/alt block に吸収された bare simple entry の救済用)。
+///
+/// matcher 条件 field (`prev_eq` / `next_starts_any` / `reading` 等) は全て ASCII
+/// identifier なので `key.is_ascii()` で除外され、 残る非 ASCII key = 吸収された
+/// 日本語 surface のみが拾われる。 reading 等の **値** (非 ASCII) は key ではないので
+/// 対象外。
+fn collect_hoisted_entries(v: &toml::Value, out: &mut Vec<(String, String)>) {
+    match v {
+        toml::Value::Table(tbl) => {
+            for (k, vv) in tbl {
+                if !k.is_ascii() {
+                    if let Some(s) = vv.as_str() {
+                        out.push((k.clone(), s.to_string()));
+                    }
+                }
+                collect_hoisted_entries(vv, out);
+            }
+        }
+        toml::Value::Array(arr) => {
+            for vv in arr {
+                collect_hoisted_entries(vv, out);
+            }
+        }
+        _ => {}
+    }
+}
+
 /// 単純 HashMap ベースの surface→reading 辞書
 ///
 /// 内部では surface 文字数で `jukugo` (≥2 文字) と `unihan` (1 文字) を分けて保持。
@@ -155,6 +184,12 @@ impl Dict {
             source: e,
         })?;
         let mut d = Self::default();
+        // hoist 候補 (= detailed entry に吸収された bare simple entry) はループ後に
+        // **既存 entry を上書きしない形** で適用する。 こうしないと batch に紛れた
+        // 重複 (例: detailed `[entries."上手"]` と吸収された `"上手"="ジョウズ"`) で
+        // HashMap 反復順依存の非決定的勝者になり、 文脈 match を持つ detailed が
+        // 潰れ得る。 explicit entry を常に優先 (= hoist は gap 埋めのみ)。
+        let mut pending_hoist: Vec<(String, String)> = Vec::new();
         for (k, v) in parsed.entries {
             // 1) value が string なら Simple Entry
             if let Some(s) = v.as_str() {
@@ -170,6 +205,17 @@ impl Dict {
             //    rules 系 file の `{ kana = "..." }` のような不一致 inline table は
             //    silent skip (= deserialize 失敗で次の entry に進む)。
             if matches!(v, toml::Value::Table(_)) {
+                // ★ TOML footgun 救済: detailed entry sub-table (例 `[entries."流行"]`)
+                //   の後ろに書かれた bare simple entry (`"福岡" = "フクオカ"` 等) は
+                //   TOML 仕様で直近 table = entry 本体 **または その match/alt block** に
+                //   吸収され、 EntryDetail (match block は MatchCondition を flatten) へ
+                //   deserialize する際に未知 field として黙って捨てられていた。
+                //   entry の value tree を再帰走査し、 **非 ASCII の string key**
+                //   (= 条件 field prev_eq/next_starts_any 等は全て ASCII なので surface
+                //   のみが残る) を top-level simple entry として hoist 救済する。
+                //   これで dict 作者は entry 並び順 (simple/detailed の混在) を
+                //   気にせず append できる。 適用はループ後 (= explicit entry 優先)。
+                collect_hoisted_entries(&v, &mut pending_hoist);
                 let Ok(detail) = v.try_into::<EntryDetail>() else {
                     continue; // 不一致 inline table は skip
                 };
@@ -187,6 +233,19 @@ impl Dict {
                 continue;
             }
             // 3) その他 (= bool / array / etc) は silent skip
+        }
+
+        // hoist 候補を適用 (= explicit entry を上書きしない gap 埋めのみ)。
+        for (surface, reading) in pending_hoist {
+            if d.rich.contains_key(&surface) {
+                continue; // explicit entry (simple / detailed) が既にある → 優先
+            }
+            crate::sanitize::sanitize_dict_value("dict surface (hoisted)", &surface)
+                .map_err(|e| FuriganaError::Validation(format!("{file}: {e}")))?;
+            crate::sanitize::sanitize_dict_value("dict reading (hoisted)", &reading)
+                .map_err(|e| FuriganaError::Validation(format!("{file}: {e}")))?;
+            d.insert(surface.clone(), reading.clone());
+            d.rich.insert(surface, Entry::Simple(reading));
         }
 
         // ★A2 alpha.12: `[[kanji]]` block の取り込み (= core/kanji/*.toml 等)
@@ -472,6 +531,54 @@ mod tests {
         assert_eq!(entry.matches()[0].reading, "カミテ");
         assert_eq!(entry.matches()[1].reading, "シタテ");
         assert_eq!(entry.matches()[1].condition.prev_eq.as_deref(), Some("下"));
+    }
+
+    #[test]
+    fn from_toml_str_hoists_absorbed_entries() {
+        // TOML footgun: detailed entry の match block の後に書かれた bare simple entry は
+        // TOML 仕様で match block の table に吸収される。 loader が hoist 救済して
+        // top-level simple entry として拾うこと、 かつ detailed entry 本体が壊れないこと。
+        let toml_str = r#"
+            [entries]
+            "霊夢" = "レイム"
+
+            [entries."上手"]
+            reading = "ジョウズ"
+
+            [[entries."上手".match]]
+            next_eq = "から"
+            reading = "カミテ"
+
+            [entries."流行"]
+            reading = "リュウコウ"
+
+            [[entries."流行".match]]
+            next_starts_any = ["る", "っ"]
+            reading = "ハヤ"
+
+            # ↓ これらは TOML 上 entries.流行.match[0] に吸収される
+            "完治" = "カンチ"
+            "天気" = "テンキ"
+            "上手" = "ジョウズ"
+        "#;
+        let d = Dict::from_toml_str(toml_str, "test.toml").unwrap();
+        // 吸収されていた simple entry が救済されている
+        assert_eq!(d.lookup("完治"), Some("カンチ"));
+        assert_eq!(d.lookup("天気"), Some("テンキ"));
+        assert!(matches!(d.lookup_rich("完治"), Some(Entry::Simple(_))));
+        // detailed entry 本体は壊れていない (match block も保持)
+        assert_eq!(d.lookup("流行"), Some("リュウコウ"));
+        let ry = d.lookup_rich("流行").expect("流行 rich");
+        assert_eq!(ry.matches().len(), 1);
+        assert_eq!(ry.matches()[0].reading, "ハヤ");
+        // match block の正規 field (reading) は surface として hoist されない
+        assert_eq!(d.lookup("ハヤ"), None);
+        // 吸収された "上手" は explicit detailed entry を **上書きしない** (= 決定論的、
+        // 文脈 match カミテ を保持)
+        let kt = d.lookup_rich("上手").expect("上手 rich");
+        assert!(matches!(kt, Entry::Detailed(_)), "detailed 上手 が hoist で潰れた");
+        assert_eq!(kt.matches().len(), 1);
+        assert_eq!(kt.matches()[0].reading, "カミテ");
     }
 
     #[test]
