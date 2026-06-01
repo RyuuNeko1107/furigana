@@ -178,7 +178,7 @@ mod tests {
     use crate::scoring::boundary::BoundaryAnalysis;
     use crate::scoring::candidate::{Score, ScoringContext};
 
-    fn ctx(input: &str) -> ScoringContext {
+    fn ctx(input: &str) -> ScoringContext<'_> {
         let boundary = Box::leak(Box::new(BoundaryAnalysis::empty()));
         ScoringContext { input, boundary }
     }

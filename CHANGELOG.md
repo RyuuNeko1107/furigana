@@ -4,6 +4,25 @@
 [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/) 形式に概ね従い、
 バージョニングは [Semantic Versioning](https://semver.org/lang/ja/) を採用。
 
+## [0.1.1] - 2026-06-01
+
+production signal 由来の counter / loader バグ修正 (patch)。
+
+### Fixed
+
+- **末尾再帰助数詞 「目」 が発火しないバグ** (`scoring/numbers.rs`): `2個目` が
+  `ニコモク`、 `5人目` が `ゴヒトメ` のように、 counter regex が base 止まりで
+  末尾 「目」 が単漢字 fallback の 「モク」 に落ちていた。 `(NUM)(base)(目)?`
+  構造化で算用数字を、 `(KANJI_NUM)(base)(目)` で漢数字 (`一個目` 等) を修正。
+  bare 漢数字 + 助数詞 (`一日` 等) は従来通り Lindera に委譲 (chunker 互換維持)。
+- **detailed entry sub-table に吸収された bare entry の silent drop** (`dict.rs`):
+  `[entries."X"]` の match block 後に書かれた `"完治" = "カンチ"` 等の simple entry が
+  TOML 仕様で match block table に吸収され、 `EntryDetail` deserialize 時に未知 field
+  として捨てられていた (dict 側で 184 件が dead、 `完治 → カンジ` 等が露呈)。 loader が
+  entry value tree を再帰走査して非 ASCII string key を top-level simple entry に
+  hoist 救済 (explicit entry 優先・非破壊)。 dict 作者は entry 並び順を気にせず
+  append できるようになる。
+
 ## [0.1.0] - 2026-05-12
 
 alpha.10〜.21 の累積 work を 0.1.0 stable として cut。 主要 corpus 99.2% / extended.toml

@@ -260,7 +260,7 @@ mod tests {
         entries: Vec<(String, String, Score)>,
     }
 
-    fn ctx(input: &str) -> ScoringContext {
+    fn ctx(input: &str) -> ScoringContext<'_> {
         let boundary = Box::leak(Box::new(BoundaryAnalysis::empty()));
         ScoringContext { input, boundary }
     }
