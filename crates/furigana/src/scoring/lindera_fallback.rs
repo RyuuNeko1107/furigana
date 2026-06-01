@@ -143,12 +143,7 @@ impl CandidateProvider for LinderaFallbackProvider {
                 } else {
                     Score::lindera(length)
                 };
-                Candidate::new(
-                    surface.to_string(),
-                    reading.clone(),
-                    *start..*end,
-                    score,
-                )
+                Candidate::new(surface.to_string(), reading.clone(), *start..*end, score)
             })
             .collect()
     }

@@ -90,13 +90,25 @@ pub fn parse_bracket_notation(raw: &str) -> ParsedReading {
             '[' => {
                 open_count += 1;
                 if open_count > 1 && !kana.is_empty() {
-                    flush_phrase(&mut phrases, &mut kana, &mut mora, &mut accent_pos, has_open);
+                    flush_phrase(
+                        &mut phrases,
+                        &mut kana,
+                        &mut mora,
+                        &mut accent_pos,
+                        has_open,
+                    );
                 }
                 has_open = true;
             }
             '/' => {
                 if !kana.is_empty() {
-                    flush_phrase(&mut phrases, &mut kana, &mut mora, &mut accent_pos, has_open);
+                    flush_phrase(
+                        &mut phrases,
+                        &mut kana,
+                        &mut mora,
+                        &mut accent_pos,
+                        has_open,
+                    );
                     has_open = false;
                 }
                 open_count = 0;
@@ -117,7 +129,13 @@ pub fn parse_bracket_notation(raw: &str) -> ParsedReading {
     }
 
     if !kana.is_empty() {
-        flush_phrase(&mut phrases, &mut kana, &mut mora, &mut accent_pos, has_open);
+        flush_phrase(
+            &mut phrases,
+            &mut kana,
+            &mut mora,
+            &mut accent_pos,
+            has_open,
+        );
     }
 
     let reading = strip_intonation_markers(raw);

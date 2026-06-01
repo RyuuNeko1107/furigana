@@ -12,8 +12,8 @@ use crate::rules::RulesData;
 use crate::scoring::analyze::{
     analyze as scoring_analyze, AlternativeReading, AnalyzeResult, Token as AnalyzeToken,
 };
-use crate::scoring::bracket::AccentPhrase;
 use crate::scoring::boundary::BoundaryAnalysis;
+use crate::scoring::bracket::AccentPhrase;
 use crate::scoring::candidate::{
     Candidate, CandidateProvider, Score, ScoringContext, BAND_DICT_EXACT, BAND_KANJI,
 };
